@@ -1408,7 +1408,10 @@ public class SearchCoreFactory {
 						type = types.getOtherPoiCategory();
 					}
 					if (!acceptedTypes.containsKey(type)) {
-						LOG.info("accept() refuse (acceptedTypes)");
+						LOG.info(String.format(
+								"accept() refuse (acceptedTypes) (%s) not found in (%s) [%d]",
+								type, acceptedTypes, acceptedTypes.size()
+						));
 						return false;
 					}
 					LinkedHashSet<String> set = acceptedTypes.get(type);
