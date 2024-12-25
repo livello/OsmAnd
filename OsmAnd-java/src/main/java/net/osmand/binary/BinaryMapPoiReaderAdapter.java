@@ -566,6 +566,7 @@ public class BinaryMapPoiReaderAdapter {
 				codedIS.popLimit(oldLimit);
 				break;
 			case OsmandOdb.OsmAndPoiIndex.POIDATA_FIELD_NUMBER:
+				LOG.info(String.format("POIDATA_FIELD_NUMBER offsets = %d", offsetsMap.size()));
 				int[] offsets = offsetsMap.keys();
 				// also offsets can be randomly skipped by limit
 				Arrays.sort(offsets);

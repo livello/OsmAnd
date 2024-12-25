@@ -1491,6 +1491,11 @@ public class BinaryMapIndexReader {
 			codedIS.popLimit(old);
 		}
 
+//		log.info(String.format(
+//				"searchPoi(%s) searchedPois=%d",
+//				req.resultMatcher.
+//		));
+
 		return req.getSearchResults();
 	}
 
