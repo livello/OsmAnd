@@ -1,10 +1,15 @@
 package net.osmand.osm;
 
+import net.osmand.PlatformUtil;
+import net.osmand.search.core.SearchCoreFactory;
+import org.apache.commons.logging.Log;
+
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
 public class PoiType extends AbstractPoiType {
+	private static final Log LOG = PlatformUtil.getLog(PoiType.class);
 
 	public static final int DEFAULT_ORDER = 90;
 	public static final int DEFAULT_MIN_COUNT = 3;
@@ -192,10 +197,16 @@ public class PoiType extends AbstractPoiType {
 		PoiType rt = getReferenceType();
 		PoiType poiType = rt != null ? rt : this;
 		if (!acceptedTypes.containsKey(poiType.category)) {
+			LOG.info(String.format(
+					"putTypes acceptedTypes.put(%s)", poiType.category
+			));
 			acceptedTypes.put(poiType.category, new LinkedHashSet<String>());
 		}
 		LinkedHashSet<String> set = acceptedTypes.get(poiType.category);
 		if(set != null) {
+			LOG.info(String.format(
+					"putTypes set.add (%s)", poiType.getKeyName()
+			));
 			set.add(poiType.getKeyName());
 		}
 		return acceptedTypes;
