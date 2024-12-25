@@ -75,7 +75,7 @@ public class SearchUICore {
 	private SearchSettings searchSettings;
 	private MapPoiTypes poiTypes;
 
-	private static boolean debugMode = false;
+	private static boolean debugMode = true;
 	
 	private static final Set<String> FILTER_DUPLICATE_POI_SUBTYPE = new TreeSet<String>(
 			Arrays.asList("building", "internet_access_yes"));
@@ -511,6 +511,10 @@ public class SearchUICore {
 		final SearchPhrase searchPhrase = this.phrase.generateNewPhrase(text, searchSettings);
 		final SearchResultMatcher rm = new SearchResultMatcher(null, searchPhrase, requestNumber.get(), requestNumber, totalLimit);
 		searchInternal(searchPhrase, rm);
+		LOG.info(String.format(
+				"immediateSearch(%s) => rm.count(%d) result0(%s)",
+				text, rm.count, rm.count > 0 ? rm.requestResults.get(0) : null
+		));
 		SearchResultCollection resultCollection = new SearchResultCollection(searchPhrase);
 		if (rm.totalLimit != -1 && rm.count > rm.totalLimit) {
 			resultCollection.setUseLimit(true);
