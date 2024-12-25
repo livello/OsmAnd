@@ -563,10 +563,13 @@ public class BinaryMapPoiReaderAdapter {
 				length = readInt();
 				oldLimit = codedIS.pushLimitLong((long) length);
 				readBoxField(left31, right31, top31, bottom31, 0, 0, 0, offsetsMap, skipTiles, req, region, null);
+//				LOG.info(String.format("BOXES_FIELD_NUMBER read offsets = %d", offsetsMap.size()));
 				codedIS.popLimit(oldLimit);
 				break;
 			case OsmandOdb.OsmAndPoiIndex.POIDATA_FIELD_NUMBER:
-				LOG.info(String.format("POIDATA_FIELD_NUMBER offsets = %d", offsetsMap.size()));
+				LOG.info(String.format("POIDATA_FIELD_NUMBER offsets = %d (read %d, accepted %d)",
+						offsetsMap.size(), req.numberOfReadSubtrees, req.numberOfAcceptedSubtrees
+				));
 				int[] offsets = offsetsMap.keys();
 				// also offsets can be randomly skipped by limit
 				Arrays.sort(offsets);
