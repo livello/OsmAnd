@@ -10,14 +10,12 @@ import static net.osmand.search.core.ObjectType.POI;
 import static net.osmand.util.LocationParser.parseOpenLocationCode;
 import static net.osmand.binary.BinaryMapIndexReader.ACCEPT_ALL_POI_TYPE_FILTER;
 
-import net.osmand.Collator;
-import net.osmand.CollatorStringMatcher;
+import net.osmand.*;
 import net.osmand.CollatorStringMatcher.StringMatcherMode;
-import net.osmand.OsmAndCollator;
-import net.osmand.ResultMatcher;
 import net.osmand.binary.BinaryMapAddressReaderAdapter;
 import net.osmand.binary.BinaryMapIndexReader;
 import net.osmand.binary.BinaryMapIndexReader.SearchPoiTypeFilter;
+import net.osmand.binary.BinaryMapPoiReaderAdapter;
 import net.osmand.binary.BinaryMapPoiReaderAdapter.PoiSubType;
 import net.osmand.binary.BinaryMapIndexReader.SearchPoiAdditionalFilter;
 import net.osmand.binary.BinaryMapIndexReader.SearchRequest;
@@ -44,6 +42,7 @@ import net.osmand.util.GeoParsedPoint;
 import net.osmand.util.LocationParser;
 import net.osmand.util.LocationParser.ParsedOpenLocationCode;
 import net.osmand.util.MapUtils;
+import org.apache.commons.logging.Log;
 
 import java.io.IOException;
 import java.text.DecimalFormat;
@@ -68,6 +67,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 
 public class SearchCoreFactory {
+	private static final Log LOG = PlatformUtil.getLog(SearchCoreFactory.class);
 
 	public static final int PREFERRED_STREET_ZOOM = 17;
 	public static final int PREFERRED_INDEX_ITEM_ZOOM = 17;
@@ -1401,17 +1401,25 @@ public class SearchCoreFactory {
 				@Override
 				public boolean accept(PoiCategory type, String subtype) {
 					if (type == null) {
+						LOG.info("accept() accept (type == null)");
 						return true;
 					}
 					if (!types.isRegisteredType(type)) {
 						type = types.getOtherPoiCategory();
 					}
 					if (!acceptedTypes.containsKey(type)) {
+						LOG.info("accept() refuse (acceptedTypes)");
 						return false;
 					}
 					LinkedHashSet<String> set = acceptedTypes.get(type);
 					if (set == null) {
+						LOG.info("accept() accept (set == null)");
 						return true;
+					}
+					if (set.contains(subtype)) {
+						LOG.info("accept() accept (set YES)");
+					} else {
+						LOG.info("accept() refuse (set NO)");
 					}
 					return set.contains(subtype);
 				}
