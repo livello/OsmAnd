@@ -951,6 +951,9 @@ public class BinaryMapPoiReaderAdapter {
 			int tag = WireFormat.getTagFieldNumber(t);
 			switch (tag) {
 			case 0:
+				LOG.info(String.format(
+						"checkCategories [%d] nothing found", req.numberOfReadSubtrees
+				));
 				return false;
 			case OsmandOdb.OsmAndPoiCategories.SUBCATEGORIES_FIELD_NUMBER:
 				int subcat = codedIS.readUInt32();
@@ -961,6 +964,9 @@ public class BinaryMapPoiReaderAdapter {
 						&& req.poiAdditionalFilter != null
 						&& req.poiAdditionalFilter.accept(poiSubType, val)) {
 					codedIS.skipRawBytes(codedIS.getBytesUntilLimit());
+					LOG.info(String.format(
+							"checkCategories [%d] subtype OK %s (%s)", req.numberOfReadSubtrees, subType, val
+					));
 					return true;
 				}
 				break;
@@ -980,8 +986,14 @@ public class BinaryMapPoiReaderAdapter {
 				subtype = poiTypes.replaceDeprecatedSubtype(type, subtype);
 				if (req.poiTypeFilter != null && req.poiTypeFilter.accept(type, subtype)) {
 					codedIS.skipRawBytes(codedIS.getBytesUntilLimit());
+					LOG.info(String.format(
+							"checkCategories [%d] accepted %s (%s)", req.numberOfReadSubtrees, type, subtype
+					));
 					return true;
 				}
+				LOG.info(String.format(
+						"checkCategories [%d] refused %s (%s)", req.numberOfReadSubtrees, type, subtype
+				));
 				break;
 			default:
 				skipUnknownField(t);
