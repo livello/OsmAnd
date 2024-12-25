@@ -75,7 +75,7 @@ public class SearchUICore {
 	private SearchSettings searchSettings;
 	private MapPoiTypes poiTypes;
 
-	private static boolean debugMode = true;
+	private static boolean debugMode = false;
 	
 	private static final Set<String> FILTER_DUPLICATE_POI_SUBTYPE = new TreeSet<String>(
 			Arrays.asList("building", "internet_access_yes"));

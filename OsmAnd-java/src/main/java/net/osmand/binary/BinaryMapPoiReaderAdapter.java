@@ -697,6 +697,7 @@ public class BinaryMapPoiReaderAdapter {
 				int len = codedIS.readRawVarint32();
 				long oldLim = codedIS.pushLimitLong((long) len);
 				Amenity am = readPoiPoint(left31, right31, top31, bottom31, x, y, zoom, req, region, true);
+				LOG.info("Amenity binary read: " + am);
 				codedIS.popLimit(oldLim);
 				if (am != null) {
 					if (toSkip != null) {
