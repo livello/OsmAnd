@@ -960,15 +960,15 @@ You will be able to pair this scanner again at any time.</string>
     • Fuel consumption, Fuel pressure, Remaining fuel\n
     • Intake temperature, Ambient temperature, Coolant temperature, Engine Oil Temperature\n
     • Vehicle speed, Throttle Position, Battery voltage\n</string>
-    <string name="ev_bms_plugin_name">EV BMS + FarDriver</string>
-    <string name="ev_bms_plugin_description"><![CDATA[🔋 Live battery and motor telemetry over Bluetooth LE. Green widget frame when both BMS and FarDriver links are up.<br/><br/>
+    <string name="ev_bms_plugin_name">EV BMS + controller</string>
+    <string name="ev_bms_plugin_description"><![CDATA[🔋 Live battery and motor telemetry over Bluetooth LE. BMS widgets get a green frame when the BMS link is up and a red frame when it is lost. Controller widgets do the same for the motor controller.<br/><br/>
 <b>📡 Devices</b><br/>
 • JBD / Xiaoxiang BMS (FF00) or ANT BMS (FFE0 / FFE1)<br/>
-• FarDriver ND96530 controller (FFE0 / FFEC)<br/>
-• Widgets show a green frame only when both links are connected<br/><br/>
+• FarDriver (FFE0 / FFEC) or VESC over Nordic UART (NUS)<br/>
+• Controller type is shown live from the connected device<br/><br/>
 <b>📏 Remaining range</b><br/>
-Energy used versus distance over a rolling 5-minute window. Distance prefers GPS. If GPS jumps, accuracy is worse than 40 m, or implied speed is above 160 km/h, the FarDriver odometer is used instead.<br/><br/>
-Coverage Wh/km is the most conservative of: the 5-minute window, the trip average, FarDriver average Wh/km, and the 80th percentile of recent segments. Remaining energy is remaining Ah × rest pack voltage, then reduced by:<br/>
+Energy used versus distance over a rolling 5-minute window. Distance prefers GPS. If GPS jumps, accuracy is worse than 40 m, or implied speed is above 160 km/h, the controller odometer is used instead.<br/><br/>
+Coverage Wh/km is the most conservative of: the 5-minute window, the trip average, controller average Wh/km, and the 80th percentile of recent segments. Remaining energy is remaining Ah × rest pack voltage, then reduced by:<br/>
 • Weak cell: rest min cell between 3.00 V (cutoff) and 3.50 V, compared with remaining Ah<br/>
 • Temperature: full above 20 °C, down to about 50 percent in frost<br/>
 Optional route profile adds climb energy and credits 55 percent of descent regen for a 280 kg vehicle.<br/><br/>
@@ -978,10 +978,20 @@ Min cell voltage is sampled only while pack current is below 5 A, so sag under l
 SOC steps, remaining range once a minute when stopped, and a warning when range is less than the remaining navigation distance.<br/><br/>
 <b>💾 CSV</b><br/>
 VESC Tool-compatible semicolon logs, with a folder picker and export. Hike mode keeps range and slows BLE polling while stopping CSV and heavy map layers.]]></string>
+    <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+• VESC controllers over BLE UART, not only FarDriver ND96530<br/>
+• Live controller type in settings from firmware / hardware name<br/>
+• Green or red widget frame from the matching BLE link (BMS vs controller)<br/>
+• Russian plugin UI]]></string>
     <string name="ev_bms_widget_group">EV battery</string>
     <string name="ev_bms_devices">Bluetooth devices</string>
     <string name="ev_bms_jbd_title">Battery BMS</string>
-    <string name="ev_bms_fardriver_title">FarDriver ND96530</string>
+    <string name="ev_bms_controller_title">Motor controller</string>
+    <string name="ev_bms_controller_protocol">Controller protocol</string>
+    <string name="ev_bms_protocol_fardriver">FarDriver</string>
+    <string name="ev_bms_protocol_vesc">VESC</string>
+    <string name="ev_bms_controller_fardriver_nd96530">FarDriver ND96530</string>
+    <string name="ev_bms_fardriver_title">Motor controller</string>
     <string name="ev_bms_recording">Recording</string>
     <string name="ev_bms_voice">Voice</string>
     <string name="ev_bms_poll_interval">Telemetry interval</string>
@@ -1013,11 +1023,11 @@ VESC Tool-compatible semicolon logs, with a folder picker and export. Hike mode 
     <string name="ev_bms_widget_soc">Battery SOC</string>
     <string name="ev_bms_widget_soc_desc">State of charge from the BMS</string>
     <string name="ev_bms_widget_range">Remaining range</string>
-    <string name="ev_bms_widget_range_desc">Estimated remaining range from GPS or FarDriver distance and 5-minute average Wh/km</string>
+    <string name="ev_bms_widget_range_desc">Estimated remaining range from GPS or controller distance and 5-minute average Wh/km</string>
     <string name="ev_bms_widget_consumption">Consumption</string>
     <string name="ev_bms_widget_consumption_desc">Average energy use in Wh/km over the last 5 minutes</string>
-    <string name="ev_bms_widget_far_trip">FarDriver trip</string>
-    <string name="ev_bms_widget_far_trip_desc">Trip distance from the FarDriver controller odometer</string>
+    <string name="ev_bms_widget_far_trip">Controller trip</string>
+    <string name="ev_bms_widget_far_trip_desc">Trip distance from the motor controller odometer</string>
     <string name="ev_bms_unit_wh_per_km">Wh/km</string>
     <string name="ev_bms_compact_mode">Compact numbers</string>
     <string name="ev_bms_full_mode">Show labels</string>
@@ -1026,11 +1036,11 @@ VESC Tool-compatible semicolon logs, with a folder picker and export. Hike mode 
     <string name="ev_bms_widget_current">Pack current</string>
     <string name="ev_bms_widget_current_desc">Battery pack current from the BMS</string>
     <string name="ev_bms_widget_power">Motor power</string>
-    <string name="ev_bms_widget_power_desc">Controller bus power from FarDriver</string>
+    <string name="ev_bms_widget_power_desc">Controller bus power</string>
     <string name="ev_bms_widget_motor_temp">Motor temperature</string>
-    <string name="ev_bms_widget_motor_temp_desc">Motor temperature from FarDriver</string>
+    <string name="ev_bms_widget_motor_temp_desc">Motor temperature from the controller</string>
     <string name="ev_bms_widget_controller_temp">Controller temperature</string>
-    <string name="ev_bms_widget_controller_temp_desc">Controller temperature from FarDriver</string>
+    <string name="ev_bms_widget_controller_temp_desc">MOSFET / controller temperature</string>
     <string name="ev_bms_widget_hike">Hike</string>
     <string name="ev_bms_widget_hike_desc">Turns off heavy map layers, 3D, weather, online tiles, extra Bluetooth plugins and CSV telemetry. Keeps BMS range, GPS and a slower BLE poll.</string>
     <string name="ev_bms_hike_on">Hike mode on</string>
@@ -1053,6 +1063,11 @@ VESC Tool-compatible semicolon logs, with a folder picker and export. Hike mode 
     <string name="ev_bms_cell_alert_interval">Cell alert interval</string>
     <string name="ev_bms_voice_cell_low">Low battery. Minimum cell %1$s volts</string>
     <string name="ev_bms_voice_cell_critical">Critically low battery. Minimum cell %1$s volts</string>
+    <string name="ev_bms_n_sec">%1$d s</string>
+    <string name="ev_bms_n_min">%1$d min</string>
+    <string name="ev_bms_n_kmh">%1$d km/h</string>
+    <string name="ev_bms_n_volt">%1$.2f V</string>
+    <string name="ev_bms_n_percent">%1$d %%</string>
     <string name="map_rendering_engine_v2_unavailable">Version 2 (OpenGL) is not included in this APK. This Nightly build uses the legacy renderer. Rebuild with the OpenGL flavor to enable it.</string>
     <string name="background_opacity">Background opacity</string>
     <string name="corner_radius">Corner radius</string>

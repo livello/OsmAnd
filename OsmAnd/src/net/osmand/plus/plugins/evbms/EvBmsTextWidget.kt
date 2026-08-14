@@ -26,7 +26,11 @@ class EvBmsTextWidget(
 ) : SimpleWidget(mapActivity, widgetType, customId, widgetsPanel) {
 
 	enum class Field {
-		SOC, RANGE, CONSUMPTION, FAR_TRIP, VOLTAGE, CURRENT, POWER, BATTERY_TEMP, MOTOR_TEMP, CONTROLLER_TEMP
+		SOC, RANGE, CONSUMPTION, FAR_TRIP, VOLTAGE, CURRENT, POWER, BATTERY_TEMP, MOTOR_TEMP, CONTROLLER_TEMP;
+
+		fun controllerLink(): Boolean {
+			return this == FAR_TRIP || this == POWER || this == MOTOR_TEMP || this == CONTROLLER_TEMP
+		}
 	}
 
 	companion object {
@@ -43,6 +47,7 @@ class EvBmsTextWidget(
 		setText(NO_VALUE, null)
 		setIcons(widgetType)
 		updateWidgetView()
+		applyLinkFrame()
 	}
 
 	override fun updateSimpleWidgetInfo(drawSettings: DrawSettings?) {
@@ -124,7 +129,12 @@ class EvBmsTextWidget(
 			cacheCompact = compact
 			updateWidgetView()
 		}
-		EvWidgetLinkFrame.apply(view, plugin.isLinkHealthy(), app)
+		applyLinkFrame()
+	}
+
+	private fun applyLinkFrame() {
+		val linked = if (field.controllerLink()) plugin.isControllerConnected() else plugin.isBmsConnected()
+		EvWidgetLinkFrame.apply(getView(), linked, app)
 	}
 
 	override fun shouldShowIcon(): Boolean {

@@ -67,7 +67,9 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			plugin.CONTROLLER_ADDRESS.get(),
 			plugin.isControllerConnected()
 		)
+		setupControllerTitle()
 		setupBmsProtocol()
+		setupControllerProtocol()
 		setupPollInterval()
 		setupSwitch(plugin.RECORD_TELEMETRY.id)
 		setupCsvFolder()
@@ -111,6 +113,24 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		pref.summary = status
 	}
 
+	private fun setupControllerTitle() {
+		val pref = findPreference<Preference>(plugin.CONTROLLER_ADDRESS.id) ?: return
+		pref.title = plugin.controllerDisplayName()
+	}
+
+	private fun setupControllerProtocol() {
+		val pref = findPreference<ListPreferenceEx>(plugin.CONTROLLER_PROTOCOL.id) ?: return
+		pref.setEntries(
+			arrayOf(
+				getString(R.string.ev_bms_protocol_auto),
+				getString(R.string.ev_bms_protocol_fardriver),
+				getString(R.string.ev_bms_protocol_vesc)
+			)
+		)
+		pref.setEntryValues(arrayOf<Any>("auto", "fardriver", "vesc"))
+		pref.setValue(plugin.CONTROLLER_PROTOCOL.get())
+	}
+
 	private fun setupBmsProtocol() {
 		val pref = findPreference<ListPreferenceEx>(plugin.BMS_PROTOCOL.id) ?: return
 		pref.setEntries(
@@ -126,35 +146,62 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 
 	private fun setupPollInterval() {
 		val pref = findPreference<ListPreferenceEx>(plugin.POLL_INTERVAL_MS.id) ?: return
-		pref.setEntries(arrayOf("1 s", "2 s", "5 s", "10 s"))
+		pref.setEntries(
+			arrayOf(
+				getString(R.string.ev_bms_n_sec, 1),
+				getString(R.string.ev_bms_n_sec, 2),
+				getString(R.string.ev_bms_n_sec, 5),
+				getString(R.string.ev_bms_n_sec, 10)
+			)
+		)
 		pref.setEntryValues(arrayOf<Any>(1000, 2000, 5000, 10000))
 		pref.setValue(plugin.POLL_INTERVAL_MS.get())
 	}
 
 	private fun setupSocStep() {
 		val pref = findPreference<ListPreferenceEx>(plugin.SOC_STEP_PERCENT.id) ?: return
-		pref.setEntries(arrayOf("1 %", "5 %", "10 %"))
+		pref.setEntries(
+			arrayOf(
+				getString(R.string.ev_bms_n_percent, 1),
+				getString(R.string.ev_bms_n_percent, 5),
+				getString(R.string.ev_bms_n_percent, 10)
+			)
+		)
 		pref.setEntryValues(arrayOf<Any>(1, 5, 10))
 		pref.setValue(plugin.SOC_STEP_PERCENT.get())
 	}
 
 	private fun setupStopSpeed() {
 		val pref = findPreference<ListPreferenceEx>(plugin.STOP_SPEED_KMH.id) ?: return
-		pref.setEntries(arrayOf("2 km/h", "3 km/h", "5 km/h"))
+		pref.setEntries(
+			arrayOf(
+				getString(R.string.ev_bms_n_kmh, 2),
+				getString(R.string.ev_bms_n_kmh, 3),
+				getString(R.string.ev_bms_n_kmh, 5)
+			)
+		)
 		pref.setEntryValues(arrayOf<Any>(2, 3, 5))
 		pref.setValue(plugin.STOP_SPEED_KMH.get())
 	}
 
 	private fun setupCellThreshold(prefHolder: net.osmand.plus.settings.backend.preferences.CommonPreference<Int>, millivolts: Array<Int>) {
 		val pref = findPreference<ListPreferenceEx>(prefHolder.id) ?: return
-		pref.setEntries(millivolts.map { String.format(java.util.Locale.US, "%.2f V", it / 1000.0) }.toTypedArray())
+		pref.setEntries(millivolts.map { getString(R.string.ev_bms_n_volt, it / 1000.0) }.toTypedArray())
 		pref.setEntryValues(millivolts.map { it as Any }.toTypedArray())
 		pref.setValue(prefHolder.get())
 	}
 
 	private fun setupCellAlertInterval() {
 		val pref = findPreference<ListPreferenceEx>(plugin.CELL_ALERT_INTERVAL_SEC.id) ?: return
-		pref.setEntries(arrayOf("15 s", "30 s", "1 min", "2 min", "5 min"))
+		pref.setEntries(
+			arrayOf(
+				getString(R.string.ev_bms_n_sec, 15),
+				getString(R.string.ev_bms_n_sec, 30),
+				getString(R.string.ev_bms_n_min, 1),
+				getString(R.string.ev_bms_n_min, 2),
+				getString(R.string.ev_bms_n_min, 5)
+			)
+		)
 		pref.setEntryValues(arrayOf<Any>(15, 30, 60, 120, 300))
 		pref.setValue(plugin.CELL_ALERT_INTERVAL_SEC.get())
 	}
@@ -232,6 +279,15 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			if (!address.isNullOrEmpty()) {
 				plugin.connectBms(act, name ?: address, address)
 			}
+		}
+		if (prefId == plugin.CONTROLLER_PROTOCOL.id) {
+			val act = activity ?: return
+			val name = plugin.CONTROLLER_NAME.get()
+			val address = plugin.CONTROLLER_ADDRESS.get()
+			if (!address.isNullOrEmpty()) {
+				plugin.connectController(act, name ?: address, address)
+			}
+			setupControllerTitle()
 		}
 	}
 

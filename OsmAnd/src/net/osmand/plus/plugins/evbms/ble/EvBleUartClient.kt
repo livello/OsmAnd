@@ -39,12 +39,29 @@ class EvBleUartClient(
 		UNKNOWN, JBD, ANT
 	}
 
+	enum class ControllerKind {
+		UNKNOWN, FARDRIVER, VESC
+	}
+
 	@Volatile
 	var preferredBmsKind: BmsKind = BmsKind.UNKNOWN
 
 	@Volatile
 	var detectedBmsKind: BmsKind = BmsKind.UNKNOWN
 		private set
+
+	@Volatile
+	var preferredControllerKind: ControllerKind = ControllerKind.UNKNOWN
+
+	@Volatile
+	var detectedControllerKind: ControllerKind = ControllerKind.UNKNOWN
+		private set
+
+	fun noteControllerKind(kind: ControllerKind) {
+		if (detectedControllerKind == ControllerKind.UNKNOWN) {
+			detectedControllerKind = kind
+		}
+	}
 
 	interface Listener {
 		fun onConnectionChanged(role: Role, connected: Boolean, name: String?)
@@ -62,6 +79,9 @@ class EvBleUartClient(
 		val FAR_SERVICE: UUID = UUID.fromString("0000ffe0-0000-1000-8000-00805f9b34fb")
 		val FAR_CHAR: UUID = UUID.fromString("0000ffec-0000-1000-8000-00805f9b34fb")
 		val ANT_CHAR: UUID = UUID.fromString("0000ffe1-0000-1000-8000-00805f9b34fb")
+		val NUS_SERVICE: UUID = UUID.fromString("6e400001-b5a3-f393-e0a9-e50e24dcca9e")
+		val NUS_RX: UUID = UUID.fromString("6e400002-b5a3-f393-e0a9-e50e24dcca9e")
+		val NUS_TX: UUID = UUID.fromString("6e400003-b5a3-f393-e0a9-e50e24dcca9e")
 
 		fun matchesAntName(name: String?): Boolean {
 			if (name.isNullOrBlank()) {
@@ -90,6 +110,21 @@ class EvBleUartClient(
 			return n.contains("yuanqu") || n.contains("fardriver") || n.contains("controldm") ||
 					n.startsWith("fd") || n.contains("nd96") || n.contains("nd-") ||
 					n.contains("far-") || n.contains("ble-uart")
+		}
+
+		fun matchesVescName(name: String?): Boolean {
+			if (name.isNullOrBlank()) {
+				return false
+			}
+			val n = name.lowercase(Locale.US)
+			return n.contains("vesc") || n.contains("nrf52") || n.contains("nrf51") ||
+					n.contains("unity") || n.contains("spintend") || n.contains("makerx") ||
+					n.contains("trampa") || n.contains("flipsky") || n.contains("little focer") ||
+					n.contains("75_300") || n.contains("60_75") || n.startsWith("vesc")
+		}
+
+		fun matchesControllerName(name: String?): Boolean {
+			return matchesFarDriverName(name) || matchesVescName(name)
 		}
 	}
 
@@ -139,6 +174,7 @@ class EvBleUartClient(
 			} else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
 				connected = false
 				detectedBmsKind = BmsKind.UNKNOWN
+				detectedControllerKind = ControllerKind.UNKNOWN
 				writeCharacteristic = null
 				mainHandler.post { listener.onConnectionChanged(role, false, deviceName) }
 				try {
@@ -158,6 +194,8 @@ class EvBleUartClient(
 			var jbdWrite: BluetoothGattCharacteristic? = null
 			var antNotify: BluetoothGattCharacteristic? = null
 			var antWrite: BluetoothGattCharacteristic? = null
+			var nusNotify: BluetoothGattCharacteristic? = null
+			var nusWrite: BluetoothGattCharacteristic? = null
 			var farNotify: BluetoothGattCharacteristic? = null
 			var fallbackNotify: BluetoothGattCharacteristic? = null
 			var fallbackWrite: BluetoothGattCharacteristic? = null
@@ -178,6 +216,8 @@ class EvBleUartClient(
 							if (canNotify) farNotify = ch
 							if (canWrite && fallbackWrite == null) fallbackWrite = ch
 						}
+						NUS_TX -> if (canNotify) nusNotify = ch
+						NUS_RX -> if (canWrite) nusWrite = ch
 						else -> {
 							if (canNotify && fallbackNotify == null) fallbackNotify = ch
 							if (canWrite && fallbackWrite == null) fallbackWrite = ch
@@ -207,13 +247,30 @@ class EvBleUartClient(
 					write = fallbackWrite
 				}
 			} else {
-				notify = farNotify ?: fallbackNotify
-				write = if (farNotify != null && (farNotify.properties and BluetoothGattCharacteristic.PROPERTY_WRITE != 0 ||
-							farNotify.properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE != 0)
-				) {
-					farNotify
+				val preferVesc = preferredControllerKind == ControllerKind.VESC ||
+						(preferredControllerKind != ControllerKind.FARDRIVER && nusNotify != null)
+				if (preferVesc && (nusNotify != null || nusWrite != null)) {
+					notify = nusNotify ?: fallbackNotify
+					write = nusWrite ?: fallbackWrite
+					detectedControllerKind = ControllerKind.VESC
+				} else if (farNotify != null) {
+					notify = farNotify
+					write = if (farNotify.properties and BluetoothGattCharacteristic.PROPERTY_WRITE != 0 ||
+						farNotify.properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE != 0
+					) {
+						farNotify
+					} else {
+						fallbackWrite
+					}
+					detectedControllerKind = ControllerKind.FARDRIVER
 				} else {
-					fallbackWrite
+					notify = fallbackNotify
+					write = fallbackWrite
+					detectedControllerKind = when (preferredControllerKind) {
+						ControllerKind.VESC -> ControllerKind.VESC
+						ControllerKind.FARDRIVER -> ControllerKind.FARDRIVER
+						else -> ControllerKind.UNKNOWN
+					}
 				}
 			}
 			writeCharacteristic = write
@@ -253,15 +310,15 @@ class EvBleUartClient(
 		if (role == Role.CONTROLLER && matchesAntName(name)) {
 			return
 		}
-		if (role == Role.BMS && matchesFarDriverName(name) && !matchesBmsName(name)) {
+		if (role == Role.BMS && matchesControllerName(name) && !matchesBmsName(name)) {
 			return
 		}
 		val hasService = if (role == Role.BMS) {
 			serviceUuids?.any { it == JBD_SERVICE || it == FAR_SERVICE } == true
 		} else {
-			serviceUuids?.any { it == FAR_SERVICE } == true
+			serviceUuids?.any { it == FAR_SERVICE || it == NUS_SERVICE } == true
 		}
-		val match = if (role == Role.BMS) matchesBmsName(name) else matchesFarDriverName(name)
+		val match = if (role == Role.BMS) matchesBmsName(name) else matchesControllerName(name)
 		if (!match && !hasService && !name.isNullOrBlank()) {
 			return
 		}
@@ -345,6 +402,7 @@ class EvBleUartClient(
 	fun disconnect() {
 		connected = false
 		detectedBmsKind = BmsKind.UNKNOWN
+		detectedControllerKind = ControllerKind.UNKNOWN
 		writeCharacteristic = null
 		try {
 			gatt?.disconnect()

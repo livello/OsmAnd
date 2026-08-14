@@ -4460,15 +4460,15 @@
     <string name="obd_fuel_type_desc">Тип топлива по датчику OBD</string>
     <string name="obd_engine_coolant_temp">T° охлаждающей жидкости</string>
     <string name="obd_plugin_name">Авто-датчики</string>
-    <string name="ev_bms_plugin_name">АКБ + FarDriver</string>
-    <string name="ev_bms_plugin_description"><![CDATA[🔋 Живая телеметрия батареи и мотора по Bluetooth LE. Зелёная рамка на виджетах, когда связь с BMS и FarDriver в норме.<br/><br/>
+    <string name="ev_bms_plugin_name">АКБ + контроллер</string>
+    <string name="ev_bms_plugin_description"><![CDATA[🔋 Живая телеметрия батареи и мотора по Bluetooth LE. Виджеты BMS — зелёная рамка при связи с BMS и красная, если связь потеряна. Виджеты контроллера так же показывают связь с моторным контроллером.<br/><br/>
 <b>📡 Устройства</b><br/>
 • BMS JBD / Xiaoxiang (FF00) или ANT BMS (FFE0 / FFE1)<br/>
-• Контроллер FarDriver ND96530 (FFE0 / FFEC)<br/>
-• Зелёная рамка вокруг параметра только если подключены оба устройства<br/><br/>
+• FarDriver (FFE0 / FFEC) или VESC по Nordic UART (NUS)<br/>
+• Тип контроллера показывается по подключённому устройству<br/><br/>
 <b>📏 Запас хода</b><br/>
-Расход энергии к дистанции за скользящие 5 минут. Дистанция берётся с GPS. Если координаты скачут, точность хуже 40 м или скорость выше 160 км/ч, используется одометр FarDriver.<br/><br/>
-Покрытие Вт·ч/км — самое консервативное из: окна 5 минут, среднего за поездку, среднего FarDriver и 80-го процентиля недавних отрезков. Остаток энергии: остаток А·ч × напряжение пакета на малом токе, затем поправки:<br/>
+Расход энергии к дистанции за скользящие 5 минут. Дистанция берётся с GPS. Если координаты скачут, точность хуже 40 м или скорость выше 160 км/ч, используется одометр контроллера.<br/><br/>
+Покрытие Вт·ч/км — самое консервативное из: окна 5 минут, среднего за поездку, среднего контроллера и 80-го процентиля недавних отрезков. Остаток энергии: остаток А·ч × напряжение пакета на малом токе, затем поправки:<br/>
 • Слабая ячейка: минимум на покое между 3.00 В (отсечка) и 3.50 В, в сравнении с остатком А·ч<br/>
 • Температура: без снижения выше 20 °C, до примерно 50 процентов на морозе<br/>
 Опциональный профиль маршрута добавляет энергию на набор высоты и засчитывает 55 процентов рекуперации на спусках для массы 280 кг.<br/><br/>
@@ -4478,10 +4478,20 @@
 Шаги SOC, запас хода раз в минуту на остановке и предупреждение, если запас меньше остатка маршрута навигации.<br/><br/>
 <b>💾 CSV</b><br/>
 Логи в формате VESC Tool (точка с запятой), выбор папки и экспорт. Режим «Поход» оставляет запас хода и замедляет опрос BLE, отключая CSV и тяжёлые слои карты.]]></string>
+    <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Список изменений</b> · %1$s<br/>
+• Контроллеры VESC по BLE UART, не только FarDriver ND96530<br/>
+• Тип контроллера в настройках берётся из прошивки и железа<br/>
+• Зелёная или красная рамка виджета по своей BLE-связи (BMS или контроллер)<br/>
+• Русский интерфейс плагина]]></string>
     <string name="ev_bms_widget_group">Тяговая батарея</string>
     <string name="ev_bms_devices">Устройства Bluetooth</string>
     <string name="ev_bms_jbd_title">BMS батареи</string>
-    <string name="ev_bms_fardriver_title">FarDriver ND96530</string>
+    <string name="ev_bms_controller_title">Контроллер</string>
+    <string name="ev_bms_controller_protocol">Протокол контроллера</string>
+    <string name="ev_bms_protocol_fardriver">FarDriver</string>
+    <string name="ev_bms_protocol_vesc">VESC</string>
+    <string name="ev_bms_controller_fardriver_nd96530">FarDriver ND96530</string>
+    <string name="ev_bms_fardriver_title">Контроллер</string>
     <string name="ev_bms_recording">Запись</string>
     <string name="ev_bms_voice">Голос</string>
     <string name="ev_bms_poll_interval">Интервал телеметрии</string>
@@ -4513,11 +4523,11 @@
     <string name="ev_bms_widget_soc">Заряд АКБ</string>
     <string name="ev_bms_widget_soc_desc">Уровень заряда по BMS</string>
     <string name="ev_bms_widget_range">Остаток пробега</string>
-    <string name="ev_bms_widget_range_desc">Оценка пробега по GPS или одометру FarDriver и среднему расходу Вт·ч/км за 5 минут</string>
+    <string name="ev_bms_widget_range_desc">Оценка пробега по GPS или одометру контроллера и среднему расходу Вт·ч/км за 5 минут</string>
     <string name="ev_bms_widget_consumption">Расход</string>
     <string name="ev_bms_widget_consumption_desc">Средний расход Вт·ч/км за последние 5 минут</string>
-    <string name="ev_bms_widget_far_trip">Пробег FarDriver</string>
-    <string name="ev_bms_widget_far_trip_desc">Пробег сессии по одометру контроллера FarDriver</string>
+    <string name="ev_bms_widget_far_trip">Пробег контроллера</string>
+    <string name="ev_bms_widget_far_trip_desc">Пробег сессии по одометру моторного контроллера</string>
     <string name="ev_bms_unit_wh_per_km">Вт·ч/км</string>
     <string name="ev_bms_compact_mode">Только числа</string>
     <string name="ev_bms_full_mode">Показать подписи</string>
@@ -4526,11 +4536,11 @@
     <string name="ev_bms_widget_current">Ток пакета</string>
     <string name="ev_bms_widget_current_desc">Ток батареи по BMS</string>
     <string name="ev_bms_widget_power">Мощность мотора</string>
-    <string name="ev_bms_widget_power_desc">Мощность по шине контроллера FarDriver</string>
+    <string name="ev_bms_widget_power_desc">Мощность по шине контроллера</string>
     <string name="ev_bms_widget_motor_temp">Температура мотора</string>
-    <string name="ev_bms_widget_motor_temp_desc">Температура мотора по FarDriver</string>
+    <string name="ev_bms_widget_motor_temp_desc">Температура мотора по контроллеру</string>
     <string name="ev_bms_widget_controller_temp">Температура контроллера</string>
-    <string name="ev_bms_widget_controller_temp_desc">Температура контроллера FarDriver</string>
+    <string name="ev_bms_widget_controller_temp_desc">Температура MOSFET / контроллера</string>
     <string name="ev_bms_widget_hike">Поход</string>
     <string name="ev_bms_widget_hike_desc">Отключает тяжёлые слои карты, 3D, погоду, онлайн-тайлы, лишние Bluetooth-плагины и запись CSV. Оставляет запас хода по BMS, GPS и более редкий опрос BLE.</string>
     <string name="ev_bms_hike_on">Режим «Поход» включён</string>
@@ -4553,6 +4563,11 @@
     <string name="ev_bms_cell_alert_interval">Интервал оповещения по ячейке</string>
     <string name="ev_bms_voice_cell_low">Низкий заряд батареи. Минимум на ячейке %1$s вольт</string>
     <string name="ev_bms_voice_cell_critical">Критически низкий заряд. Минимум на ячейке %1$s вольт</string>
+    <string name="ev_bms_n_sec">%1$d с</string>
+    <string name="ev_bms_n_min">%1$d мин</string>
+    <string name="ev_bms_n_kmh">%1$d км/ч</string>
+    <string name="ev_bms_n_volt">%1$.2f В</string>
+    <string name="ev_bms_n_percent">%1$d %%</string>
     <string name="map_rendering_engine_v2_unavailable">Версия 2 (OpenGL) в этой сборке не входит. Nightly собран с движком Version 1 (legacy). Чтобы включить OpenGL, нужна сборка flavor opengl, а не legacy.</string>
     <string name="unknown_bt_device">Неизвестное устройство</string>
     <string name="obd_vin">VIN</string>

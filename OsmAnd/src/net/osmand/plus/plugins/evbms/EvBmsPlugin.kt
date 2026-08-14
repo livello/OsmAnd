@@ -17,6 +17,7 @@ import net.osmand.plus.plugins.evbms.protocol.AntBmsProtocol
 import net.osmand.plus.plugins.evbms.protocol.BmsSnapshot
 import net.osmand.plus.plugins.evbms.protocol.FarDriverProtocol
 import net.osmand.plus.plugins.evbms.protocol.JbdBmsProtocol
+import net.osmand.plus.plugins.evbms.protocol.VescProtocol
 import net.osmand.plus.settings.backend.ApplicationMode
 import net.osmand.plus.settings.backend.preferences.CommonPreference
 import net.osmand.plus.settings.enums.ScreenLayoutMode
@@ -68,6 +69,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerStringPreference("ev_bms_csv_folder_uri", "").makeGlobal().makeShared()
 	val ANNOUNCE_RANGE_VS_ROUTE: CommonPreference<Boolean> =
 		registerBooleanPreference("ev_bms_announce_range_vs_route", true).makeGlobal().makeShared()
+	val CONTROLLER_PROTOCOL: CommonPreference<String> =
+		registerStringPreference("ev_controller_protocol", "auto").makeGlobal().makeShared()
 	val ANNOUNCE_CELL_VOLTAGE: CommonPreference<Boolean> =
 		registerBooleanPreference("ev_bms_announce_cell_voltage", true).makeGlobal().makeShared()
 	val LOW_CELL_MV: CommonPreference<Int> =
@@ -87,6 +90,9 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private val voice = EvVoiceAnnouncer(app)
 	private val hikeMode = HikeModeController(app, this)
 	private val farSnapshot = FarDriverProtocol.FarDriverSnapshot()
+	private val vescSnapshot = VescProtocol.VescSnapshot()
+	private var farStatusStarted = false
+	private var vescPollSetup = false
 
 	private var bmsClient: EvBleUartClient? = null
 	private var controllerClient: EvBleUartClient? = null
@@ -125,6 +131,24 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				}
 				pollCellsNext = !pollCellsNext
 			}
+			if (controllerClient?.connected == true) {
+				val unknown = controllerClient?.detectedControllerKind ==
+						EvBleUartClient.ControllerKind.UNKNOWN
+				if (preferVescProtocol() || (!preferFarProtocol() && unknown)) {
+					if (vescSnapshot.hwName == null && vescSnapshot.fwMajor == null) {
+						controllerClient?.write(VescProtocol.fwVersion())
+					} else if (vescPollSetup) {
+						controllerClient?.write(VescProtocol.getValuesSetup())
+					} else {
+						controllerClient?.write(VescProtocol.getValues())
+					}
+					vescPollSetup = !vescPollSetup
+				}
+				if (!farStatusStarted && (preferFarProtocol() || (!preferVescProtocol() && unknown))) {
+					controllerClient?.write(FarDriverProtocol.startStatusCommand())
+					farStatusStarted = true
+				}
+			}
 			publishSample()
 			handler.postDelayed(this, activePollIntervalMs())
 		}
@@ -139,10 +163,9 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	}
 
 	override fun getDescription(linksEnabled: Boolean): CharSequence {
-		return HtmlCompat.fromHtml(
-			app.getString(R.string.ev_bms_plugin_description),
-			HtmlCompat.FROM_HTML_MODE_LEGACY
-		)
+		val html = app.getString(R.string.ev_bms_plugin_description) +
+				app.getString(R.string.ev_bms_changelog, EvBmsRevision.GIT_HASH)
+		return HtmlCompat.fromHtml(html, HtmlCompat.FROM_HTML_MODE_LEGACY)
 	}
 
 	override fun getLogoResourceId(): Int {
@@ -192,7 +215,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 
 	fun fusedSpeedKmh(location: Location? = lastLocation): Double? {
 		val gpsSpeed = if (location != null && location.hasSpeed()) location.speed * 3.6 else null
-		val farSpeed = farSnapshot.speedKmh
+		val farSpeed = ctrlSpeedKmh()
 		if (rangeEstimator.gpsUnreliable) {
 			return farSpeed ?: gpsSpeed
 		}
@@ -218,7 +241,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	}
 
 	fun farTripKm(): Double? {
-		val odo = farSnapshot.odometerKm ?: return null
+		val odo = ctrlOdometerKm() ?: return null
 		val start = farTripStartKm
 		if (start == null) {
 			farTripStartKm = odo
@@ -233,9 +256,9 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			rangeKm = range,
 			routeLeftKm = getRouteLeftKm(),
 			minCellV = minCellVoltageV,
-			motorTempC = farSnapshot.motorTempC,
+			motorTempC = ctrlMotorTempC(),
 			batteryTempC = batteryAnnounceTempC(),
-			controllerTempC = farSnapshot.controllerTempC
+			controllerTempC = ctrlTempC()
 		)
 	}
 
@@ -318,6 +341,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	fun connectController(activity: Activity, name: String, address: String) {
 		CONTROLLER_NAME.set(name)
 		CONTROLLER_ADDRESS.set(address)
+		controllerClient?.preferredControllerKind = preferredControllerKind()
 		controllerClient?.connect(activity, address)
 	}
 
@@ -341,6 +365,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		}
 		val ctrl = CONTROLLER_ADDRESS.get()
 		if (!ctrl.isNullOrEmpty() && controllerClient?.connected != true) {
+			controllerClient?.preferredControllerKind = preferredControllerKind()
 			controllerClient?.connect(activity, ctrl)
 		}
 	}
@@ -365,7 +390,9 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			app.showToastMessage(app.getString(R.string.ev_bms_connected, label))
 			if (role == EvBleUartClient.Role.CONTROLLER) {
 				farTripStartKm = null
-				controllerClient?.write(FarDriverProtocol.startStatusCommand())
+				farStatusStarted = false
+				vescPollSetup = false
+				vescSnapshot.reset()
 			}
 			startPolling()
 			applyHikeTelemetryState()
@@ -380,10 +407,46 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			drainBmsBuffer()
 		} else {
 			controllerBuffer += data
-			val (frames, rest) = FarDriverProtocol.extractFrames(controllerBuffer)
-			controllerBuffer = rest
-			for (frame in frames) {
-				FarDriverProtocol.parseFrame(frame, farSnapshot)
+			drainControllerBuffer()
+		}
+	}
+
+	private fun drainControllerBuffer() {
+		while (controllerBuffer.isNotEmpty()) {
+			val sizeBefore = controllerBuffer.size
+			val useVesc = when {
+				preferVescProtocol() -> true
+				preferFarProtocol() -> false
+				else -> {
+					val vescAt = controllerBuffer.indexOfFirst {
+						it == 0x02.toByte() || it == 0x03.toByte()
+					}
+					val farAt = controllerBuffer.indexOf(FarDriverProtocol.MAGIC)
+					vescAt >= 0 && (farAt < 0 || vescAt <= farAt)
+				}
+			}
+			if (useVesc) {
+				val (frames, rest) = VescProtocol.extractFrames(controllerBuffer)
+				controllerBuffer = rest
+				for (payload in frames) {
+					if (VescProtocol.parsePayload(payload, vescSnapshot)) {
+						controllerClient?.noteControllerKind(EvBleUartClient.ControllerKind.VESC)
+					}
+				}
+			} else {
+				val (frames, rest) = FarDriverProtocol.extractFrames(controllerBuffer)
+				controllerBuffer = rest
+				for (frame in frames) {
+					if (FarDriverProtocol.parseFrame(frame, farSnapshot)) {
+						controllerClient?.noteControllerKind(EvBleUartClient.ControllerKind.FARDRIVER)
+					}
+				}
+			}
+			if (controllerBuffer.size >= sizeBefore) {
+				if (controllerBuffer.size > 1024) {
+					controllerBuffer = ByteArray(0)
+				}
+				break
 			}
 		}
 	}
@@ -495,18 +558,18 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		val loc = lastLocation
 		val speed = if (loc != null && loc.hasSpeed()) loc.speed * 3.6 else null
 		val remainingAh = bms?.remainingMah?.div(1000.0)
-		updateRestMetrics(bms?.currentA ?: farSnapshot.lineCurrentA, bms?.voltageV ?: farSnapshot.voltageV, lastCells)
+		updateRestMetrics(bms?.currentA ?: ctrlCurrentA(), bms?.voltageV ?: ctrlVoltageV(), lastCells)
 		rangeEstimator.add(
 			System.currentTimeMillis(),
 			remainingAh,
-			bms?.voltageV ?: farSnapshot.voltageV,
+			bms?.voltageV ?: ctrlVoltageV(),
 			restPackVoltageV,
 			loc,
-			farSnapshot.odometerKm,
+			ctrlOdometerKm(),
 			minCellVoltageV,
 			bms?.temperaturesC?.minOrNull()?.toDouble(),
 			bms?.fullMah?.div(1000.0),
-			farSnapshot.avgPowerWhPerKm,
+			ctrlAvgWhPerKm(),
 			remainingRouteElevation(),
 			USE_ROUTE_PROFILE.get()
 		)
@@ -515,29 +578,29 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			lon = loc?.longitude,
 			gpsSpeedKmh = speed,
 			socPercent = bms?.socPercent,
-			voltageV = bms?.voltageV ?: farSnapshot.voltageV,
-			currentA = bms?.currentA ?: farSnapshot.lineCurrentA,
+			voltageV = bms?.voltageV ?: ctrlVoltageV(),
+			currentA = bms?.currentA ?: ctrlCurrentA(),
 			remainingAh = remainingAh,
 			fullAh = bms?.fullMah?.div(1000.0),
 			bmsTempC = batteryAnnounceTempC(),
 			cycles = bms?.cycles,
 			minCellVoltageV = minCellVoltageV,
-			controllerVoltageV = farSnapshot.voltageV,
-			controllerCurrentA = farSnapshot.lineCurrentA,
-			controllerPowerW = farSnapshot.powerW,
-			rpm = farSnapshot.rawRpm,
+			controllerVoltageV = ctrlVoltageV(),
+			controllerCurrentA = ctrlCurrentA(),
+			controllerPowerW = ctrlPowerW(),
+			rpm = ctrlRpm(),
 			gear = farSnapshot.gear,
-			motorTempC = farSnapshot.motorTempC,
-			controllerTempC = farSnapshot.controllerTempC,
+			motorTempC = ctrlMotorTempC(),
+			controllerTempC = ctrlTempC(),
 			remainingRangeKm = rangeEstimator.remainingRangeKm,
 			consumptionAhPerKm = rangeEstimator.consumptionAhPerKm,
 			consumptionWhPerKm = rangeEstimator.consumptionWhPerKm,
 			coverageWhPerKm = rangeEstimator.coverageWhPerKm,
 			weakCellFactor = rangeEstimator.weakCellFactor,
-			farOdometerKm = farSnapshot.odometerKm,
+			farOdometerKm = ctrlOdometerKm(),
 			farTripKm = farTripKm(),
-			farSpeedKmh = farSnapshot.speedKmh,
-			farAvgWhPerKm = farSnapshot.avgPowerWhPerKm,
+			farSpeedKmh = ctrlSpeedKmh(),
+			farAvgWhPerKm = ctrlAvgWhPerKm(),
 			gpsUnreliable = rangeEstimator.gpsUnreliable,
 			usedFarDriverDistance = rangeEstimator.usedFarDriverDistance
 		)
@@ -568,6 +631,67 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	}
 
 	fun isLinkHealthy(): Boolean = isBmsConnected() && isControllerConnected()
+
+	fun controllerDisplayName(): String {
+		val kind = controllerClient?.detectedControllerKind ?: EvBleUartClient.ControllerKind.UNKNOWN
+		return when {
+			kind == EvBleUartClient.ControllerKind.VESC || preferVescProtocol() -> {
+				if (vescSnapshot.hwName != null || vescSnapshot.fwMajor != null) {
+					vescSnapshot.typeLabel()
+				} else {
+					app.getString(R.string.ev_bms_protocol_vesc)
+				}
+			}
+			kind == EvBleUartClient.ControllerKind.FARDRIVER -> {
+				val saved = CONTROLLER_NAME.get()
+				if (!saved.isNullOrBlank() && saved.contains("nd96", true)) {
+					app.getString(R.string.ev_bms_controller_fardriver_nd96530)
+				} else {
+					app.getString(R.string.ev_bms_protocol_fardriver)
+				}
+			}
+			!CONTROLLER_NAME.get().isNullOrBlank() -> CONTROLLER_NAME.get()
+			else -> app.getString(R.string.ev_bms_controller_title)
+		}
+	}
+
+	private fun preferredControllerKind(): EvBleUartClient.ControllerKind {
+		return when (CONTROLLER_PROTOCOL.get()) {
+			"vesc" -> EvBleUartClient.ControllerKind.VESC
+			"fardriver" -> EvBleUartClient.ControllerKind.FARDRIVER
+			else -> EvBleUartClient.ControllerKind.UNKNOWN
+		}
+	}
+
+	private fun preferVescProtocol(): Boolean {
+		return CONTROLLER_PROTOCOL.get() == "vesc" ||
+				(CONTROLLER_PROTOCOL.get() != "fardriver" &&
+						controllerClient?.detectedControllerKind == EvBleUartClient.ControllerKind.VESC)
+	}
+
+	private fun preferFarProtocol(): Boolean {
+		return CONTROLLER_PROTOCOL.get() == "fardriver" ||
+				(CONTROLLER_PROTOCOL.get() != "vesc" &&
+						controllerClient?.detectedControllerKind == EvBleUartClient.ControllerKind.FARDRIVER)
+	}
+
+	private fun ctrlVoltageV(): Double? = vescSnapshot.voltageV ?: farSnapshot.voltageV
+
+	private fun ctrlCurrentA(): Double? = vescSnapshot.currentInA ?: farSnapshot.lineCurrentA
+
+	private fun ctrlPowerW(): Double? = vescSnapshot.powerW ?: farSnapshot.powerW
+
+	private fun ctrlRpm(): Int? = vescSnapshot.rpm ?: farSnapshot.rawRpm
+
+	private fun ctrlMotorTempC(): Double? = vescSnapshot.motorTempC ?: farSnapshot.motorTempC
+
+	private fun ctrlTempC(): Double? = vescSnapshot.controllerTempC ?: farSnapshot.controllerTempC
+
+	private fun ctrlOdometerKm(): Double? = vescSnapshot.odometerKm ?: farSnapshot.odometerKm
+
+	private fun ctrlSpeedKmh(): Double? = vescSnapshot.speedKmh ?: farSnapshot.speedKmh
+
+	private fun ctrlAvgWhPerKm(): Double? = vescSnapshot.avgPowerWhPerKm ?: farSnapshot.avgPowerWhPerKm
 
 	override fun createWidgets(
 		mapActivity: MapActivity,

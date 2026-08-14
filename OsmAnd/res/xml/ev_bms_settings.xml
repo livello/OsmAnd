@@ -24,8 +24,13 @@
 		android:key="ev_controller_address"
 		android:layout="@layout/preference_with_descr"
 		android:persistent="false"
-		android:title="@string/ev_bms_fardriver_title"
+		android:title="@string/ev_bms_controller_title"
 		tools:summary="@string/ev_bms_status_not_selected" />
+
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="ev_controller_protocol"
+		android:layout="@layout/preference_with_descr"
+		android:title="@string/ev_bms_controller_protocol" />
 
 	<PreferenceCategory
 		android:key="ev_bms_recording"
