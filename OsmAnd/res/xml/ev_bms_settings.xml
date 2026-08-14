@@ -68,4 +68,16 @@
 		android:layout="@layout/preference_with_descr"
 		android:title="@string/ev_bms_stop_speed" />
 
+	<PreferenceCategory
+		android:key="ev_bms_range"
+		android:layout="@layout/preference_category_with_descr"
+		android:title="@string/ev_bms_range_settings" />
+
+	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
+		android:key="ev_bms_use_route_profile"
+		android:layout="@layout/preference_with_descr_dialog_and_switch"
+		android:summaryOff="@string/shared_string_disabled"
+		android:summaryOn="@string/shared_string_enabled"
+		android:title="@string/ev_bms_use_route_profile" />
+
 </PreferenceScreen>

@@ -23,6 +23,8 @@ data class EvTelemetry(
 	val remainingRangeKm: Double? = null,
 	val consumptionAhPerKm: Double? = null,
 	val consumptionWhPerKm: Double? = null,
+	val coverageWhPerKm: Double? = null,
+	val weakCellFactor: Double? = null,
 	val farOdometerKm: Double? = null,
 	val farTripKm: Double? = null,
 	val farSpeedKmh: Double? = null,
@@ -35,7 +37,7 @@ data class EvTelemetry(
 			return "time_ms,lat,lon,gps_speed_kmh,soc_percent,voltage_v,current_a,remaining_ah,full_ah," +
 					"bms_temp_c,cycles,min_cell_v,controller_voltage_v,controller_current_a,controller_power_w," +
 					"rpm,gear,motor_temp_c,controller_temp_c,remaining_range_km,consumption_ah_per_km," +
-					"consumption_wh_per_km,far_odometer_km,far_trip_km,far_speed_kmh,far_avg_wh_per_km," +
+					"consumption_wh_per_km,coverage_wh_per_km,weak_cell_factor,far_odometer_km,far_trip_km,far_speed_kmh,far_avg_wh_per_km," +
 					"gps_unreliable,used_far_distance"
 		}
 	}
@@ -46,7 +48,7 @@ data class EvTelemetry(
 			n(remainingAh), n(fullAh), n(bmsTempC), n(cycles), n(minCellVoltageV),
 			n(controllerVoltageV), n(controllerCurrentA), n(controllerPowerW), n(rpm), n(gear),
 			n(motorTempC), n(controllerTempC), n(remainingRangeKm), n(consumptionAhPerKm),
-			n(consumptionWhPerKm), n(farOdometerKm), n(farTripKm), n(farSpeedKmh), n(farAvgWhPerKm),
+			n(consumptionWhPerKm), n(coverageWhPerKm), n(weakCellFactor), n(farOdometerKm), n(farTripKm), n(farSpeedKmh), n(farAvgWhPerKm),
 			if (gpsUnreliable) 1 else 0, if (usedFarDriverDistance) 1 else 0
 		).joinToString(",")
 	}

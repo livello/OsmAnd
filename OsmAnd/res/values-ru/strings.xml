@@ -4474,6 +4474,9 @@
     <string name="ev_bms_soc_step">Шаг объявления заряда</string>
     <string name="ev_bms_announce_range_on_stop">Озвучивать остаток пробега на остановках</string>
     <string name="ev_bms_stop_speed">Порог скорости остановки</string>
+    <string name="ev_bms_range_settings">Запас хода</string>
+    <string name="ev_bms_use_route_profile">Профиль маршрута и рекуперация</string>
+    <string name="ev_bms_use_route_profile_desc">Учитывать набор и сброс высоты на оставшемся маршруте. Рекуперация на спусках засчитывается на 55 процентов. Отсечка по слабой ячейке, поправка на температуру и консервативный Wh/км работают всегда.</string>
     <string name="ev_bms_status_connected">Подключено</string>
     <string name="ev_bms_status_saved">Сохранено: %1$s (нажмите, чтобы сканировать снова)</string>
     <string name="ev_bms_status_not_selected">Нажмите, чтобы найти и подключить</string>

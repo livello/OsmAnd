@@ -57,6 +57,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerBooleanPreference("ev_bms_announce_range_on_stop", true).makeGlobal().makeShared()
 	val STOP_SPEED_KMH: CommonPreference<Int> =
 		registerIntPreference("ev_bms_stop_speed_kmh", DEFAULT_STOP_SPEED).makeGlobal().makeShared()
+	val USE_ROUTE_PROFILE: CommonPreference<Boolean> =
+		registerBooleanPreference("ev_bms_use_route_profile", false).makeGlobal().makeShared()
 
 	private val handler = Handler(Looper.getMainLooper())
 	private val rangeEstimator = RangeEstimator()
@@ -225,6 +227,37 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		}
 	}
 
+	fun remainingRouteElevation(): RangeEstimator.RouteElevation? {
+		val helper = app.routingHelper
+		if (!helper.isRouteCalculated) {
+			return null
+		}
+		val remainingKm = helper.leftDistance / 1000.0
+		if (remainingKm <= 0) {
+			return null
+		}
+		var climb = 0.0
+		var descent = 0.0
+		var prevAlt: Double? = null
+		for (point in helper.route.routeLocations) {
+			if (!point.hasAltitude()) {
+				continue
+			}
+			val alt = point.altitude
+			val previous = prevAlt
+			if (previous != null) {
+				val delta = alt - previous
+				if (delta > 0) {
+					climb += delta
+				} else {
+					descent += -delta
+				}
+			}
+			prevAlt = alt
+		}
+		return RangeEstimator.RouteElevation(remainingKm, climb, descent)
+	}
+
 	fun getRouteLeftKm(): Double? {
 		val helper = app.routingHelper
 		if (!helper.isRouteCalculated) {
@@ -370,7 +403,13 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			bms?.voltageV ?: farSnapshot.voltageV,
 			restPackVoltageV,
 			loc,
-			farSnapshot.odometerKm
+			farSnapshot.odometerKm,
+			minCellVoltageV,
+			bms?.temperaturesC?.minOrNull()?.toDouble(),
+			bms?.fullMah?.div(1000.0),
+			farSnapshot.avgPowerWhPerKm,
+			remainingRouteElevation(),
+			USE_ROUTE_PROFILE.get()
 		)
 		val sample = EvTelemetry(
 			lat = loc?.latitude,
@@ -394,6 +433,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			remainingRangeKm = rangeEstimator.remainingRangeKm,
 			consumptionAhPerKm = rangeEstimator.consumptionAhPerKm,
 			consumptionWhPerKm = rangeEstimator.consumptionWhPerKm,
+			coverageWhPerKm = rangeEstimator.coverageWhPerKm,
+			weakCellFactor = rangeEstimator.weakCellFactor,
 			farOdometerKm = farSnapshot.odometerKm,
 			farTripKm = farTripKm(),
 			farSpeedKmh = farSnapshot.speedKmh,

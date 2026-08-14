@@ -2,10 +2,13 @@ package net.osmand.plus.plugins.evbms
 
 import android.app.Activity
 import androidx.appcompat.app.AlertDialog
+import androidx.fragment.app.FragmentManager
 import androidx.preference.Preference
 import net.osmand.plus.R
 import net.osmand.plus.plugins.PluginsHelper
 import net.osmand.plus.plugins.evbms.ble.EvBleUartClient
+import net.osmand.plus.settings.bottomsheets.BooleanRadioButtonsBottomSheet
+import net.osmand.plus.settings.fragments.ApplyQueryType
 import net.osmand.plus.settings.fragments.BaseSettingsFragment
 import net.osmand.plus.settings.preferences.ListPreferenceEx
 import net.osmand.plus.settings.preferences.SwitchPreferenceEx
@@ -37,6 +40,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		setupSocStep()
 		setupSwitch(plugin.ANNOUNCE_RANGE_ON_STOP.id)
 		setupStopSpeed()
+		setupRouteProfile()
 	}
 
 	override fun onResume() {
@@ -81,6 +85,15 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		pref.setValue(plugin.STOP_SPEED_KMH.get())
 	}
 
+	private fun setupRouteProfile() {
+		val pref = findPreference<SwitchPreferenceEx>(plugin.USE_ROUTE_PROFILE.id) ?: return
+		pref.setDescription(R.string.ev_bms_use_route_profile_desc)
+		pref.summary = getString(
+			if (plugin.USE_ROUTE_PROFILE.get()) R.string.shared_string_enabled
+			else R.string.shared_string_disabled
+		)
+	}
+
 	private fun setupSwitch(key: String) {
 		findPreference<SwitchPreferenceEx>(key)
 	}
@@ -98,6 +111,30 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			}
 		}
 		return super.onPreferenceClick(preference)
+	}
+
+	override fun onDisplayPreferenceDialog(preference: Preference) {
+		if (preference.key == plugin.USE_ROUTE_PROFILE.id) {
+			val manager: FragmentManager = fragmentManager ?: return
+			BooleanRadioButtonsBottomSheet.showInstance(
+				manager,
+				preference.key,
+				applyQueryType ?: ApplyQueryType.NONE,
+				this,
+				selectedAppMode,
+				false,
+				isProfileDependent
+			)
+			return
+		}
+		super.onDisplayPreferenceDialog(preference)
+	}
+
+	override fun onPreferenceChanged(prefId: String) {
+		super.onPreferenceChanged(prefId)
+		if (prefId == plugin.USE_ROUTE_PROFILE.id) {
+			setupRouteProfile()
+		}
 	}
 
 	private fun startScan(activity: Activity, role: EvBleUartClient.Role) {

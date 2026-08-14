@@ -974,6 +974,9 @@ You will be able to pair this scanner again at any time.</string>
     <string name="ev_bms_soc_step">Charge announcement step</string>
     <string name="ev_bms_announce_range_on_stop">Announce remaining range when stopped</string>
     <string name="ev_bms_stop_speed">Stop speed threshold</string>
+    <string name="ev_bms_range_settings">Remaining range</string>
+    <string name="ev_bms_use_route_profile">Route profile and descent regen</string>
+    <string name="ev_bms_use_route_profile_desc">Use remaining climb and descent from the navigation route. Downhill regeneration is credited at 55 percent. Weak-cell cutoff, temperature derating, and conservative Wh/km stay on either way.</string>
     <string name="ev_bms_status_connected">Connected</string>
     <string name="ev_bms_status_saved">Saved: %1$s (tap to rescan)</string>
     <string name="ev_bms_status_not_selected">Tap to scan and connect</string>
