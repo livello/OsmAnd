@@ -1,5 +1,24 @@
 OsmAnd (OSM Automated Navigation Directions)
 ------------
+
+## This fork / Этот форк
+
+Personal fork of [osmandapp/Osmand](https://github.com/osmandapp/Osmand) by [livello](https://github.com/livello): **EV BMS + controller** plugin for electric vehicles (JBD / ANT BMS, FarDriver, VESC), Russian plugin UI, OpenGL Nightly for Doogee S200 X.
+
+Личный форк [osmandapp/Osmand](https://github.com/osmandapp/Osmand): плагин **АКБ + контроллер** (BMS JBD/ANT, FarDriver, VESC), русский интерфейс плагина, сборка OpenGL Nightly под Doogee S200 X.
+
+- Package: `net.osmand.dev` (does not replace Play Store OsmAnd)
+- Branch: `feature/ev-bms-fardriver-plugin`
+- Remotes: `origin` → `git@github.com:livello/OsmAnd.git` (this fork), `upstream` → official OsmAnd
+- Release APK (arm64, OpenGL, minified):
+
+```bash
+source ~/.osmand-android-env
+cd android/OsmAnd
+../gradlew assembleNightlyFreeOpenglArm64Release --no-daemon
+# android/OsmAnd/build/outputs/apk/nightlyFreeOpenglArm64/release/OsmAnd-nightlyFree-opengl-arm64-release.apk
+```
+
 This project aims at providing comfortable map viewing and navigation (routing) application for mobile devices. Particular stress lies with complete offline features (via pre-loaded offline map data) or economic internet usage.
 To get started, continue with the basic description below, then find more detail on our Welcome Wiki Pages, the Project Homepage, or the OpenStreetMap OsmAnd Wiki Page.
 You are welcome to discuss any question regarding the project at the Google group OsmAnd. Please do not use comments on wiki pages because it is rather difficult to find them.

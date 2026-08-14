@@ -164,7 +164,8 @@ android {
 			signingConfig signingConfigs.development
 		}
 		release {
-			signingConfig signingConfigs.publishing
+			signingConfig file("/var/lib/jenkins/osmand_key").exists() ?
+					signingConfigs.publishing : signingConfigs.development
 			minifyEnabled true
 			shrinkResources false
 			proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
