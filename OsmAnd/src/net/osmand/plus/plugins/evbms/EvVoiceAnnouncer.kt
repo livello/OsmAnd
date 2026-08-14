@@ -37,6 +37,12 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 	private var rangeShortActive = false
 	private var lastCellAlertMs = 0L
 	private var lastCellAlertLevel = 0
+	private var lastMotorHeatMs = 0L
+	private var motorHeatActive = false
+	private var lastBatteryOverheatMs = 0L
+	private var batteryOverheatActive = false
+	private var lastBatteryFreezeMs = 0L
+	private var batteryFreezeActive = false
 
 	fun init() {
 		if (tts != null) {
@@ -68,6 +74,9 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 		stoppedSinceMs = null
 		rangeShortActive = false
 		lastCellAlertLevel = 0
+		motorHeatActive = false
+		batteryOverheatActive = false
+		batteryFreezeActive = false
 	}
 
 	fun onSoc(soc: Int?, stepPercent: Int, enabled: Boolean) {
@@ -141,6 +150,90 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 				voltage
 			)
 		)
+	}
+
+	fun onMotorHeat(tempC: Double?, thresholdC: Int, intervalMs: Long, enabled: Boolean) {
+		onRisingTemp(
+			tempC,
+			thresholdC.toDouble(),
+			5.0,
+			intervalMs,
+			enabled,
+			{ motorHeatActive },
+			{ motorHeatActive = it },
+			{ lastMotorHeatMs },
+			{ lastMotorHeatMs = it },
+			R.string.ev_bms_voice_motor_heat
+		)
+	}
+
+	fun onBatteryOverheat(tempC: Double?, thresholdC: Int, intervalMs: Long, enabled: Boolean) {
+		onRisingTemp(
+			tempC,
+			thresholdC.toDouble(),
+			3.0,
+			intervalMs,
+			enabled,
+			{ batteryOverheatActive },
+			{ batteryOverheatActive = it },
+			{ lastBatteryOverheatMs },
+			{ lastBatteryOverheatMs = it },
+			R.string.ev_bms_voice_battery_overheat
+		)
+	}
+
+	fun onBatteryFreeze(tempC: Double?, thresholdC: Int, intervalMs: Long, enabled: Boolean) {
+		if (!enabled || tempC == null) {
+			batteryFreezeActive = false
+			return
+		}
+		val threshold = thresholdC.toDouble()
+		if (tempC > threshold + 3.0) {
+			batteryFreezeActive = false
+			return
+		}
+		if (tempC > threshold) {
+			return
+		}
+		val now = System.currentTimeMillis()
+		val first = !batteryFreezeActive
+		batteryFreezeActive = true
+		if (first || now - lastBatteryFreezeMs >= intervalMs) {
+			lastBatteryFreezeMs = now
+			speak(app.getString(R.string.ev_bms_voice_battery_freeze, Math.round(tempC).toInt()))
+		}
+	}
+
+	private fun onRisingTemp(
+		tempC: Double?,
+		thresholdC: Double,
+		hysteresisC: Double,
+		intervalMs: Long,
+		enabled: Boolean,
+		getActive: () -> Boolean,
+		setActive: (Boolean) -> Unit,
+		getLastMs: () -> Long,
+		setLastMs: (Long) -> Unit,
+		voiceRes: Int
+	) {
+		if (!enabled || tempC == null) {
+			setActive(false)
+			return
+		}
+		if (tempC < thresholdC - hysteresisC) {
+			setActive(false)
+			return
+		}
+		if (tempC < thresholdC) {
+			return
+		}
+		val now = System.currentTimeMillis()
+		val first = !getActive()
+		setActive(true)
+		if (first || now - getLastMs() >= intervalMs) {
+			setLastMs(now)
+			speak(app.getString(voiceRes, Math.round(tempC).toInt()))
+		}
 	}
 
 	fun onMotion(speedKmh: Double?, report: StopReport?, stopSpeedKmh: Double, enabled: Boolean) {

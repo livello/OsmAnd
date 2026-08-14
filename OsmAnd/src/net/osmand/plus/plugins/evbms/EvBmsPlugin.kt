@@ -39,6 +39,9 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		const val DEFAULT_SOC_STEP = 5
 		const val DEFAULT_STOP_SPEED = 3
 		const val REST_CURRENT_A = 5.0
+		const val CHARGE_DETECT_A = 5.0
+		const val CHARGE_HOLD_SAMPLES = 3
+		const val CHARGE_AH_RISE = 0.05
 	}
 
 	val BMS_ADDRESS: CommonPreference<String> =
@@ -79,10 +82,26 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerIntPreference("ev_bms_critical_cell_mv", 3300).makeGlobal().makeShared()
 	val CELL_ALERT_INTERVAL_SEC: CommonPreference<Int> =
 		registerIntPreference("ev_bms_cell_alert_interval_sec", 60).makeGlobal().makeShared()
+	val ANNOUNCE_MOTOR_HEAT: CommonPreference<Boolean> =
+		registerBooleanPreference("ev_bms_announce_motor_heat", true).makeGlobal().makeShared()
+	val MOTOR_HEAT_C: CommonPreference<Int> =
+		registerIntPreference("ev_bms_motor_heat_c", 90).makeGlobal().makeShared()
+	val ANNOUNCE_BATTERY_OVERHEAT: CommonPreference<Boolean> =
+		registerBooleanPreference("ev_bms_announce_battery_overheat", true).makeGlobal().makeShared()
+	val BATTERY_OVERHEAT_C: CommonPreference<Int> =
+		registerIntPreference("ev_bms_battery_overheat_c", 50).makeGlobal().makeShared()
+	val ANNOUNCE_BATTERY_FREEZE: CommonPreference<Boolean> =
+		registerBooleanPreference("ev_bms_announce_battery_freeze", true).makeGlobal().makeShared()
+	val BATTERY_FREEZE_C: CommonPreference<Int> =
+		registerIntPreference("ev_bms_battery_freeze_c", 0).makeGlobal().makeShared()
 	val HIKE_MODE: CommonPreference<Boolean> =
 		registerBooleanPreference("ev_bms_hike_mode", false).makeGlobal().makeShared()
 	val HIKE_SNAPSHOT: CommonPreference<String> =
 		registerStringPreference("ev_bms_hike_snapshot", "").makeGlobal()
+	private val CHARGE_END_TRACK_M: CommonPreference<Int> =
+		registerIntPreference("ev_bms_charge_end_track_m", 0).makeGlobal()
+	private val CHARGE_CYCLE_ACTIVE: CommonPreference<Boolean> =
+		registerBooleanPreference("ev_bms_charge_cycle_active", false).makeGlobal()
 
 	private val handler = Handler(Looper.getMainLooper())
 	private val rangeEstimator = RangeEstimator()
@@ -108,6 +127,11 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	var restPackVoltageV: Double? = null
 		private set
 	private var farTripStartKm: Double? = null
+	private var lastChargeAh: Double? = null
+	private var parkedAhMark: Double? = null
+	private var charging = false
+	private var chargeHold = 0
+	private var chargeExitHold = 0
 	private var pollCellsNext = false
 	@Volatile
 	var latestTelemetry: EvTelemetry? = null
@@ -248,6 +272,69 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			return 0.0
 		}
 		return (odo - start).coerceAtLeast(0.0)
+	}
+
+	fun chargeTripKm(): Double? {
+		if (charging) {
+			return 0.0
+		}
+		if (!CHARGE_CYCLE_ACTIVE.get()) {
+			return null
+		}
+		val trackM = app.savingTrackHelper.distance
+		var baseline = CHARGE_END_TRACK_M.get()
+		if (trackM + 1f < baseline) {
+			baseline = 0
+			CHARGE_END_TRACK_M.set(0)
+		}
+		return ((trackM - baseline).coerceAtLeast(0f) / 1000.0)
+	}
+
+	private fun updateChargeCycle(currentA: Double?, remainingAh: Double?) {
+		val speed = fusedSpeedKmh() ?: 0.0
+		val parked = speed < STOP_SPEED_KMH.get()
+		if (!parked) {
+			parkedAhMark = remainingAh
+		} else if (parkedAhMark == null) {
+			parkedAhMark = remainingAh
+		}
+		val ahRising = remainingAh != null && parkedAhMark != null &&
+				remainingAh - parkedAhMark!! >= CHARGE_AH_RISE
+		val absI = currentA?.let { kotlin.math.abs(it) } ?: 0.0
+		val currentIntoPack = currentA != null && absI >= CHARGE_DETECT_A &&
+				(lastChargeAh == null || remainingAh == null || remainingAh >= lastChargeAh!! - 0.02)
+		val chargeLike = parked && (currentIntoPack || ahRising)
+		if (chargeLike) {
+			chargeHold++
+			chargeExitHold = 0
+			if (!charging && chargeHold >= CHARGE_HOLD_SAMPLES) {
+				charging = true
+				CHARGE_CYCLE_ACTIVE.set(false)
+			}
+		} else if (charging) {
+			chargeHold = 0
+			val idle = currentA == null || absI < 1.0
+			val discharging = remainingAh != null && lastChargeAh != null &&
+					lastChargeAh!! - remainingAh >= 0.02
+			if (idle || discharging || !parked) {
+				chargeExitHold++
+				if (chargeExitHold >= CHARGE_HOLD_SAMPLES) {
+					charging = false
+					chargeExitHold = 0
+					parkedAhMark = remainingAh
+					CHARGE_CYCLE_ACTIVE.set(true)
+					CHARGE_END_TRACK_M.set(app.savingTrackHelper.distance.toInt().coerceAtLeast(0))
+				}
+			} else {
+				chargeExitHold = 0
+			}
+		} else {
+			chargeHold = 0
+			chargeExitHold = 0
+		}
+		if (remainingAh != null) {
+			lastChargeAh = remainingAh
+		}
 	}
 
 	private fun buildStopReport(): EvVoiceAnnouncer.StopReport? {
@@ -559,6 +646,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		val speed = if (loc != null && loc.hasSpeed()) loc.speed * 3.6 else null
 		val remainingAh = bms?.remainingMah?.div(1000.0)
 		updateRestMetrics(bms?.currentA ?: ctrlCurrentA(), bms?.voltageV ?: ctrlVoltageV(), lastCells)
+		updateChargeCycle(bms?.currentA, remainingAh)
 		rangeEstimator.add(
 			System.currentTimeMillis(),
 			remainingAh,
@@ -599,6 +687,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			weakCellFactor = rangeEstimator.weakCellFactor,
 			farOdometerKm = ctrlOdometerKm(),
 			farTripKm = farTripKm(),
+			chargeTripKm = chargeTripKm(),
 			farSpeedKmh = ctrlSpeedKmh(),
 			farAvgWhPerKm = ctrlAvgWhPerKm(),
 			gpsUnreliable = rangeEstimator.gpsUnreliable,
@@ -627,6 +716,25 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			CRITICAL_CELL_MV.get() / 1000.0,
 			CELL_ALERT_INTERVAL_SEC.get().toLong().coerceAtLeast(15L) * 1000L,
 			ANNOUNCE_CELL_VOLTAGE.get()
+		)
+		val tempIntervalMs = CELL_ALERT_INTERVAL_SEC.get().toLong().coerceAtLeast(15L) * 1000L
+		voice.onMotorHeat(
+			sample.motorTempC,
+			MOTOR_HEAT_C.get(),
+			tempIntervalMs,
+			ANNOUNCE_MOTOR_HEAT.get()
+		)
+		voice.onBatteryOverheat(
+			bms?.temperaturesC?.maxOrNull()?.toDouble(),
+			BATTERY_OVERHEAT_C.get(),
+			tempIntervalMs,
+			ANNOUNCE_BATTERY_OVERHEAT.get()
+		)
+		voice.onBatteryFreeze(
+			bms?.temperaturesC?.minOrNull()?.toDouble(),
+			BATTERY_FREEZE_C.get(),
+			tempIntervalMs,
+			ANNOUNCE_BATTERY_FREEZE.get()
 		)
 	}
 
@@ -723,6 +831,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			WidgetType.EV_BMS_RANGE -> EvBmsTextWidget.Field.RANGE
 			WidgetType.EV_BMS_CONSUMPTION -> EvBmsTextWidget.Field.CONSUMPTION
 			WidgetType.EV_FAR_TRIP -> EvBmsTextWidget.Field.FAR_TRIP
+			WidgetType.EV_CHARGE_TRIP -> EvBmsTextWidget.Field.CHARGE_TRIP
 			WidgetType.EV_BMS_VOLTAGE -> EvBmsTextWidget.Field.VOLTAGE
 			WidgetType.EV_BMS_CURRENT -> EvBmsTextWidget.Field.CURRENT
 			WidgetType.EV_BMS_POWER -> EvBmsTextWidget.Field.POWER

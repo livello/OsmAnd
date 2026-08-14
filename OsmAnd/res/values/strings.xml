@@ -961,28 +961,43 @@ You will be able to pair this scanner again at any time.</string>
     • Intake temperature, Ambient temperature, Coolant temperature, Engine Oil Temperature\n
     • Vehicle speed, Throttle Position, Battery voltage\n</string>
     <string name="ev_bms_plugin_name">EV BMS + controller</string>
-    <string name="ev_bms_plugin_description"><![CDATA[🔋 Live battery and motor telemetry over Bluetooth LE. BMS widgets get a green frame when the BMS link is up and a red frame when it is lost. Controller widgets do the same for the motor controller.<br/><br/>
+    <string name="ev_bms_plugin_description"><![CDATA[🔋 <b>EV BMS + controller</b> — live battery and motor telemetry over Bluetooth LE. Add widgets from Configure screen → EV battery. BMS widgets get a <font color="#2e7d32">green</font> frame when the BMS link is up and a <font color="#c62828">red</font> frame when it is lost. Controller widgets do the same for the motor controller.<br/><br/>
 <b>📡 Devices</b><br/>
-• JBD / Xiaoxiang BMS (FF00) or ANT BMS (FFE0 / FFE1)<br/>
-• FarDriver (FFE0 / FFEC) or VESC over Nordic UART (NUS)<br/>
-• Controller type is shown live from the connected device<br/><br/>
+• BMS: JBD / Xiaoxiang (service FF00) or ANT (FFE0 / FFE1). Protocol Auto / JBD / ANT.<br/>
+• Controller: FarDriver (FFE0 / FFEC) or VESC over Nordic UART. Protocol Auto / FarDriver / VESC.<br/>
+• Controller type is shown live from firmware / hardware name.<br/><br/>
+<b>📊 Widgets</b><br/>
+• 🔋 SOC, pack voltage, pack current, battery temperature — from the BMS.<br/>
+• 📏 Remaining range and ⚡ consumption (Wh/km, 5-minute window).<br/>
+• 🔌 Distance on charge — trip-recording distance after the BMS stops charging.<br/>
+• 🛵 Controller trip, motor power, motor temperature, controller / MOSFET temperature.<br/>
+• 🥾 Hike — lightens the map and slows BLE polling.<br/>
+Tap a numeric widget to switch compact numbers / labels.<br/><br/>
+<b>🔌 Distance on charge</b><br/>
+Charging is detected while you are stopped and pack current is at least 2 A into the battery, or remaining Ah is rising. When charging ends, the widget starts from OsmAnd trip recording distance (plugin Trip recording). Start or keep recording before you unplug. A new recording session resets the baseline. The widget shows a dash until the first charge-end is seen in this session.<br/><br/>
 <b>📏 Remaining range</b><br/>
-Energy used versus distance over a rolling 5-minute window. Distance prefers GPS. If GPS jumps, accuracy is worse than 40 m, or implied speed is above 160 km/h, the controller odometer is used instead.<br/><br/>
+Energy used versus distance over a rolling 5-minute window. Distance prefers GPS. If GPS jumps, accuracy is worse than 40 m, or implied speed is above 160 km/h, the controller odometer is used instead.<br/>
 Coverage Wh/km is the most conservative of: the 5-minute window, the trip average, controller average Wh/km, and the 80th percentile of recent segments. Remaining energy is remaining Ah × rest pack voltage, then reduced by:<br/>
-• Weak cell: rest min cell between 3.00 V (cutoff) and 3.50 V, compared with remaining Ah<br/>
-• Temperature: full above 20 °C, down to about 50 percent in frost<br/>
+• Weak cell: rest min cell between 3.00 V (cutoff) and 3.50 V, compared with remaining Ah.<br/>
+• Temperature: full above 20 °C, down to about 50 percent in frost.<br/>
 Optional route profile adds climb energy and credits 55 percent of descent regen for a 280 kg vehicle.<br/><br/>
-<b>⚠️ Cell voltage alerts</b><br/>
-Min cell voltage is sampled only while pack current is below 5 A, so sag under load is ignored. Default: low below 3.50 V, critically low below 3.30 V. Thresholds and repeat interval are in plugin settings. Critical alerts interrupt a low alert immediately.<br/><br/>
-<b>🗣️ Other voice</b><br/>
-SOC steps, remaining range once a minute when stopped, and a warning when range is less than the remaining navigation distance.<br/><br/>
+<b>🗣️ Voice alerts</b> (plugin settings)<br/>
+• 🔋 SOC steps (default every 5 percent).<br/>
+• 📏 Remaining range once a minute when stopped, plus temps and min cell.<br/>
+• 🧭 Warning when range is less than the remaining navigation distance.<br/>
+• ⚠️ Cell voltage at rest (|I| < 5 A): low 3.50 V, critical 3.30 V. Critical interrupts a low alert immediately.<br/>
+• 🔥 Motor heating — default 90 °C from the controller.<br/>
+• 🥵 Battery overheating — default 50 °C, hottest BMS sensor.<br/>
+• ❄️ Battery freezing — default 0 °C, coldest BMS sensor.<br/>
+Temperature alerts use the cell-alert repeat interval and a few degrees of hysteresis so they do not chatter.<br/><br/>
 <b>💾 CSV</b><br/>
-VESC Tool-compatible semicolon logs, with a folder picker and export. Hike mode keeps range and slows BLE polling while stopping CSV and heavy map layers.]]></string>
+VESC Tool-compatible semicolon logs (including gnss_lat / gnss_lon), folder picker and export.<br/><br/>
+<b>🥾 Hike mode</b><br/>
+Keeps range and GPS, slows BLE polling to at least 5 s, stops CSV, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
-• VESC controllers over BLE UART, not only FarDriver ND96530<br/>
-• Live controller type in settings from firmware / hardware name<br/>
-• Green or red widget frame from the matching BLE link (BMS vs controller)<br/>
-• Russian plugin UI]]></string>
+• Distance-on-charge widget from trip recording after BMS charging stops<br/>
+• Voice alerts: motor heating, battery overheat, battery freeze<br/>
+• Expanded plugin description]]></string>
     <string name="ev_bms_widget_group">EV battery</string>
     <string name="ev_bms_devices">Bluetooth devices</string>
     <string name="ev_bms_jbd_title">Battery BMS</string>
@@ -1028,6 +1043,8 @@ VESC Tool-compatible semicolon logs, with a folder picker and export. Hike mode 
     <string name="ev_bms_widget_consumption_desc">Average energy use in Wh/km over the last 5 minutes</string>
     <string name="ev_bms_widget_far_trip">Controller trip</string>
     <string name="ev_bms_widget_far_trip_desc">Trip distance from the motor controller odometer</string>
+    <string name="ev_bms_widget_charge_trip">Distance on charge</string>
+    <string name="ev_bms_widget_charge_trip_desc">Trip recording distance after the BMS stopped charging</string>
     <string name="ev_bms_unit_wh_per_km">Wh/km</string>
     <string name="ev_bms_compact_mode">Compact numbers</string>
     <string name="ev_bms_full_mode">Show labels</string>
@@ -1063,11 +1080,21 @@ VESC Tool-compatible semicolon logs, with a folder picker and export. Hike mode 
     <string name="ev_bms_cell_alert_interval">Cell alert interval</string>
     <string name="ev_bms_voice_cell_low">Low battery. Minimum cell %1$s volts</string>
     <string name="ev_bms_voice_cell_critical">Critically low battery. Minimum cell %1$s volts</string>
+    <string name="ev_bms_announce_motor_heat">Motor heating</string>
+    <string name="ev_bms_motor_heat_c">Motor heating threshold</string>
+    <string name="ev_bms_announce_battery_overheat">Battery overheating</string>
+    <string name="ev_bms_battery_overheat_c">Battery overheating threshold</string>
+    <string name="ev_bms_announce_battery_freeze">Battery freezing</string>
+    <string name="ev_bms_battery_freeze_c">Battery freezing threshold</string>
+    <string name="ev_bms_voice_motor_heat">Motor heating. %1$d degrees</string>
+    <string name="ev_bms_voice_battery_overheat">Battery overheating. %1$d degrees</string>
+    <string name="ev_bms_voice_battery_freeze">Battery is freezing. %1$d degrees</string>
     <string name="ev_bms_n_sec">%1$d s</string>
     <string name="ev_bms_n_min">%1$d min</string>
     <string name="ev_bms_n_kmh">%1$d km/h</string>
     <string name="ev_bms_n_volt">%1$.2f V</string>
     <string name="ev_bms_n_percent">%1$d %%</string>
+    <string name="ev_bms_n_celsius">%1$d °C</string>
     <string name="map_rendering_engine_v2_unavailable">Version 2 (OpenGL) is not included in this APK. This Nightly build uses the legacy renderer. Rebuild with the OpenGL flavor to enable it.</string>
     <string name="background_opacity">Background opacity</string>
     <string name="corner_radius">Corner radius</string>

@@ -120,6 +120,42 @@
 		android:layout="@layout/preference_with_descr"
 		android:title="@string/ev_bms_cell_alert_interval" />
 
+	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
+		android:key="ev_bms_announce_motor_heat"
+		android:layout="@layout/preference_with_descr_dialog_and_switch"
+		android:summaryOff="@string/shared_string_disabled"
+		android:summaryOn="@string/shared_string_enabled"
+		android:title="@string/ev_bms_announce_motor_heat" />
+
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="ev_bms_motor_heat_c"
+		android:layout="@layout/preference_with_descr"
+		android:title="@string/ev_bms_motor_heat_c" />
+
+	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
+		android:key="ev_bms_announce_battery_overheat"
+		android:layout="@layout/preference_with_descr_dialog_and_switch"
+		android:summaryOff="@string/shared_string_disabled"
+		android:summaryOn="@string/shared_string_enabled"
+		android:title="@string/ev_bms_announce_battery_overheat" />
+
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="ev_bms_battery_overheat_c"
+		android:layout="@layout/preference_with_descr"
+		android:title="@string/ev_bms_battery_overheat_c" />
+
+	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
+		android:key="ev_bms_announce_battery_freeze"
+		android:layout="@layout/preference_with_descr_dialog_and_switch"
+		android:summaryOff="@string/shared_string_disabled"
+		android:summaryOn="@string/shared_string_enabled"
+		android:title="@string/ev_bms_announce_battery_freeze" />
+
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="ev_bms_battery_freeze_c"
+		android:layout="@layout/preference_with_descr"
+		android:title="@string/ev_bms_battery_freeze_c" />
+
 	<PreferenceCategory
 		android:key="ev_bms_range"
 		android:layout="@layout/preference_category_with_descr"

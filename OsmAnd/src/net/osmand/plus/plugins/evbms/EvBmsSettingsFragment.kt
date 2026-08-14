@@ -82,6 +82,12 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		setupCellThreshold(plugin.LOW_CELL_MV, arrayOf(3600, 3550, 3500, 3450, 3400))
 		setupCellThreshold(plugin.CRITICAL_CELL_MV, arrayOf(3400, 3350, 3300, 3250, 3200, 3100))
 		setupCellAlertInterval()
+		setupSwitch(plugin.ANNOUNCE_MOTOR_HEAT.id)
+		setupTempThreshold(plugin.MOTOR_HEAT_C, arrayOf(70, 80, 90, 100, 110, 120))
+		setupSwitch(plugin.ANNOUNCE_BATTERY_OVERHEAT.id)
+		setupTempThreshold(plugin.BATTERY_OVERHEAT_C, arrayOf(40, 45, 50, 55, 60))
+		setupSwitch(plugin.ANNOUNCE_BATTERY_FREEZE.id)
+		setupTempThreshold(plugin.BATTERY_FREEZE_C, arrayOf(5, 0, -5, -10))
 		setupRouteProfile()
 	}
 
@@ -204,6 +210,13 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		)
 		pref.setEntryValues(arrayOf<Any>(15, 30, 60, 120, 300))
 		pref.setValue(plugin.CELL_ALERT_INTERVAL_SEC.get())
+	}
+
+	private fun setupTempThreshold(prefHolder: net.osmand.plus.settings.backend.preferences.CommonPreference<Int>, celsius: Array<Int>) {
+		val pref = findPreference<ListPreferenceEx>(prefHolder.id) ?: return
+		pref.setEntries(celsius.map { getString(R.string.ev_bms_n_celsius, it) }.toTypedArray())
+		pref.setEntryValues(celsius.map { it as Any }.toTypedArray())
+		pref.setValue(prefHolder.get())
 	}
 
 	private fun setupRouteProfile() {

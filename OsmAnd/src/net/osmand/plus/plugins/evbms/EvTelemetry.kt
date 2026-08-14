@@ -30,6 +30,7 @@ data class EvTelemetry(
 	val weakCellFactor: Double? = null,
 	val farOdometerKm: Double? = null,
 	val farTripKm: Double? = null,
+	val chargeTripKm: Double? = null,
 	val farSpeedKmh: Double? = null,
 	val farAvgWhPerKm: Double? = null,
 	val gpsUnreliable: Boolean = false,

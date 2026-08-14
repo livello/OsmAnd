@@ -26,7 +26,7 @@ class EvBmsTextWidget(
 ) : SimpleWidget(mapActivity, widgetType, customId, widgetsPanel) {
 
 	enum class Field {
-		SOC, RANGE, CONSUMPTION, FAR_TRIP, VOLTAGE, CURRENT, POWER, BATTERY_TEMP, MOTOR_TEMP, CONTROLLER_TEMP;
+		SOC, RANGE, CONSUMPTION, FAR_TRIP, CHARGE_TRIP, VOLTAGE, CURRENT, POWER, BATTERY_TEMP, MOTOR_TEMP, CONTROLLER_TEMP;
 
 		fun controllerLink(): Boolean {
 			return this == FAR_TRIP || this == POWER || this == MOTOR_TEMP || this == CONTROLLER_TEMP
@@ -81,6 +81,16 @@ class EvBmsTextWidget(
 			}
 			Field.FAR_TRIP -> {
 				val km = sample?.farTripKm
+				if (km == null) {
+					text = NO_VALUE
+					sub = null
+				} else {
+					text = OsmAndFormatter.getFormattedDistance((km * 1000).toFloat(), app)
+					sub = null
+				}
+			}
+			Field.CHARGE_TRIP -> {
+				val km = sample?.chargeTripKm
 				if (km == null) {
 					text = NO_VALUE
 					sub = null
