@@ -989,15 +989,15 @@ Optional route profile adds climb energy and credits 55 percent of descent regen
 • 🔥 Motor heating — default 90 °C from the controller.<br/>
 • 🥵 Battery overheating — default 50 °C, hottest BMS sensor.<br/>
 • ❄️ Battery freezing — default 0 °C, coldest BMS sensor.<br/>
-Temperature alerts use the cell-alert repeat interval and a few degrees of hysteresis so they do not chatter.<br/><br/>
+Temperature and cell alerts speak only while that BLE link is up and telemetry is fresh (a few seconds). Stale values after a drop-out are ignored.<br/>
+• 📡 Link loss and restore for BMS and controller, after a short hold so brief drop-outs do not chatter.<br/><br/>
 <b>💾 CSV</b><br/>
 VESC Tool-compatible semicolon logs (including gnss_lat / gnss_lon), folder picker and export.<br/><br/>
 <b>🥾 Hike mode</b><br/>
 Keeps range and GPS, slows BLE polling to at least 5 s, stops CSV, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
-• Distance-on-charge widget from trip recording after BMS charging stops<br/>
-• Voice alerts: motor heating, battery overheat, battery freeze<br/>
-• Expanded plugin description]]></string>
+• Threshold alerts stay silent without a live BMS or controller link<br/>
+• Voice: BMS / controller link lost and restored]]></string>
     <string name="ev_bms_widget_group">EV battery</string>
     <string name="ev_bms_devices">Bluetooth devices</string>
     <string name="ev_bms_jbd_title">Battery BMS</string>
@@ -1089,6 +1089,11 @@ Keeps range and GPS, slows BLE polling to at least 5 s, stops CSV, and turns off
     <string name="ev_bms_voice_motor_heat">Motor heating. %1$d degrees</string>
     <string name="ev_bms_voice_battery_overheat">Battery overheating. %1$d degrees</string>
     <string name="ev_bms_voice_battery_freeze">Battery is freezing. %1$d degrees</string>
+    <string name="ev_bms_announce_link">Link loss alerts</string>
+    <string name="ev_bms_voice_bms_lost">BMS link lost</string>
+    <string name="ev_bms_voice_controller_lost">Controller link lost</string>
+    <string name="ev_bms_voice_bms_restored">BMS link restored</string>
+    <string name="ev_bms_voice_controller_restored">Controller link restored</string>
     <string name="ev_bms_n_sec">%1$d s</string>
     <string name="ev_bms_n_min">%1$d min</string>
     <string name="ev_bms_n_kmh">%1$d km/h</string>

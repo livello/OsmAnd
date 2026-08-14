@@ -17,6 +17,7 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 		const val RANGE_REPEAT_MS = 60_000L
 		const val RANGE_SHORT_REPEAT_MS = 180_000L
 		const val RANGE_HYSTERESIS_KM = 0.5
+		const val LINK_LOSS_HOLD_MS = 4000L
 	}
 
 	data class StopReport(
@@ -43,6 +44,12 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 	private var batteryOverheatActive = false
 	private var lastBatteryFreezeMs = 0L
 	private var batteryFreezeActive = false
+	private var bmsHadLink = false
+	private var ctrlHadLink = false
+	private var bmsDownSinceMs: Long? = null
+	private var ctrlDownSinceMs: Long? = null
+	private var announcedBmsLost = false
+	private var announcedCtrlLost = false
 
 	fun init() {
 		if (tts != null) {
@@ -77,6 +84,86 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 		motorHeatActive = false
 		batteryOverheatActive = false
 		batteryFreezeActive = false
+		bmsHadLink = false
+		ctrlHadLink = false
+		bmsDownSinceMs = null
+		ctrlDownSinceMs = null
+		announcedBmsLost = false
+		announcedCtrlLost = false
+	}
+
+	fun onLink(
+		bmsUp: Boolean,
+		controllerUp: Boolean,
+		expectBms: Boolean,
+		expectController: Boolean,
+		enabled: Boolean
+	) {
+		if (!enabled) {
+			bmsDownSinceMs = null
+			ctrlDownSinceMs = null
+			return
+		}
+		updateLink(
+			up = bmsUp,
+			expect = expectBms,
+			hadLink = { bmsHadLink },
+			setHadLink = { bmsHadLink = it },
+			downSince = { bmsDownSinceMs },
+			setDownSince = { bmsDownSinceMs = it },
+			announcedLost = { announcedBmsLost },
+			setAnnouncedLost = { announcedBmsLost = it },
+			lostRes = R.string.ev_bms_voice_bms_lost,
+			restoredRes = R.string.ev_bms_voice_bms_restored
+		)
+		updateLink(
+			up = controllerUp,
+			expect = expectController,
+			hadLink = { ctrlHadLink },
+			setHadLink = { ctrlHadLink = it },
+			downSince = { ctrlDownSinceMs },
+			setDownSince = { ctrlDownSinceMs = it },
+			announcedLost = { announcedCtrlLost },
+			setAnnouncedLost = { announcedCtrlLost = it },
+			lostRes = R.string.ev_bms_voice_controller_lost,
+			restoredRes = R.string.ev_bms_voice_controller_restored
+		)
+	}
+
+	private fun updateLink(
+		up: Boolean,
+		expect: Boolean,
+		hadLink: () -> Boolean,
+		setHadLink: (Boolean) -> Unit,
+		downSince: () -> Long?,
+		setDownSince: (Long?) -> Unit,
+		announcedLost: () -> Boolean,
+		setAnnouncedLost: (Boolean) -> Unit,
+		lostRes: Int,
+		restoredRes: Int
+	) {
+		if (!expect) {
+			setDownSince(null)
+			return
+		}
+		val now = System.currentTimeMillis()
+		if (up) {
+			setDownSince(null)
+			if (announcedLost()) {
+				speak(app.getString(restoredRes))
+			}
+			setAnnouncedLost(false)
+			setHadLink(true)
+			return
+		}
+		if (!hadLink()) {
+			return
+		}
+		val started = downSince() ?: now.also { setDownSince(it) }
+		if (!announcedLost() && now - started >= LINK_LOSS_HOLD_MS) {
+			setAnnouncedLost(true)
+			speak(app.getString(lostRes))
+		}
 	}
 
 	fun onSoc(soc: Int?, stepPercent: Int, enabled: Boolean) {
@@ -120,6 +207,7 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 		enabled: Boolean
 	) {
 		if (!enabled || minCellV == null || currentA == null) {
+			lastCellAlertLevel = 0
 			return
 		}
 		if (kotlin.math.abs(currentA) > restCurrentA) {

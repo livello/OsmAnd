@@ -88,6 +88,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		setupTempThreshold(plugin.BATTERY_OVERHEAT_C, arrayOf(40, 45, 50, 55, 60))
 		setupSwitch(plugin.ANNOUNCE_BATTERY_FREEZE.id)
 		setupTempThreshold(plugin.BATTERY_FREEZE_C, arrayOf(5, 0, -5, -10))
+		setupSwitch(plugin.ANNOUNCE_LINK.id)
 		setupRouteProfile()
 	}
 

@@ -42,6 +42,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		const val CHARGE_DETECT_A = 5.0
 		const val CHARGE_HOLD_SAMPLES = 3
 		const val CHARGE_AH_RISE = 0.05
+		const val DATA_STALE_MS = 5000L
 	}
 
 	val BMS_ADDRESS: CommonPreference<String> =
@@ -94,6 +95,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerBooleanPreference("ev_bms_announce_battery_freeze", true).makeGlobal().makeShared()
 	val BATTERY_FREEZE_C: CommonPreference<Int> =
 		registerIntPreference("ev_bms_battery_freeze_c", 0).makeGlobal().makeShared()
+	val ANNOUNCE_LINK: CommonPreference<Boolean> =
+		registerBooleanPreference("ev_bms_announce_link", true).makeGlobal().makeShared()
 	val HIKE_MODE: CommonPreference<Boolean> =
 		registerBooleanPreference("ev_bms_hike_mode", false).makeGlobal().makeShared()
 	val HIKE_SNAPSHOT: CommonPreference<String> =
@@ -132,6 +135,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private var charging = false
 	private var chargeHold = 0
 	private var chargeExitHold = 0
+	private var lastBmsRxMs = 0L
+	private var lastCtrlRxMs = 0L
 	private var pollCellsNext = false
 	@Volatile
 	var latestTelemetry: EvTelemetry? = null
@@ -337,15 +342,18 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		}
 	}
 
-	private fun buildStopReport(): EvVoiceAnnouncer.StopReport? {
+	private fun buildStopReport(bmsFresh: Boolean, ctrlFresh: Boolean): EvVoiceAnnouncer.StopReport? {
+		if (!bmsFresh) {
+			return null
+		}
 		val range = rangeEstimator.remainingRangeKm ?: return null
 		return EvVoiceAnnouncer.StopReport(
 			rangeKm = range,
 			routeLeftKm = getRouteLeftKm(),
 			minCellV = minCellVoltageV,
-			motorTempC = ctrlMotorTempC(),
+			motorTempC = if (ctrlFresh) ctrlMotorTempC() else null,
 			batteryTempC = batteryAnnounceTempC(),
-			controllerTempC = ctrlTempC()
+			controllerTempC = if (ctrlFresh) ctrlTempC() else null
 		)
 	}
 
@@ -444,6 +452,16 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 
 	fun isControllerConnected(): Boolean = controllerClient?.connected == true
 
+	fun isBmsFresh(): Boolean {
+		return isBmsConnected() && lastBmsRxMs > 0L &&
+				System.currentTimeMillis() - lastBmsRxMs <= DATA_STALE_MS
+	}
+
+	fun isControllerFresh(): Boolean {
+		return isControllerConnected() && lastCtrlRxMs > 0L &&
+				System.currentTimeMillis() - lastCtrlRxMs <= DATA_STALE_MS
+	}
+
 	fun connectSavedDevices(activity: Activity) {
 		val bms = BMS_ADDRESS.get()
 		if (!bms.isNullOrEmpty() && bmsClient?.connected != true) {
@@ -517,6 +535,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				controllerBuffer = rest
 				for (payload in frames) {
 					if (VescProtocol.parsePayload(payload, vescSnapshot)) {
+						lastCtrlRxMs = System.currentTimeMillis()
 						controllerClient?.noteControllerKind(EvBleUartClient.ControllerKind.VESC)
 					}
 				}
@@ -525,6 +544,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				controllerBuffer = rest
 				for (frame in frames) {
 					if (FarDriverProtocol.parseFrame(frame, farSnapshot)) {
+						lastCtrlRxMs = System.currentTimeMillis()
 						controllerClient?.noteControllerKind(EvBleUartClient.ControllerKind.FARDRIVER)
 					}
 				}
@@ -555,6 +575,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				for (frame in frames) {
 					val info = AntBmsProtocol.parseStatus(frame) ?: continue
 					lastBms = info
+					lastBmsRxMs = System.currentTimeMillis()
 					if (!info.cells.isNullOrEmpty()) {
 						lastCells = info.cells
 						updateRestMetrics(info.currentA, info.voltageV, info.cells)
@@ -570,12 +591,14 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 					val info = JbdBmsProtocol.parseBasicInfo(frame)
 					if (info != null) {
 						lastBms = info.toSnapshot()
+						lastBmsRxMs = System.currentTimeMillis()
 						updateRestMetrics(info.currentA, info.voltageV, lastCells)
 						voice.onSoc(info.socPercent, SOC_STEP_PERCENT.get(), ANNOUNCE_SOC.get())
 						continue
 					}
 					val cells = JbdBmsProtocol.parseCellVoltages(frame) ?: continue
 					lastCells = cells
+					lastBmsRxMs = System.currentTimeMillis()
 					updateRestMetrics(lastBms?.currentA, lastBms?.voltageV, cells)
 				}
 			}
@@ -693,48 +716,57 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			gpsUnreliable = rangeEstimator.gpsUnreliable,
 			usedFarDriverDistance = rangeEstimator.usedFarDriverDistance
 		)
+		val bmsFresh = isBmsFresh()
+		val ctrlFresh = isControllerFresh()
 		latestTelemetry = sample
 		if (recorder.isRecording && !isHikeMode()) {
 			recorder.append(sample)
 		}
+		voice.onLink(
+			bmsUp = bmsFresh,
+			controllerUp = ctrlFresh,
+			expectBms = !BMS_ADDRESS.get().isNullOrEmpty(),
+			expectController = !CONTROLLER_ADDRESS.get().isNullOrEmpty(),
+			enabled = ANNOUNCE_LINK.get()
+		)
 		voice.onMotion(
 			fusedSpeedKmh(loc),
-			buildStopReport(),
+			buildStopReport(bmsFresh, ctrlFresh),
 			STOP_SPEED_KMH.get().toDouble(),
-			ANNOUNCE_RANGE_ON_STOP.get()
+			ANNOUNCE_RANGE_ON_STOP.get() && bmsFresh
 		)
 		voice.onRangeVsRoute(
-			sample.remainingRangeKm,
+			if (bmsFresh) sample.remainingRangeKm else null,
 			getRouteLeftKm(),
-			ANNOUNCE_RANGE_VS_ROUTE.get()
+			ANNOUNCE_RANGE_VS_ROUTE.get() && bmsFresh
 		)
 		voice.onRestCellVoltage(
-			minCellVoltageV,
-			sample.currentA,
+			if (bmsFresh) minCellVoltageV else null,
+			if (bmsFresh) sample.currentA else null,
 			REST_CURRENT_A,
 			LOW_CELL_MV.get() / 1000.0,
 			CRITICAL_CELL_MV.get() / 1000.0,
 			CELL_ALERT_INTERVAL_SEC.get().toLong().coerceAtLeast(15L) * 1000L,
-			ANNOUNCE_CELL_VOLTAGE.get()
+			ANNOUNCE_CELL_VOLTAGE.get() && bmsFresh
 		)
 		val tempIntervalMs = CELL_ALERT_INTERVAL_SEC.get().toLong().coerceAtLeast(15L) * 1000L
 		voice.onMotorHeat(
-			sample.motorTempC,
+			if (ctrlFresh) sample.motorTempC else null,
 			MOTOR_HEAT_C.get(),
 			tempIntervalMs,
-			ANNOUNCE_MOTOR_HEAT.get()
+			ANNOUNCE_MOTOR_HEAT.get() && ctrlFresh
 		)
 		voice.onBatteryOverheat(
-			bms?.temperaturesC?.maxOrNull()?.toDouble(),
+			if (bmsFresh) bms?.temperaturesC?.maxOrNull()?.toDouble() else null,
 			BATTERY_OVERHEAT_C.get(),
 			tempIntervalMs,
-			ANNOUNCE_BATTERY_OVERHEAT.get()
+			ANNOUNCE_BATTERY_OVERHEAT.get() && bmsFresh
 		)
 		voice.onBatteryFreeze(
-			bms?.temperaturesC?.minOrNull()?.toDouble(),
+			if (bmsFresh) bms?.temperaturesC?.minOrNull()?.toDouble() else null,
 			BATTERY_FREEZE_C.get(),
 			tempIntervalMs,
-			ANNOUNCE_BATTERY_FREEZE.get()
+			ANNOUNCE_BATTERY_FREEZE.get() && bmsFresh
 		)
 	}
 

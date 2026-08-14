@@ -4489,15 +4489,15 @@
 • 🔥 Нагрев двигателя — по умолчанию 90 °C с контроллера.<br/>
 • 🥵 Перегрев батареи — по умолчанию 50 °C, самый горячий датчик BMS.<br/>
 • ❄️ Замерзает батарея — по умолчанию 0 °C, самый холодный датчик BMS.<br/>
-Температурные оповещения используют интервал повтора ячейки и гистерезис в несколько градусов, чтобы не дребезжать.<br/><br/>
+Температура и ячейки озвучиваются только при живой BLE-связи и свежей телеметрии (несколько секунд). Старые значения после обрыва игнорируются.<br/>
+• 📡 Потеря и восстановление связи с BMS и контроллером, с короткой задержкой, чтобы краткие обрывы не дребезжали.<br/><br/>
 <b>💾 CSV</b><br/>
 Логи в формате VESC Tool (точка с запятой, gnss_lat / gnss_lon), выбор папки и экспорт.<br/><br/>
 <b>🥾 Режим «Поход»</b><br/>
 Оставляет запас хода и GPS, замедляет опрос BLE не реже 5 с, отключает CSV, тяжёлые слои карты, 3D, погоду, онлайн-тайлы и лишние Bluetooth-плагины.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Список изменений</b> · %1$s<br/>
-• Виджет пробега на заряде по записи поездки после конца зарядки BMS<br/>
-• Оповещения: нагрев двигателя, перегрев батареи, замерзает батарея<br/>
-• Подробное описание плагина]]></string>
+• Пороги не озвучиваются без живой связи с BMS или контроллером<br/>
+• Голос: потеря и восстановление связи с BMS и контроллером]]></string>
     <string name="ev_bms_widget_group">Тяговая батарея</string>
     <string name="ev_bms_devices">Устройства Bluetooth</string>
     <string name="ev_bms_jbd_title">BMS батареи</string>
@@ -4589,6 +4589,11 @@
     <string name="ev_bms_voice_motor_heat">Нагрев двигателя. %1$d градусов</string>
     <string name="ev_bms_voice_battery_overheat">Перегрев батареи. %1$d градусов</string>
     <string name="ev_bms_voice_battery_freeze">Батарея замерзает. %1$d градусов</string>
+    <string name="ev_bms_announce_link">Оповещения о связи</string>
+    <string name="ev_bms_voice_bms_lost">Потеря связи с БМС</string>
+    <string name="ev_bms_voice_controller_lost">Потеря связи с контроллером</string>
+    <string name="ev_bms_voice_bms_restored">Связь с БМС восстановлена</string>
+    <string name="ev_bms_voice_controller_restored">Связь с контроллером восстановлена</string>
     <string name="ev_bms_n_sec">%1$d с</string>
     <string name="ev_bms_n_min">%1$d мин</string>
     <string name="ev_bms_n_kmh">%1$d км/ч</string>
