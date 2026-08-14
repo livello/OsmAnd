@@ -125,6 +125,16 @@ public enum WidgetType {
 	OBD_THROTTLE_POSITION("obd_throttle_position", R.string.obd_throttle_position, R.string.obd_throttle_position_desc, R.drawable.widget_obd_throttle_position_day, R.drawable.widget_obd_throttle_position_night, 0, VEHICLE_METRICS, RIGHT),
 
 	OBD_FUEL_CONSUMPTION("obd_fuel_consumption", R.string.obd_fuel_consumption, R.string.obd_fuel_consumption_desc, R.drawable.widget_obd_fuel_consumption_day, R.drawable.widget_obd_fuel_consumption_night, 0, VEHICLE_METRICS, RIGHT),
+
+	EV_BMS_SOC("ev_bms_soc", R.string.ev_bms_widget_soc, R.string.ev_bms_widget_soc_desc, R.drawable.widget_obd_fuel_remaining_day, R.drawable.widget_obd_fuel_remaining_night, 0, EV_BMS, RIGHT),
+	EV_BMS_RANGE("ev_bms_range", R.string.ev_bms_widget_range, R.string.ev_bms_widget_range_desc, R.drawable.widget_obd_speed_day, R.drawable.widget_obd_speed_night, 0, EV_BMS, RIGHT),
+	EV_BMS_CONSUMPTION("ev_bms_consumption", R.string.ev_bms_widget_consumption, R.string.ev_bms_widget_consumption_desc, R.drawable.widget_obd_fuel_consumption_day, R.drawable.widget_obd_fuel_consumption_night, 0, EV_BMS, RIGHT),
+	EV_BMS_VOLTAGE("ev_bms_voltage", R.string.ev_bms_widget_voltage, R.string.ev_bms_widget_voltage_desc, R.drawable.widget_obd_battery_voltage_day, R.drawable.widget_obd_battery_voltage_night, 0, EV_BMS, RIGHT),
+	EV_BMS_CURRENT("ev_bms_current", R.string.ev_bms_widget_current, R.string.ev_bms_widget_current_desc, R.drawable.widget_obd_engine_calculated_load_day, R.drawable.widget_obd_engine_calculated_load_night, 0, EV_BMS, RIGHT),
+	EV_BMS_POWER("ev_bms_power", R.string.ev_bms_widget_power, R.string.ev_bms_widget_power_desc, R.drawable.widget_obd_fuel_consumption_day, R.drawable.widget_obd_fuel_consumption_night, 0, EV_BMS, RIGHT),
+	EV_MOTOR_TEMP("ev_motor_temp", R.string.ev_bms_widget_motor_temp, R.string.ev_bms_widget_motor_temp_desc, R.drawable.widget_obd_temperature_engine_oil_day, R.drawable.widget_obd_temperature_engine_oil_night, 0, EV_BMS, RIGHT),
+	EV_CONTROLLER_TEMP("ev_controller_temp", R.string.ev_bms_widget_controller_temp, R.string.ev_bms_widget_controller_temp_desc, R.drawable.widget_obd_temperature_coolant_day, R.drawable.widget_obd_temperature_coolant_night, 0, EV_BMS, RIGHT),
+
 //	OBD_VIN("obd_vin", R.string.obd_vin, R.string.obd_vin_desc, R.drawable.widget_weather_temperature_day, R.drawable.widget_weather_temperature_night, 0, VEHICLE_METRICS, RIGHT),
 //	OBD_FUEL_TYPE("obd_fuel_type", R.string.obd_fuel_type, R.string.obd_fuel_type_desc, R.drawable.widget_weather_temperature_day, R.drawable.widget_weather_temperature_night, 0, VEHICLE_METRICS, RIGHT),
 
@@ -521,5 +531,16 @@ public enum WidgetType {
 			}
 		}
 		return obdWidgets;
+	}
+
+	@NonNull
+	public static List<WidgetType> getEvBmsTypes() {
+		List<WidgetType> widgets = new ArrayList<>();
+		for (WidgetType widgetType : values()) {
+			if (EV_BMS == widgetType.getGroup()) {
+				widgets.add(widgetType);
+			}
+		}
+		return widgets;
 	}
 }

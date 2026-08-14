@@ -12,6 +12,7 @@ import net.osmand.plus.plugins.OsmandPlugin;
 import net.osmand.plus.plugins.PluginsHelper;
 import net.osmand.plus.plugins.audionotes.AudioVideoNotesPlugin;
 import net.osmand.plus.plugins.development.OsmandDevelopmentPlugin;
+import net.osmand.plus.plugins.evbms.EvBmsPlugin;
 import net.osmand.plus.plugins.externalsensors.ExternalSensorsPlugin;
 import net.osmand.plus.plugins.monitoring.OsmandMonitoringPlugin;
 import net.osmand.plus.plugins.weather.WeatherPlugin;
@@ -32,6 +33,7 @@ public enum WidgetGroup {
 	ALTITUDE(R.string.altitude, R.string.map_widget_altitude_desc, R.drawable.widget_altitude_day, R.drawable.widget_altitude_night, 0),
 	ANT_PLUS(R.string.external_sensor_widgets, 0, R.drawable.widget_sensor_external_day, R.drawable.widget_sensor_external_night, 0),
 	VEHICLE_METRICS(R.string.obd_widget_group, 0, R.drawable.widget_obd_vehicle_info_day, R.drawable.widget_obd_vehicle_info_night, 0),
+	EV_BMS(R.string.ev_bms_widget_group, 0, R.drawable.widget_obd_vehicle_info_day, R.drawable.widget_obd_vehicle_info_night, 0),
 	WEATHER(R.string.shared_string_weather, R.string.weather_widget_group_desc, R.drawable.widget_weather_umbrella_day, R.drawable.widget_weather_umbrella_night, 0),
 	SUNRISE_SUNSET(R.string.map_widget_sun_position, R.string.map_widget_group_sunrise_sunset_desc, R.drawable.widget_sunset_day, R.drawable.widget_sunset_night, 0),
 	GLIDE(R.string.map_widget_group_glide_ratio, R.string.map_widget_group_glide_desc, R.drawable.widget_glide_ratio_to_target_day, R.drawable.widget_glide_ratio_to_target_night, 0),
@@ -128,6 +130,8 @@ public enum WidgetGroup {
 			return getPartOfPluginDesc(context, OsmandDevelopmentPlugin.class);
 		} else if (this == ANT_PLUS) {
 			return getPartOfPluginDesc(context, ExternalSensorsPlugin.class);
+		} else if (this == EV_BMS) {
+			return getPartOfPluginDesc(context, EvBmsPlugin.class);
 		} else if (this == WEATHER) {
 			return getPartOfPluginDesc(context, WeatherPlugin.class);
 		}
@@ -139,7 +143,7 @@ public enum WidgetGroup {
 		if (this == BEARING || this == COORDINATES_WIDGET) {
 			return R.drawable.ic_action_help;
 		} else if (this == TRIP_RECORDING || this == AUDIO_VIDEO_NOTES || this == DEVELOPER_OPTIONS
-				|| this == WEATHER || this == ANT_PLUS) {
+				|| this == WEATHER || this == ANT_PLUS || this == EV_BMS) {
 			return R.drawable.ic_extension_dark;
 		}
 		return 0;

@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+	xmlns:tools="http://schemas.android.com/tools"
+	android:title="@string/ev_bms_plugin_name">
+
+	<PreferenceCategory
+		android:key="ev_bms_devices"
+		android:layout="@layout/preference_category_with_descr"
+		android:title="@string/ev_bms_devices" />
+
+	<Preference
+		android:key="ev_bms_address"
+		android:layout="@layout/preference_with_descr"
+		android:persistent="false"
+		android:title="@string/ev_bms_jbd_title"
+		tools:summary="@string/ev_bms_status_not_selected" />
+
+	<Preference
+		android:key="ev_controller_address"
+		android:layout="@layout/preference_with_descr"
+		android:persistent="false"
+		android:title="@string/ev_bms_fardriver_title"
+		tools:summary="@string/ev_bms_status_not_selected" />
+
+	<PreferenceCategory
+		android:key="ev_bms_recording"
+		android:layout="@layout/preference_category_with_descr"
+		android:title="@string/ev_bms_recording" />
+
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="ev_bms_poll_interval_ms"
+		android:layout="@layout/preference_with_descr"
+		android:title="@string/ev_bms_poll_interval" />
+
+	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
+		android:key="ev_bms_record_telemetry"
+		android:layout="@layout/preference_with_descr_dialog_and_switch"
+		android:summaryOff="@string/shared_string_disabled"
+		android:summaryOn="@string/shared_string_enabled"
+		android:title="@string/ev_bms_record_telemetry" />
+
+	<PreferenceCategory
+		android:key="ev_bms_voice"
+		android:layout="@layout/preference_category_with_descr"
+		android:title="@string/ev_bms_voice" />
+
+	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
+		android:key="ev_bms_announce_soc"
+		android:layout="@layout/preference_with_descr_dialog_and_switch"
+		android:summaryOff="@string/shared_string_disabled"
+		android:summaryOn="@string/shared_string_enabled"
+		android:title="@string/ev_bms_announce_soc" />
+
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="ev_bms_soc_step_percent"
+		android:layout="@layout/preference_with_descr"
+		android:title="@string/ev_bms_soc_step" />
+
+	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
+		android:key="ev_bms_announce_range_on_stop"
+		android:layout="@layout/preference_with_descr_dialog_and_switch"
+		android:summaryOff="@string/shared_string_disabled"
+		android:summaryOn="@string/shared_string_enabled"
+		android:title="@string/ev_bms_announce_range_on_stop" />
+
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="ev_bms_stop_speed_kmh"
+		android:layout="@layout/preference_with_descr"
+		android:title="@string/ev_bms_stop_speed" />
+
+</PreferenceScreen>

@@ -9,6 +9,7 @@ import net.osmand.plus.plugins.development.DevelopmentSettingsFragment;
 import net.osmand.plus.plugins.externalsensors.ExternalSettingsWriteToTrackSettingsFragment;
 import net.osmand.plus.plugins.externalsensors.dialogs.ExternalDevicesListFragment;
 import net.osmand.plus.plugins.monitoring.MonitoringSettingsFragment;
+import net.osmand.plus.plugins.evbms.EvBmsSettingsFragment;
 import net.osmand.plus.plugins.odb.dialogs.OBDDevicesListFragment;
 import net.osmand.plus.plugins.odb.dialogs.OBDMainFragment;
 import net.osmand.plus.plugins.osmedit.fragments.OsmEditingFragment;
@@ -49,6 +50,7 @@ public enum SettingsScreenType {
 	ANT_PLUS_SETTINGS(ExternalDevicesListFragment.class.getName(), false, null, R.xml.antplus_settings, R.layout.global_preference_toolbar),
 	VEHICLE_METRICS_SETTINGS(OBDDevicesListFragment.class.getName(), false, null, R.xml.antplus_settings, R.layout.global_preference_toolbar),
 	VEHICLE_CONNECTED_METRICS_SETTINGS(OBDMainFragment.class.getName(), false, null, R.xml.antplus_settings, R.layout.global_preference_toolbar),
+	EV_BMS_SETTINGS(EvBmsSettingsFragment.class.getName(), false, null, R.xml.ev_bms_settings, R.layout.global_preference_toolbar),
 	WEATHER_SETTINGS(WeatherSettingsFragment.class.getName(), true, ApplyQueryType.SNACK_BAR, R.xml.weather_settings, R.layout.profile_preference_toolbar),
 	EXTERNAL_SETTINGS_WRITE_TO_TRACK_SETTINGS(ExternalSettingsWriteToTrackSettingsFragment.class.getName(), true, ApplyQueryType.BOTTOM_SHEET, R.xml.external_sensors_write_to_track_settings, R.layout.profile_preference_toolbar),
 	DANGEROUS_GOODS(DangerousGoodsFragment.class.getName(), true, ApplyQueryType.NONE, R.xml.dangerous_goods_parameters, R.layout.global_preference_toolbar),

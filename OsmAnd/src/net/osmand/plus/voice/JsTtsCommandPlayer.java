@@ -221,6 +221,32 @@ public class JsTtsCommandPlayer extends CommandPlayer {
 		return execute;
 	}
 
+	/**
+	 * Queue extra speech on the navigation TTS engine so plugin prompts do not
+	 * steal audio focus from (or get stopped by) route guidance.
+	 */
+	public synchronized boolean speakAdditional(@NonNull String text) {
+		if (mTts == null || !speechAllowed || text.isEmpty() || voiceRouter.isMute()) {
+			return false;
+		}
+		if (ttsRequests++ == 0) {
+			requestAudioFocus();
+			mTts.setAudioAttributes(new AudioAttributes.Builder()
+					.setUsage(settings.AUDIO_USAGE[settings.AUDIO_MANAGER_STREAM.getModeValue(app.getRoutingHelper().getAppMode())].get())
+					.setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+					.build());
+		}
+		params.put(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "ev-bms-" + System.currentTimeMillis());
+		if (AudioFocusHelperImpl.playbackAuthorized) {
+			mTts.speak(text, TextToSpeech.QUEUE_ADD, params);
+			return true;
+		}
+		if (--ttsRequests < 0) {
+			ttsRequests = 0;
+		}
+		return false;
+	}
+
 	private void sendAlertToPebble(@NonNull String bld) {
 		Intent i = new Intent("com.getpebble.action.SEND_NOTIFICATION");
 		Map<String, Object> data = new HashMap<>();
