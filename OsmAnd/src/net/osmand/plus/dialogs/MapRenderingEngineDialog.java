@@ -47,8 +47,8 @@ public class MapRenderingEngineDialog {
 		View openglRenderingView = alertDialogView.findViewById(R.id.opengl_rendering);
 		radioButtonOpengl = setupRadioItem(openglRenderingView, app.getString(R.string.map_rendering_engine_v2));
 		updateRadioButtons(app.getSettings().USE_OPENGL_RENDER.get());
-		radioButtonOpengl.setEnabled(Version.isOpenGlAvailable(app));
-		openglRenderingView.findViewById(R.id.button).setEnabled(Version.isOpenGlAvailable(app));
+		boolean openGlAvailable = Version.isOpenGlAvailable(app);
+		radioButtonOpengl.setEnabled(openGlAvailable);
 
 		legacyRenderingView.findViewById(R.id.button).setOnClickListener(view -> {
 			updateRenderingEngineSetting(false, renderChangeListener);
@@ -56,6 +56,10 @@ public class MapRenderingEngineDialog {
 		});
 
 		openglRenderingView.findViewById(R.id.button).setOnClickListener(view -> {
+			if (!openGlAvailable) {
+				app.showToastMessage(R.string.map_rendering_engine_v2_unavailable);
+				return;
+			}
 			updateRenderingEngineSetting(true, renderChangeListener);
 			alertDialog.dismiss();
 		});

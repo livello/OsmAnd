@@ -1,5 +1,8 @@
 package net.osmand.plus.plugins.evbms
 
+import java.util.Calendar
+import java.util.Locale
+
 data class EvTelemetry(
 	val timeMs: Long = System.currentTimeMillis(),
 	val lat: Double? = null,
@@ -33,25 +36,106 @@ data class EvTelemetry(
 	val usedFarDriverDistance: Boolean = false
 ) {
 	companion object {
-		fun csvHeader(): String {
-			return "time_ms,lat,lon,gps_speed_kmh,soc_percent,voltage_v,current_a,remaining_ah,full_ah," +
-					"bms_temp_c,cycles,min_cell_v,controller_voltage_v,controller_current_a,controller_power_w," +
-					"rpm,gear,motor_temp_c,controller_temp_c,remaining_range_km,consumption_ah_per_km," +
-					"consumption_wh_per_km,coverage_wh_per_km,weak_cell_factor,far_odometer_km,far_trip_km,far_speed_kmh,far_avg_wh_per_km," +
-					"gps_unreliable,used_far_distance"
-		}
+		fun csvHeader(): String = VESC_HEADER
+
+		private const val VESC_HEADER =
+			"ms_today;input_voltage;temp_mos_max;temp_mos_1;temp_mos_2;temp_mos_3;temp_motor;" +
+					"current_motor;current_in;d_axis_current;q_axis_current;erpm;duty_cycle;" +
+					"amp_hours_used;amp_hours_charged;watt_hours_used;watt_hours_charged;" +
+					"tachometer;tachometer_abs;encoder_position;fault_code;vesc_id;" +
+					"d_axis_voltage;q_axis_voltage;ms_today_setup;amp_hours_setup;" +
+					"amp_hours_charged_setup;watt_hours_setup;watt_hours_charged_setup;" +
+					"battery_level;battery_wh_tot;current_in_setup;current_motor_setup;" +
+					"speed_meters_per_sec;tacho_meters;tacho_abs_meters;num_vescs;ms_today_imu;" +
+					"roll;pitch;yaw;accX;accY;accZ;gyroX;gyroY;gyroZ;gnss_posTime;gnss_lat;" +
+					"gnss_lon;gnss_alt;gnss_gVel;gnss_vVel;gnss_hAcc;gnss_vAcc;"
 	}
 
 	fun toCsvRow(): String {
+		val msToday = msToday(timeMs)
+		val packV = voltageV ?: controllerVoltageV
+		val packI = currentA ?: controllerCurrentA
+		val motorI = controllerCurrentA ?: currentA
+		val speedMps = (gpsSpeedKmh ?: farSpeedKmh)?.div(3.6)
+		val usedAh = if (fullAh != null && remainingAh != null) {
+			(fullAh - remainingAh).coerceAtLeast(0.0)
+		} else {
+			null
+		}
+		val tachoM = farOdometerKm?.times(1000.0)
+		val soc = socPercent?.div(100.0)
 		return listOf(
-			timeMs, n(lat), n(lon), n(gpsSpeedKmh), n(socPercent), n(voltageV), n(currentA),
-			n(remainingAh), n(fullAh), n(bmsTempC), n(cycles), n(minCellVoltageV),
-			n(controllerVoltageV), n(controllerCurrentA), n(controllerPowerW), n(rpm), n(gear),
-			n(motorTempC), n(controllerTempC), n(remainingRangeKm), n(consumptionAhPerKm),
-			n(consumptionWhPerKm), n(coverageWhPerKm), n(weakCellFactor), n(farOdometerKm), n(farTripKm), n(farSpeedKmh), n(farAvgWhPerKm),
-			if (gpsUnreliable) 1 else 0, if (usedFarDriverDistance) 1 else 0
-		).joinToString(",")
+			msToday.toString(),
+			n(packV, "%.2f"),
+			n(controllerTempC, "%.1f"),
+			n(controllerTempC, "%.1f"),
+			"",
+			n(bmsTempC, "%.1f"),
+			n(motorTempC, "%.1f"),
+			n(motorI, "%.2f"),
+			n(packI, "%.2f"),
+			"",
+			"",
+			rpm?.toString() ?: "",
+			"",
+			n(usedAh, "%.3f"),
+			"",
+			"",
+			"",
+			"",
+			"",
+			"",
+			"0",
+			"0",
+			"",
+			"",
+			msToday.toString(),
+			n(usedAh, "%.3f"),
+			"",
+			"",
+			"",
+			n(soc, "%.4f"),
+			"",
+			n(packI, "%.2f"),
+			n(motorI, "%.2f"),
+			n(speedMps, "%.3f"),
+			n(tachoM, "%.1f"),
+			n(tachoM, "%.1f"),
+			"1",
+			"",
+			"",
+			"",
+			"",
+			"",
+			"",
+			"",
+			"",
+			"",
+			"",
+			(timeMs / 1000L).toString(),
+			n(lat, "%.8f"),
+			n(lon, "%.8f"),
+			"",
+			n(speedMps, "%.3f"),
+			"",
+			"",
+			""
+		).joinToString(";") + ";"
 	}
 
-	private fun n(v: Any?): String = v?.toString() ?: ""
+	private fun msToday(timeMs: Long): Long {
+		val cal = Calendar.getInstance()
+		cal.timeInMillis = timeMs
+		return cal.get(Calendar.HOUR_OF_DAY) * 3600000L +
+				cal.get(Calendar.MINUTE) * 60000L +
+				cal.get(Calendar.SECOND) * 1000L +
+				cal.get(Calendar.MILLISECOND)
+	}
+
+	private fun n(v: Double?, fmt: String): String {
+		if (v == null || v.isNaN() || v.isInfinite()) {
+			return ""
+		}
+		return String.format(Locale.US, fmt, v)
+	}
 }

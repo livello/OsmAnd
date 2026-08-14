@@ -12,6 +12,8 @@ import net.osmand.plus.R
 import net.osmand.plus.activities.MapActivity
 import net.osmand.plus.plugins.OsmandPlugin
 import net.osmand.plus.plugins.evbms.ble.EvBleUartClient
+import net.osmand.plus.plugins.evbms.protocol.AntBmsProtocol
+import net.osmand.plus.plugins.evbms.protocol.BmsSnapshot
 import net.osmand.plus.plugins.evbms.protocol.FarDriverProtocol
 import net.osmand.plus.plugins.evbms.protocol.JbdBmsProtocol
 import net.osmand.plus.settings.backend.ApplicationMode
@@ -59,18 +61,29 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerIntPreference("ev_bms_stop_speed_kmh", DEFAULT_STOP_SPEED).makeGlobal().makeShared()
 	val USE_ROUTE_PROFILE: CommonPreference<Boolean> =
 		registerBooleanPreference("ev_bms_use_route_profile", false).makeGlobal().makeShared()
+	val BMS_PROTOCOL: CommonPreference<String> =
+		registerStringPreference("ev_bms_protocol", "auto").makeGlobal().makeShared()
+	val CSV_FOLDER_URI: CommonPreference<String> =
+		registerStringPreference("ev_bms_csv_folder_uri", "").makeGlobal().makeShared()
+	val ANNOUNCE_RANGE_VS_ROUTE: CommonPreference<Boolean> =
+		registerBooleanPreference("ev_bms_announce_range_vs_route", true).makeGlobal().makeShared()
+	val HIKE_MODE: CommonPreference<Boolean> =
+		registerBooleanPreference("ev_bms_hike_mode", false).makeGlobal().makeShared()
+	val HIKE_SNAPSHOT: CommonPreference<String> =
+		registerStringPreference("ev_bms_hike_snapshot", "").makeGlobal()
 
 	private val handler = Handler(Looper.getMainLooper())
 	private val rangeEstimator = RangeEstimator()
 	private val recorder = TelemetryRecorder(app)
 	private val voice = EvVoiceAnnouncer(app)
+	private val hikeMode = HikeModeController(app, this)
 	private val farSnapshot = FarDriverProtocol.FarDriverSnapshot()
 
 	private var bmsClient: EvBleUartClient? = null
 	private var controllerClient: EvBleUartClient? = null
 	private var bmsBuffer = ByteArray(0)
 	private var controllerBuffer = ByteArray(0)
-	private var lastBms: JbdBmsProtocol.JbdBasicInfo? = null
+	private var lastBms: BmsSnapshot? = null
 	private var lastCells: List<Double>? = null
 	private var lastLocation: Location? = null
 	@Volatile
@@ -94,7 +107,9 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				return
 			}
 			if (bmsClient?.connected == true) {
-				if (pollCellsNext) {
+				if (preferAntProtocol()) {
+					bmsClient?.write(AntBmsProtocol.statusRequest())
+				} else if (pollCellsNext) {
 					bmsClient?.write(JbdBmsProtocol.readCellVoltages())
 				} else {
 					bmsClient?.write(JbdBmsProtocol.readBasicInfo())
@@ -102,7 +117,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				pollCellsNext = !pollCellsNext
 			}
 			publishSample()
-			handler.postDelayed(this, POLL_INTERVAL_MS.get().toLong().coerceAtLeast(500L))
+			handler.postDelayed(this, activePollIntervalMs())
 		}
 	}
 
@@ -150,9 +165,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		mapActivity = activity
 		connectSavedDevices(activity)
 		startPolling()
-		if (RECORD_TELEMETRY.get() && !recorder.isRecording) {
-			recorder.start()
-		}
+		applyHikeTelemetryState()
 	}
 
 	override fun mapActivityPause(activity: MapActivity) {
@@ -286,6 +299,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	fun connectBms(activity: Activity, name: String, address: String) {
 		BMS_NAME.set(name)
 		BMS_ADDRESS.set(address)
+		bmsClient?.preferredBmsKind = preferredBmsKind()
 		bmsClient?.connect(activity, address)
 	}
 
@@ -310,6 +324,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	fun connectSavedDevices(activity: Activity) {
 		val bms = BMS_ADDRESS.get()
 		if (!bms.isNullOrEmpty() && bmsClient?.connected != true) {
+			bmsClient?.preferredBmsKind = preferredBmsKind()
 			bmsClient?.connect(activity, bms)
 		}
 		val ctrl = CONTROLLER_ADDRESS.get()
@@ -341,9 +356,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				controllerClient?.write(FarDriverProtocol.startStatusCommand())
 			}
 			startPolling()
-			if (RECORD_TELEMETRY.get() && !recorder.isRecording) {
-				recorder.start()
-			}
+			applyHikeTelemetryState()
 		} else {
 			app.showToastMessage(app.getString(R.string.ev_bms_disconnected, label))
 		}
@@ -352,20 +365,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	override fun onBytes(role: EvBleUartClient.Role, data: ByteArray) {
 		if (role == EvBleUartClient.Role.BMS) {
 			bmsBuffer += data
-			val (frames, rest) = JbdBmsProtocol.extractFrames(bmsBuffer)
-			bmsBuffer = rest
-			for (frame in frames) {
-				val info = JbdBmsProtocol.parseBasicInfo(frame)
-				if (info != null) {
-					lastBms = info
-					updateRestMetrics(info.currentA, info.voltageV, lastCells)
-					voice.onSoc(info.socPercent, SOC_STEP_PERCENT.get(), ANNOUNCE_SOC.get())
-					continue
-				}
-				val cells = JbdBmsProtocol.parseCellVoltages(frame) ?: continue
-				lastCells = cells
-				updateRestMetrics(lastBms?.currentA, lastBms?.voltageV, cells)
-			}
+			drainBmsBuffer()
 		} else {
 			controllerBuffer += data
 			val (frames, rest) = FarDriverProtocol.extractFrames(controllerBuffer)
@@ -374,6 +374,93 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				FarDriverProtocol.parseFrame(frame, farSnapshot)
 			}
 		}
+	}
+
+	private fun drainBmsBuffer() {
+		while (bmsBuffer.isNotEmpty()) {
+			val sizeBefore = bmsBuffer.size
+			val useAnt = when {
+				preferAntProtocol() -> true
+				preferJbdProtocol() -> false
+				else -> firstSofIsAnt(bmsBuffer)
+			}
+			if (useAnt == null) {
+				break
+			}
+			if (useAnt) {
+				val (frames, rest) = AntBmsProtocol.extractFrames(bmsBuffer)
+				bmsBuffer = rest
+				for (frame in frames) {
+					val info = AntBmsProtocol.parseStatus(frame) ?: continue
+					lastBms = info
+					if (!info.cells.isNullOrEmpty()) {
+						lastCells = info.cells
+						updateRestMetrics(info.currentA, info.voltageV, info.cells)
+					} else {
+						updateRestMetrics(info.currentA, info.voltageV, lastCells)
+					}
+					voice.onSoc(info.socPercent, SOC_STEP_PERCENT.get(), ANNOUNCE_SOC.get())
+				}
+			} else {
+				val (frames, rest) = JbdBmsProtocol.extractFrames(bmsBuffer)
+				bmsBuffer = rest
+				for (frame in frames) {
+					val info = JbdBmsProtocol.parseBasicInfo(frame)
+					if (info != null) {
+						lastBms = info.toSnapshot()
+						updateRestMetrics(info.currentA, info.voltageV, lastCells)
+						voice.onSoc(info.socPercent, SOC_STEP_PERCENT.get(), ANNOUNCE_SOC.get())
+						continue
+					}
+					val cells = JbdBmsProtocol.parseCellVoltages(frame) ?: continue
+					lastCells = cells
+					updateRestMetrics(lastBms?.currentA, lastBms?.voltageV, cells)
+				}
+			}
+			if (bmsBuffer.size >= sizeBefore) {
+				if (bmsBuffer.size > 1024) {
+					bmsBuffer = ByteArray(0)
+				}
+				break
+			}
+		}
+	}
+
+	private fun firstSofIsAnt(buffer: ByteArray): Boolean? {
+		var i = 0
+		while (i < buffer.size) {
+			if (buffer[i] == AntBmsProtocol.START1) {
+				if (i + 1 >= buffer.size) {
+					return null
+				}
+				if (buffer[i + 1] == AntBmsProtocol.START2) {
+					return true
+				}
+			}
+			if (buffer[i] == JbdBmsProtocol.START) {
+				return false
+			}
+			i++
+		}
+		return false
+	}
+
+	private fun preferredBmsKind(): EvBleUartClient.BmsKind {
+		return when (BMS_PROTOCOL.get()) {
+			"ant" -> EvBleUartClient.BmsKind.ANT
+			"jbd" -> EvBleUartClient.BmsKind.JBD
+			else -> EvBleUartClient.BmsKind.UNKNOWN
+		}
+	}
+
+	private fun preferAntProtocol(): Boolean {
+		return BMS_PROTOCOL.get() == "ant" ||
+				(BMS_PROTOCOL.get() != "jbd" && bmsClient?.detectedBmsKind == EvBleUartClient.BmsKind.ANT)
+	}
+
+	private fun preferJbdProtocol(): Boolean {
+		return BMS_PROTOCOL.get() == "jbd" ||
+				(BMS_PROTOCOL.get() != "ant" && bmsClient?.detectedBmsKind == EvBleUartClient.BmsKind.JBD)
 	}
 
 	interface DeviceScanListener {
@@ -420,7 +507,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			currentA = bms?.currentA ?: farSnapshot.lineCurrentA,
 			remainingAh = remainingAh,
 			fullAh = bms?.fullMah?.div(1000.0),
-			bmsTempC = bms?.temperaturesC?.maxOrNull()?.toDouble(),
+			bmsTempC = batteryAnnounceTempC(),
 			cycles = bms?.cycles,
 			minCellVoltageV = minCellVoltageV,
 			controllerVoltageV = farSnapshot.voltageV,
@@ -443,7 +530,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			usedFarDriverDistance = rangeEstimator.usedFarDriverDistance
 		)
 		latestTelemetry = sample
-		if (recorder.isRecording) {
+		if (recorder.isRecording && !isHikeMode()) {
 			recorder.append(sample)
 		}
 		voice.onMotion(
@@ -451,6 +538,11 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			buildStopReport(),
 			STOP_SPEED_KMH.get().toDouble(),
 			ANNOUNCE_RANGE_ON_STOP.get()
+		)
+		voice.onRangeVsRoute(
+			sample.remainingRangeKm,
+			getRouteLeftKm(),
+			ANNOUNCE_RANGE_VS_ROUTE.get()
 		)
 	}
 
@@ -476,6 +568,9 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		customId: String?,
 		widgetsPanel: WidgetsPanel?
 	): MapWidget? {
+		if (widgetType == WidgetType.EV_HIKE) {
+			return EvHikeWidget(mapActivity, customId, widgetsPanel)
+		}
 		val field = when (widgetType) {
 			WidgetType.EV_BMS_SOC -> EvBmsTextWidget.Field.SOC
 			WidgetType.EV_BMS_RANGE -> EvBmsTextWidget.Field.RANGE
@@ -484,11 +579,67 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			WidgetType.EV_BMS_VOLTAGE -> EvBmsTextWidget.Field.VOLTAGE
 			WidgetType.EV_BMS_CURRENT -> EvBmsTextWidget.Field.CURRENT
 			WidgetType.EV_BMS_POWER -> EvBmsTextWidget.Field.POWER
+			WidgetType.EV_BATTERY_TEMP -> EvBmsTextWidget.Field.BATTERY_TEMP
 			WidgetType.EV_MOTOR_TEMP -> EvBmsTextWidget.Field.MOTOR_TEMP
 			WidgetType.EV_CONTROLLER_TEMP -> EvBmsTextWidget.Field.CONTROLLER_TEMP
 			else -> return null
 		}
 		return EvBmsTextWidget(mapActivity, widgetType, field, customId, widgetsPanel)
+	}
+
+	fun isHikeMode(): Boolean = hikeMode.isEnabled()
+
+	fun toggleHikeMode(mapActivity: MapActivity) {
+		hikeMode.toggle(mapActivity)
+	}
+
+	fun applyHikeTelemetryState() {
+		if (isHikeMode() || !RECORD_TELEMETRY.get()) {
+			recorder.stop()
+			return
+		}
+		if (!recorder.isRecording) {
+			recorder.setFolderUri(CSV_FOLDER_URI.get())
+			recorder.start()
+		}
+	}
+
+	fun setCsvFolderUri(uri: android.net.Uri): Boolean {
+		val required = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+				android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+		if (!net.osmand.plus.utils.AndroidUtils.takePersistableUriPermission(app, uri, required)) {
+			return false
+		}
+		CSV_FOLDER_URI.set(uri.toString())
+		recorder.setFolderUri(uri.toString())
+		if (recorder.isRecording) {
+			recorder.stop()
+			applyHikeTelemetryState()
+		}
+		return true
+	}
+
+	fun csvFolderSummary(): String {
+		recorder.setFolderUri(CSV_FOLDER_URI.get())
+		return recorder.folderSummary()
+	}
+
+	fun listCsvFiles(): List<TelemetryRecorder.CsvEntry> {
+		recorder.setFolderUri(CSV_FOLDER_URI.get())
+		return recorder.listFiles()
+	}
+
+	fun shareCsv(activity: Activity, uris: List<android.net.Uri>) {
+		recorder.share(activity, uris)
+	}
+
+	private fun activePollIntervalMs(): Long {
+		val poll = POLL_INTERVAL_MS.get().toLong().coerceAtLeast(500L)
+		return if (isHikeMode()) {
+			poll.coerceAtLeast(HikeModeController.HIKE_POLL_MS.toLong())
+		} else {
+			poll
+		}
 	}
 
 	override fun registerOptionsMenuItems(mapActivity: MapActivity, helper: ContextMenuAdapter) {

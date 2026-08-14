@@ -26,7 +26,7 @@ class EvBmsTextWidget(
 ) : SimpleWidget(mapActivity, widgetType, customId, widgetsPanel) {
 
 	enum class Field {
-		SOC, RANGE, CONSUMPTION, FAR_TRIP, VOLTAGE, CURRENT, POWER, MOTOR_TEMP, CONTROLLER_TEMP
+		SOC, RANGE, CONSUMPTION, FAR_TRIP, VOLTAGE, CURRENT, POWER, BATTERY_TEMP, MOTOR_TEMP, CONTROLLER_TEMP
 	}
 
 	companion object {
@@ -98,6 +98,10 @@ class EvBmsTextWidget(
 				}
 				text = w?.let { String.format(Locale.US, "%.0f", it) } ?: NO_VALUE
 				sub = "W"
+			}
+			Field.BATTERY_TEMP -> {
+				text = sample?.bmsTempC?.let { String.format(Locale.US, "%.0f", it) } ?: NO_VALUE
+				sub = "°C"
 			}
 			Field.MOTOR_TEMP -> {
 				text = sample?.motorTempC?.let { String.format(Locale.US, "%.0f", it) } ?: NO_VALUE

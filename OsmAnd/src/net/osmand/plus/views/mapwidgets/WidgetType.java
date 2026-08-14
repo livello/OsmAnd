@@ -133,8 +133,10 @@ public enum WidgetType {
 	EV_BMS_VOLTAGE("ev_bms_voltage", R.string.ev_bms_widget_voltage, R.string.ev_bms_widget_voltage_desc, R.drawable.widget_obd_battery_voltage_day, R.drawable.widget_obd_battery_voltage_night, 0, EV_BMS, RIGHT),
 	EV_BMS_CURRENT("ev_bms_current", R.string.ev_bms_widget_current, R.string.ev_bms_widget_current_desc, R.drawable.widget_obd_engine_calculated_load_day, R.drawable.widget_obd_engine_calculated_load_night, 0, EV_BMS, RIGHT),
 	EV_BMS_POWER("ev_bms_power", R.string.ev_bms_widget_power, R.string.ev_bms_widget_power_desc, R.drawable.widget_obd_fuel_consumption_day, R.drawable.widget_obd_fuel_consumption_night, 0, EV_BMS, RIGHT),
+	EV_BATTERY_TEMP("ev_battery_temp", R.string.ev_bms_widget_battery_temp, R.string.ev_bms_widget_battery_temp_desc, R.drawable.widget_obd_temperature_intake_day, R.drawable.widget_obd_temperature_intake_night, 0, EV_BMS, RIGHT),
 	EV_MOTOR_TEMP("ev_motor_temp", R.string.ev_bms_widget_motor_temp, R.string.ev_bms_widget_motor_temp_desc, R.drawable.widget_obd_temperature_engine_oil_day, R.drawable.widget_obd_temperature_engine_oil_night, 0, EV_BMS, RIGHT),
 	EV_CONTROLLER_TEMP("ev_controller_temp", R.string.ev_bms_widget_controller_temp, R.string.ev_bms_widget_controller_temp_desc, R.drawable.widget_obd_temperature_coolant_day, R.drawable.widget_obd_temperature_coolant_night, 0, EV_BMS, RIGHT),
+	EV_HIKE("ev_hike", R.string.ev_bms_widget_hike, R.string.ev_bms_widget_hike_desc, R.drawable.ic_action_trekking_dark, R.drawable.ic_action_trekking_dark, 0, EV_BMS, RIGHT),
 
 //	OBD_VIN("obd_vin", R.string.obd_vin, R.string.obd_vin_desc, R.drawable.widget_weather_temperature_day, R.drawable.widget_weather_temperature_night, 0, VEHICLE_METRICS, RIGHT),
 //	OBD_FUEL_TYPE("obd_fuel_type", R.string.obd_fuel_type, R.string.obd_fuel_type_desc, R.drawable.widget_weather_temperature_day, R.drawable.widget_weather_temperature_night, 0, VEHICLE_METRICS, RIGHT),

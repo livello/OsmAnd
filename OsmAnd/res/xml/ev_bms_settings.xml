@@ -15,6 +15,11 @@
 		android:title="@string/ev_bms_jbd_title"
 		tools:summary="@string/ev_bms_status_not_selected" />
 
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="ev_bms_protocol"
+		android:layout="@layout/preference_with_descr"
+		android:title="@string/ev_bms_protocol" />
+
 	<Preference
 		android:key="ev_controller_address"
 		android:layout="@layout/preference_with_descr"
@@ -39,6 +44,19 @@
 		android:summaryOn="@string/shared_string_enabled"
 		android:title="@string/ev_bms_record_telemetry" />
 
+	<Preference
+		android:key="ev_bms_csv_folder"
+		android:layout="@layout/preference_with_descr"
+		android:persistent="false"
+		android:title="@string/ev_bms_csv_folder" />
+
+	<Preference
+		android:key="ev_bms_export_csv"
+		android:layout="@layout/preference_with_descr"
+		android:persistent="false"
+		android:title="@string/ev_bms_export_csv"
+		android:summary="@string/ev_bms_export_csv_desc" />
+
 	<PreferenceCategory
 		android:key="ev_bms_voice"
 		android:layout="@layout/preference_category_with_descr"
@@ -62,6 +80,13 @@
 		android:summaryOff="@string/shared_string_disabled"
 		android:summaryOn="@string/shared_string_enabled"
 		android:title="@string/ev_bms_announce_range_on_stop" />
+
+	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
+		android:key="ev_bms_announce_range_vs_route"
+		android:layout="@layout/preference_with_descr_dialog_and_switch"
+		android:summaryOff="@string/shared_string_disabled"
+		android:summaryOn="@string/shared_string_enabled"
+		android:title="@string/ev_bms_announce_range_vs_route" />
 
 	<net.osmand.plus.settings.preferences.ListPreferenceEx
 		android:key="ev_bms_stop_speed_kmh"

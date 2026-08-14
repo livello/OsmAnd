@@ -109,6 +109,10 @@ object JbdBmsProtocol {
 		)
 	}
 
+	fun looksLike(buffer: ByteArray): Boolean {
+		return buffer.any { it == START }
+	}
+
 	fun parseCellVoltages(frame: ByteArray): List<Double>? {
 		if (frame.size < 7 || frame[0] != START || frame[1] != REG_CELLS) {
 			return null
@@ -151,5 +155,20 @@ object JbdBmsProtocol {
 		val dischargeEnabled: Boolean,
 		val cellCount: Int,
 		val temperaturesC: List<Float>
-	)
+	) {
+		fun toSnapshot(): BmsSnapshot {
+			return BmsSnapshot(
+				voltageV = voltageV,
+				currentA = currentA,
+				remainingMah = remainingMah,
+				fullMah = fullMah,
+				cycles = cycles,
+				socPercent = socPercent,
+				chargeEnabled = chargeEnabled,
+				dischargeEnabled = dischargeEnabled,
+				cellCount = cellCount,
+				temperaturesC = temperaturesC
+			)
+		}
+	}
 }

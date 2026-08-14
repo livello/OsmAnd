@@ -1,6 +1,12 @@
 package net.osmand.plus.plugins.evbms
 
 import android.app.Activity
+import android.content.Intent
+import android.location.LocationManager
+import android.net.Uri
+import android.os.Build
+import android.widget.ArrayAdapter
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.FragmentManager
 import androidx.preference.Preference
@@ -20,6 +26,33 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 	private val plugin = PluginsHelper.requirePlugin(EvBmsPlugin::class.java)
 	private val found = ArrayList<Pair<String, String>>()
 	private var scanningRole: EvBleUartClient.Role? = null
+	private var pendingScanRole: EvBleUartClient.Role? = null
+	private var picker: AlertDialog? = null
+	private var pickerAdapter: ArrayAdapter<String>? = null
+
+	private val csvFolderLauncher = registerForActivityResult(
+		object : ActivityResultContracts.OpenDocumentTree() {
+			override fun createIntent(context: android.content.Context, input: Uri?): Intent {
+				return super.createIntent(context, input).apply {
+					addFlags(
+						Intent.FLAG_GRANT_READ_URI_PERMISSION or
+								Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+								Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
+								Intent.FLAG_GRANT_PREFIX_URI_PERMISSION
+					)
+				}
+			}
+		}
+	) { uri ->
+		if (uri == null) {
+			return@registerForActivityResult
+		}
+		if (plugin.setCsvFolderUri(uri)) {
+			setupCsvFolder()
+		} else {
+			app.showToastMessage(R.string.folder_access_denied)
+		}
+	}
 
 	override fun setupPreferences() {
 		setupDevicePref(
@@ -34,11 +67,14 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			plugin.CONTROLLER_ADDRESS.get(),
 			plugin.isControllerConnected()
 		)
+		setupBmsProtocol()
 		setupPollInterval()
 		setupSwitch(plugin.RECORD_TELEMETRY.id)
+		setupCsvFolder()
 		setupSwitch(plugin.ANNOUNCE_SOC.id)
 		setupSocStep()
 		setupSwitch(plugin.ANNOUNCE_RANGE_ON_STOP.id)
+		setupSwitch(plugin.ANNOUNCE_RANGE_VS_ROUTE.id)
 		setupStopSpeed()
 		setupRouteProfile()
 	}
@@ -46,12 +82,19 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 	override fun onResume() {
 		super.onResume()
 		plugin.scanListener = this
+		val pending = pendingScanRole
+		val activity = activity
+		if (pending != null && activity != null && AndroidUtils.hasBLEPermission(activity)) {
+			pendingScanRole = null
+			startScan(activity, pending)
+		}
 	}
 
-	override fun onPause() {
-		super.onPause()
+	override fun onDestroyView() {
+		dismissPicker()
 		plugin.scanListener = null
 		plugin.stopScans()
+		super.onDestroyView()
 	}
 
 	private fun setupDevicePref(key: String, name: String?, address: String?, connected: Boolean) {
@@ -62,6 +105,19 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			else -> getString(R.string.ev_bms_status_not_selected)
 		}
 		pref.summary = status
+	}
+
+	private fun setupBmsProtocol() {
+		val pref = findPreference<ListPreferenceEx>(plugin.BMS_PROTOCOL.id) ?: return
+		pref.setEntries(
+			arrayOf(
+				getString(R.string.ev_bms_protocol_auto),
+				getString(R.string.ev_bms_protocol_jbd),
+				getString(R.string.ev_bms_protocol_ant)
+			)
+		)
+		pref.setEntryValues(arrayOf<Any>("auto", "jbd", "ant"))
+		pref.setValue(plugin.BMS_PROTOCOL.get())
 	}
 
 	private fun setupPollInterval() {
@@ -94,6 +150,11 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		)
 	}
 
+	private fun setupCsvFolder() {
+		val pref = findPreference<Preference>("ev_bms_csv_folder") ?: return
+		pref.summary = plugin.csvFolderSummary()
+	}
+
 	private fun setupSwitch(key: String) {
 		findPreference<SwitchPreferenceEx>(key)
 	}
@@ -107,6 +168,14 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			}
 			plugin.CONTROLLER_ADDRESS.id -> {
 				startScan(activity, EvBleUartClient.Role.CONTROLLER)
+				return true
+			}
+			"ev_bms_csv_folder" -> {
+				csvFolderLauncher.launch(null)
+				return true
+			}
+			"ev_bms_export_csv" -> {
+				showExportDialog(activity)
 				return true
 			}
 		}
@@ -135,16 +204,56 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		if (prefId == plugin.USE_ROUTE_PROFILE.id) {
 			setupRouteProfile()
 		}
+		if (prefId == plugin.RECORD_TELEMETRY.id) {
+			plugin.applyHikeTelemetryState()
+		}
+		if (prefId == plugin.BMS_PROTOCOL.id) {
+			val act = activity ?: return
+			val name = plugin.BMS_NAME.get()
+			val address = plugin.BMS_ADDRESS.get()
+			if (!address.isNullOrEmpty()) {
+				plugin.connectBms(act, name ?: address, address)
+			}
+		}
+	}
+
+	private fun showExportDialog(activity: Activity) {
+		val files = plugin.listCsvFiles()
+		if (files.isEmpty()) {
+			app.showToastMessage(R.string.ev_bms_csv_none)
+			return
+		}
+		val themed = UiUtilities.getThemedContext(activity, isNightMode())
+		val labels = files.map { it.name }.toTypedArray()
+		AlertDialog.Builder(themed)
+			.setTitle(R.string.ev_bms_export_csv)
+			.setItems(labels) { _, which ->
+				if (which in files.indices) {
+					plugin.shareCsv(activity, listOf(files[which].uri))
+				}
+			}
+			.setPositiveButton(R.string.shared_string_share) { _, _ ->
+				plugin.shareCsv(activity, files.map { it.uri })
+			}
+			.setNegativeButton(R.string.shared_string_cancel, null)
+			.show()
 	}
 
 	private fun startScan(activity: Activity, role: EvBleUartClient.Role) {
 		if (!AndroidUtils.hasBLEPermission(activity)) {
+			pendingScanRole = role
 			AndroidUtils.requestBLEPermissions(activity)
 			return
 		}
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+			val lm = activity.getSystemService(LocationManager::class.java)
+			if (lm != null && !lm.isLocationEnabled) {
+				app.showToastMessage(R.string.ev_bms_location_off)
+			}
+		}
 		found.clear()
 		scanningRole = role
-		app.showToastMessage(R.string.ev_bms_scanning)
+		showPicker(activity)
 		if (role == EvBleUartClient.Role.BMS) {
 			plugin.startBmsScan(activity)
 		} else {
@@ -152,38 +261,66 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		}
 	}
 
+	private fun showPicker(activity: Activity) {
+		dismissPicker()
+		val themed = UiUtilities.getThemedContext(activity, isNightMode())
+		val adapter = ArrayAdapter(themed, android.R.layout.simple_list_item_1, ArrayList<String>())
+		pickerAdapter = adapter
+		picker = AlertDialog.Builder(themed)
+			.setTitle(R.string.ev_bms_scanning)
+			.setAdapter(adapter) { _, which ->
+				if (which in found.indices) {
+					val selected = found[which]
+					val role = scanningRole
+					if (role == EvBleUartClient.Role.BMS) {
+						plugin.connectBms(activity, selected.first, selected.second)
+					} else if (role == EvBleUartClient.Role.CONTROLLER) {
+						plugin.connectController(activity, selected.first, selected.second)
+					}
+					setupPreferences()
+				}
+				plugin.stopScans()
+			}
+			.setNegativeButton(R.string.shared_string_cancel) { _, _ -> plugin.stopScans() }
+			.setOnDismissListener {
+				picker = null
+				pickerAdapter = null
+			}
+			.show()
+	}
+
+	private fun dismissPicker() {
+		picker?.setOnDismissListener(null)
+		picker?.dismiss()
+		picker = null
+		pickerAdapter = null
+	}
+
 	override fun onDeviceFound(role: EvBleUartClient.Role, name: String, address: String) {
 		if (role != scanningRole) {
 			return
 		}
-		if (found.none { it.second == address }) {
-			found.add(Pair(name, address))
+		if (found.any { it.second == address }) {
+			return
 		}
+		found.add(Pair(name, address))
+		val activity = activity ?: return
+		if (picker == null) {
+			showPicker(activity)
+		}
+		pickerAdapter?.add("$name\n$address")
+		picker?.setTitle(R.string.ev_bms_select_device)
 	}
 
 	override fun onScanFinished(role: EvBleUartClient.Role) {
 		if (role != scanningRole) {
 			return
 		}
-		val activity = activity ?: return
 		if (found.isEmpty()) {
+			dismissPicker()
 			app.showToastMessage(R.string.ev_bms_nothing_found)
 			return
 		}
-		val names = found.map { "${it.first}\n${it.second}" }.toTypedArray()
-		val themed = UiUtilities.getThemedContext(activity, isNightMode())
-		AlertDialog.Builder(themed)
-			.setTitle(R.string.ev_bms_select_device)
-			.setItems(names) { _, which ->
-				val selected = found[which]
-				if (role == EvBleUartClient.Role.BMS) {
-					plugin.connectBms(activity, selected.first, selected.second)
-				} else {
-					plugin.connectController(activity, selected.first, selected.second)
-				}
-				setupPreferences()
-			}
-			.setNegativeButton(R.string.shared_string_cancel, null)
-			.show()
+		picker?.setTitle(R.string.ev_bms_select_device)
 	}
 }

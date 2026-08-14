@@ -961,10 +961,10 @@ You will be able to pair this scanner again at any time.</string>
     • Intake temperature, Ambient temperature, Coolant temperature, Engine Oil Temperature\n
     • Vehicle speed, Throttle Position, Battery voltage\n</string>
     <string name="ev_bms_plugin_name">EV BMS + FarDriver</string>
-    <string name="ev_bms_plugin_description">Connect to a JBD/Xiaoxiang BMS and a FarDriver ND96530 controller over Bluetooth LE. Records telemetry, estimates remaining range from GPS and 5-minute average battery use, announces state of charge, and speaks remaining range once a minute while stopped.</string>
+    <string name="ev_bms_plugin_description">Connect to a JBD/Xiaoxiang or ANT BMS and a FarDriver ND96530 controller over Bluetooth LE. Records VESC Tool-compatible CSV telemetry, estimates remaining range from GPS and 5-minute average battery use, announces state of charge, remaining range when stopped, and warns when range is less than the remaining navigation route.</string>
     <string name="ev_bms_widget_group">EV battery</string>
     <string name="ev_bms_devices">Bluetooth devices</string>
-    <string name="ev_bms_jbd_title">JBD BMS</string>
+    <string name="ev_bms_jbd_title">Battery BMS</string>
     <string name="ev_bms_fardriver_title">FarDriver ND96530</string>
     <string name="ev_bms_recording">Recording</string>
     <string name="ev_bms_voice">Voice</string>
@@ -981,7 +981,8 @@ You will be able to pair this scanner again at any time.</string>
     <string name="ev_bms_status_saved">Saved: %1$s (tap to rescan)</string>
     <string name="ev_bms_status_not_selected">Tap to scan and connect</string>
     <string name="ev_bms_scanning">Scanning Bluetooth LE…</string>
-    <string name="ev_bms_nothing_found">No matching devices found</string>
+    <string name="ev_bms_nothing_found">No matching devices found. Turn on Bluetooth and Location, wake the BMS/controller, then try again. Paired devices also appear in the list.</string>
+    <string name="ev_bms_location_off">Turn on Location. Android needs it for Bluetooth LE scan.</string>
     <string name="ev_bms_select_device">Select device</string>
     <string name="ev_bms_connected">Connected to %1$s</string>
     <string name="ev_bms_disconnected">Disconnected from %1$s</string>
@@ -994,7 +995,7 @@ You will be able to pair this scanner again at any time.</string>
     <string name="ev_bms_voice_controller">Controller %1$d</string>
     <string name="ev_bms_voice_batt_ctrl">Battery %1$d, controller %2$d</string>
     <string name="ev_bms_widget_soc">Battery SOC</string>
-    <string name="ev_bms_widget_soc_desc">State of charge from the JBD BMS</string>
+    <string name="ev_bms_widget_soc_desc">State of charge from the BMS</string>
     <string name="ev_bms_widget_range">Remaining range</string>
     <string name="ev_bms_widget_range_desc">Estimated remaining range from GPS or FarDriver distance and 5-minute average Wh/km</string>
     <string name="ev_bms_widget_consumption">Consumption</string>
@@ -1014,6 +1015,23 @@ You will be able to pair this scanner again at any time.</string>
     <string name="ev_bms_widget_motor_temp_desc">Motor temperature from FarDriver</string>
     <string name="ev_bms_widget_controller_temp">Controller temperature</string>
     <string name="ev_bms_widget_controller_temp_desc">Controller temperature from FarDriver</string>
+    <string name="ev_bms_widget_hike">Hike</string>
+    <string name="ev_bms_widget_hike_desc">Turns off heavy map layers, 3D, weather, online tiles, extra Bluetooth plugins and CSV telemetry. Keeps BMS range, GPS and a slower BLE poll.</string>
+    <string name="ev_bms_hike_on">Hike mode on</string>
+    <string name="ev_bms_hike_off">Hike mode off</string>
+    <string name="ev_bms_protocol">BMS protocol</string>
+    <string name="ev_bms_protocol_auto">Auto</string>
+    <string name="ev_bms_protocol_jbd">JBD / Xiaoxiang</string>
+    <string name="ev_bms_protocol_ant">ANT BMS</string>
+    <string name="ev_bms_csv_folder">CSV folder</string>
+    <string name="ev_bms_export_csv">Export CSV</string>
+    <string name="ev_bms_export_csv_desc">Share recorded VESC Tool CSV logs</string>
+    <string name="ev_bms_csv_none">No CSV files yet</string>
+    <string name="ev_bms_announce_range_vs_route">Warn when range is less than the remaining route</string>
+    <string name="ev_bms_voice_range_short">Remaining range is less than the route. Range %1$d kilometers, route %2$d kilometers</string>
+    <string name="ev_bms_widget_battery_temp">Battery temperature</string>
+    <string name="ev_bms_widget_battery_temp_desc">Battery pack temperature from the BMS</string>
+    <string name="map_rendering_engine_v2_unavailable">Version 2 (OpenGL) is not included in this APK. This Nightly build uses the legacy renderer. Rebuild with the OpenGL flavor to enable it.</string>
     <string name="background_opacity">Background opacity</string>
     <string name="corner_radius">Corner radius</string>
     <string name="shared_string_dp">dp</string>

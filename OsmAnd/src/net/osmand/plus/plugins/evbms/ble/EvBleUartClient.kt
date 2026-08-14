@@ -35,6 +35,17 @@ class EvBleUartClient(
 		BMS, CONTROLLER
 	}
 
+	enum class BmsKind {
+		UNKNOWN, JBD, ANT
+	}
+
+	@Volatile
+	var preferredBmsKind: BmsKind = BmsKind.UNKNOWN
+
+	@Volatile
+	var detectedBmsKind: BmsKind = BmsKind.UNKNOWN
+		private set
+
 	interface Listener {
 		fun onConnectionChanged(role: Role, connected: Boolean, name: String?)
 		fun onBytes(role: Role, data: ByteArray)
@@ -50,6 +61,16 @@ class EvBleUartClient(
 		val JBD_WRITE: UUID = UUID.fromString("0000ff02-0000-1000-8000-00805f9b34fb")
 		val FAR_SERVICE: UUID = UUID.fromString("0000ffe0-0000-1000-8000-00805f9b34fb")
 		val FAR_CHAR: UUID = UUID.fromString("0000ffec-0000-1000-8000-00805f9b34fb")
+		val ANT_CHAR: UUID = UUID.fromString("0000ffe1-0000-1000-8000-00805f9b34fb")
+
+		fun matchesAntName(name: String?): Boolean {
+			if (name.isNullOrBlank()) {
+				return false
+			}
+			val n = name.lowercase(Locale.US)
+			return n.contains("antbms") || n.contains("ant-bms") || n.contains("ant_bms") ||
+					n.startsWith("ant-") || (n.contains("ant") && n.contains("bms"))
+		}
 
 		fun matchesBmsName(name: String?): Boolean {
 			if (name.isNullOrBlank()) {
@@ -57,7 +78,8 @@ class EvBleUartClient(
 			}
 			val n = name.lowercase(Locale.US)
 			return n.contains("xiaoxiang") || n.contains("jbd") || n.startsWith("sp") ||
-					n.contains("bms") || n.contains("overkill")
+					n.contains("bms") || n.contains("overkill") || n.contains("smart bms") ||
+					matchesAntName(name)
 		}
 
 		fun matchesFarDriverName(name: String?): Boolean {
@@ -66,7 +88,8 @@ class EvBleUartClient(
 			}
 			val n = name.lowercase(Locale.US)
 			return n.contains("yuanqu") || n.contains("fardriver") || n.contains("controldm") ||
-					n.startsWith("fd") || n.contains("nd96")
+					n.startsWith("fd") || n.contains("nd96") || n.contains("nd-") ||
+					n.contains("far-") || n.contains("ble-uart")
 		}
 	}
 
@@ -88,19 +111,13 @@ class EvBleUartClient(
 	private var scanning = false
 
 	private val scanCallback = object : ScanCallback() {
-		@SuppressLint("MissingPermission")
 		override fun onScanResult(callbackType: Int, result: ScanResult) {
-			val device = result.device ?: return
-			val name = device.name ?: result.scanRecord?.deviceName
-			val expectedService = if (role == Role.BMS) JBD_SERVICE else FAR_SERVICE
-			val hasService = result.scanRecord?.serviceUuids?.any { it.uuid == expectedService } == true
-			val match = if (role == Role.BMS) matchesBmsName(name) else matchesFarDriverName(name)
-			if (!match && !hasService) {
-				return
-			}
-			val address = device.address ?: return
-			if (found.putIfAbsent(address, name ?: address) == null) {
-				listener.onDeviceFound(role, name ?: address, address)
+			handleScanResult(result)
+		}
+
+		override fun onBatchScanResults(results: MutableList<ScanResult>) {
+			for (result in results) {
+				handleScanResult(result)
 			}
 		}
 
@@ -121,6 +138,7 @@ class EvBleUartClient(
 				mainHandler.post { listener.onConnectionChanged(role, true, deviceName) }
 			} else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
 				connected = false
+				detectedBmsKind = BmsKind.UNKNOWN
 				writeCharacteristic = null
 				mainHandler.post { listener.onConnectionChanged(role, false, deviceName) }
 				try {
@@ -136,35 +154,66 @@ class EvBleUartClient(
 			if (status != BluetoothGatt.GATT_SUCCESS) {
 				return
 			}
-			var notify: BluetoothGattCharacteristic? = null
-			var write: BluetoothGattCharacteristic? = null
+			var jbdNotify: BluetoothGattCharacteristic? = null
+			var jbdWrite: BluetoothGattCharacteristic? = null
+			var antNotify: BluetoothGattCharacteristic? = null
+			var antWrite: BluetoothGattCharacteristic? = null
+			var farNotify: BluetoothGattCharacteristic? = null
+			var fallbackNotify: BluetoothGattCharacteristic? = null
+			var fallbackWrite: BluetoothGattCharacteristic? = null
 			for (service in gatt.services) {
 				for (ch in service.characteristics) {
 					val props = ch.properties
-					val preferNotify = if (role == Role.BMS) {
-						ch.uuid == JBD_NOTIFY
-					} else {
-						ch.uuid == FAR_CHAR
+					val canNotify = props and BluetoothGattCharacteristic.PROPERTY_NOTIFY != 0
+					val canWrite = props and BluetoothGattCharacteristic.PROPERTY_WRITE != 0 ||
+							props and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE != 0
+					when (ch.uuid) {
+						JBD_NOTIFY -> if (canNotify) jbdNotify = ch
+						JBD_WRITE -> if (canWrite) jbdWrite = ch
+						ANT_CHAR -> {
+							if (canNotify) antNotify = ch
+							if (canWrite) antWrite = ch
+						}
+						FAR_CHAR -> {
+							if (canNotify) farNotify = ch
+							if (canWrite && fallbackWrite == null) fallbackWrite = ch
+						}
+						else -> {
+							if (canNotify && fallbackNotify == null) fallbackNotify = ch
+							if (canWrite && fallbackWrite == null) fallbackWrite = ch
+						}
 					}
-					val preferWrite = if (role == Role.BMS) {
-						ch.uuid == JBD_WRITE
-					} else {
-						ch.uuid == FAR_CHAR
-					}
-					if (preferNotify && props and BluetoothGattCharacteristic.PROPERTY_NOTIFY != 0) {
-						notify = ch
-					} else if (notify == null && props and BluetoothGattCharacteristic.PROPERTY_NOTIFY != 0) {
-						notify = ch
-					}
-					if (preferWrite && (props and BluetoothGattCharacteristic.PROPERTY_WRITE != 0 ||
-								props and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE != 0)
-					) {
-						write = ch
-					} else if (write == null && (props and BluetoothGattCharacteristic.PROPERTY_WRITE != 0 ||
-								props and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE != 0)
-					) {
-						write = ch
-					}
+				}
+			}
+			val notify: BluetoothGattCharacteristic?
+			val write: BluetoothGattCharacteristic?
+			if (role == Role.BMS) {
+				val preferAnt = preferredBmsKind == BmsKind.ANT ||
+						(preferredBmsKind != BmsKind.JBD && jbdNotify == null && antNotify != null)
+				if (preferAnt && antNotify != null) {
+					notify = antNotify
+					write = antWrite ?: antNotify
+					detectedBmsKind = BmsKind.ANT
+				} else if (jbdNotify != null || jbdWrite != null) {
+					notify = jbdNotify ?: fallbackNotify
+					write = jbdWrite ?: fallbackWrite
+					detectedBmsKind = BmsKind.JBD
+				} else if (antNotify != null) {
+					notify = antNotify
+					write = antWrite ?: antNotify
+					detectedBmsKind = BmsKind.ANT
+				} else {
+					notify = fallbackNotify
+					write = fallbackWrite
+				}
+			} else {
+				notify = farNotify ?: fallbackNotify
+				write = if (farNotify != null && (farNotify.properties and BluetoothGattCharacteristic.PROPERTY_WRITE != 0 ||
+							farNotify.properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE != 0)
+				) {
+					farNotify
+				} else {
+					fallbackWrite
 				}
 			}
 			writeCharacteristic = write
@@ -191,25 +240,74 @@ class EvBleUartClient(
 	}
 
 	@SuppressLint("MissingPermission")
+	private fun handleScanResult(result: ScanResult) {
+		val device = result.device ?: return
+		val name = device.name ?: result.scanRecord?.deviceName
+		offerDevice(name, device.address, result.scanRecord?.serviceUuids?.map { it.uuid })
+	}
+
+	private fun offerDevice(name: String?, address: String?, serviceUuids: List<UUID>? = null) {
+		if (address.isNullOrBlank()) {
+			return
+		}
+		if (role == Role.CONTROLLER && matchesAntName(name)) {
+			return
+		}
+		if (role == Role.BMS && matchesFarDriverName(name) && !matchesBmsName(name)) {
+			return
+		}
+		val hasService = if (role == Role.BMS) {
+			serviceUuids?.any { it == JBD_SERVICE || it == FAR_SERVICE } == true
+		} else {
+			serviceUuids?.any { it == FAR_SERVICE } == true
+		}
+		val match = if (role == Role.BMS) matchesBmsName(name) else matchesFarDriverName(name)
+		if (!match && !hasService && !name.isNullOrBlank()) {
+			return
+		}
+		val label = name?.takeIf { it.isNotBlank() } ?: address
+		if (found.putIfAbsent(address, label) == null) {
+			listener.onDeviceFound(role, label, address)
+		}
+	}
+
+	@SuppressLint("MissingPermission")
 	fun startScan(activity: Activity, timeoutMs: Long = 15000L) {
 		if (!AndroidUtils.hasBLEPermission(activity) && !AndroidUtils.requestBLEPermissions(activity)) {
 			return
 		}
 		if (!BLEUtils.isBLEEnabled(activity)) {
 			app.showToastMessage(net.osmand.plus.R.string.ant_plus_bluetooth_off)
+			listener.onScanFinished(role)
 			return
 		}
 		stopScan()
 		found.clear()
 		adapter = BLEUtils.getBluetoothAdapter(activity)
-		val scanner = adapter?.bluetoothLeScanner ?: return
+		offerBondedDevices()
+		val scanner = adapter?.bluetoothLeScanner
+		if (scanner == null) {
+			listener.onScanFinished(role)
+			return
+		}
 		scanning = true
 		scanner.startScan(
 			null,
-			ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build(),
+			ScanSettings.Builder()
+				.setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+				.setReportDelay(0)
+				.build(),
 			scanCallback
 		)
 		mainHandler.postDelayed({ stopScan() }, timeoutMs)
+	}
+
+	@SuppressLint("MissingPermission")
+	private fun offerBondedDevices() {
+		val bonded = adapter?.bondedDevices ?: return
+		for (device in bonded) {
+			offerDevice(device.name, device.address)
+		}
 	}
 
 	@SuppressLint("MissingPermission")
@@ -246,6 +344,7 @@ class EvBleUartClient(
 	@SuppressLint("MissingPermission")
 	fun disconnect() {
 		connected = false
+		detectedBmsKind = BmsKind.UNKNOWN
 		writeCharacteristic = null
 		try {
 			gatt?.disconnect()

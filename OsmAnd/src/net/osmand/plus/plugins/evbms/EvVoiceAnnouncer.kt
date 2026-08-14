@@ -15,6 +15,8 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 		private val LOG = PlatformUtil.getLog(EvVoiceAnnouncer::class.java)
 		const val STOP_HOLD_MS = 5000L
 		const val RANGE_REPEAT_MS = 60_000L
+		const val RANGE_SHORT_REPEAT_MS = 180_000L
+		const val RANGE_HYSTERESIS_KM = 0.5
 	}
 
 	data class StopReport(
@@ -31,6 +33,8 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 	private var lastSpokenSoc: Int? = null
 	private var stoppedSinceMs: Long? = null
 	private var lastRangeAnnounceMs = 0L
+	private var lastRangeShortMs = 0L
+	private var rangeShortActive = false
 
 	fun init() {
 		if (tts != null) {
@@ -60,6 +64,7 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 		tts = null
 		lastSpokenSoc = null
 		stoppedSinceMs = null
+		rangeShortActive = false
 	}
 
 	fun onSoc(soc: Int?, stepPercent: Int, enabled: Boolean) {
@@ -70,6 +75,26 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 		if (last == null || kotlin.math.abs(soc - last) >= stepPercent) {
 			lastSpokenSoc = soc
 			speak(app.getString(R.string.ev_bms_voice_soc, soc))
+		}
+	}
+
+	fun onRangeVsRoute(rangeKm: Double?, routeLeftKm: Double?, enabled: Boolean) {
+		if (!enabled || rangeKm == null || routeLeftKm == null || routeLeftKm <= 0) {
+			rangeShortActive = false
+			return
+		}
+		val now = System.currentTimeMillis()
+		if (rangeKm + RANGE_HYSTERESIS_KM < routeLeftKm) {
+			val first = !rangeShortActive
+			rangeShortActive = true
+			if (first || now - lastRangeShortMs >= RANGE_SHORT_REPEAT_MS) {
+				lastRangeShortMs = now
+				val range = Math.round(rangeKm).toInt().coerceAtLeast(0)
+				val route = Math.round(routeLeftKm).toInt().coerceAtLeast(0)
+				speak(app.getString(R.string.ev_bms_voice_range_short, range, route))
+			}
+		} else if (rangeKm >= routeLeftKm) {
+			rangeShortActive = false
 		}
 	}
 
