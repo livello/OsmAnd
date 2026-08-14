@@ -1,5 +1,5 @@
 package net.osmand.plus.plugins.evbms
 
 object EvBmsRevision {
-	const val GIT_HASH = "PENDING"
+	const val GIT_HASH = "dc68dc6"
 }
