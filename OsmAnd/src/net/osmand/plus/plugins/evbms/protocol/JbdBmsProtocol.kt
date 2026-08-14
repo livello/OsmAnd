@@ -109,6 +109,28 @@ object JbdBmsProtocol {
 		)
 	}
 
+	fun parseCellVoltages(frame: ByteArray): List<Double>? {
+		if (frame.size < 7 || frame[0] != START || frame[1] != REG_CELLS) {
+			return null
+		}
+		val status = frame[2].toInt() and 0xFF
+		if (status != 0) {
+			return null
+		}
+		val len = frame[3].toInt() and 0xFF
+		if (frame.size < 4 + len + 3 || len < 2) {
+			return null
+		}
+		val d = frame.copyOfRange(4, 4 + len)
+		val cells = ArrayList<Double>(len / 2)
+		var offset = 0
+		while (offset + 1 < d.size) {
+			cells.add(u16(d, offset) / 1000.0)
+			offset += 2
+		}
+		return if (cells.isEmpty()) null else cells
+	}
+
 	private fun u16(d: ByteArray, offset: Int): Int {
 		return ((d[offset].toInt() and 0xFF) shl 8) or (d[offset + 1].toInt() and 0xFF)
 	}

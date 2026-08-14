@@ -26,7 +26,7 @@ class EvBmsTextWidget(
 ) : SimpleWidget(mapActivity, widgetType, customId, widgetsPanel) {
 
 	enum class Field {
-		SOC, RANGE, CONSUMPTION, VOLTAGE, CURRENT, POWER, MOTOR_TEMP, CONTROLLER_TEMP
+		SOC, RANGE, CONSUMPTION, FAR_TRIP, VOLTAGE, CURRENT, POWER, MOTOR_TEMP, CONTROLLER_TEMP
 	}
 
 	companion object {
@@ -72,6 +72,16 @@ class EvBmsTextWidget(
 				} else {
 					text = String.format(Locale.US, "%.0f", wh)
 					sub = app.getString(R.string.ev_bms_unit_wh_per_km)
+				}
+			}
+			Field.FAR_TRIP -> {
+				val km = sample?.farTripKm
+				if (km == null) {
+					text = NO_VALUE
+					sub = null
+				} else {
+					text = OsmAndFormatter.getFormattedDistance((km * 1000).toFloat(), app)
+					sub = null
 				}
 			}
 			Field.VOLTAGE -> {

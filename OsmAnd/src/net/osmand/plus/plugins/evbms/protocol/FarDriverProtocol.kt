@@ -91,15 +91,30 @@ object FarDriverProtocol {
 		when (address) {
 			0xE2 -> {
 				snapshot.gear = ((data[0].toInt() shr 2) and 0x03) + 1
-				snapshot.rawRpm = s16le(data, 6)
+				snapshot.measureSpeed = u16le(data, 6)
+				snapshot.rawRpm = snapshot.measureSpeed
 				snapshot.brake = data[3].toInt() and 0x80 != 0
 			}
 			0xE8 -> {
 				snapshot.voltageV = u16le(data, 0) / 10.0
 				snapshot.lineCurrentA = s16le(data, 4) / 4.0
 			}
+			0xD0 -> {
+				snapshot.avgPowerWhPerKm = (data[3].toInt() and 0xFF) * 4.0
+				snapshot.wheelRatio = data[4].toInt() and 0xFF
+				snapshot.wheelRadius = data[5].toInt() and 0xFF
+				snapshot.avgSpeedKmh = (data[6].toInt() and 0xFF).toDouble()
+				snapshot.wheelWidth = data[7].toInt() and 0xFF
+				snapshot.rateRatio = u16le(data, 8)
+			}
 			0xD6 -> {
 				snapshot.controllerTempC = s16le(data, 10).toDouble()
+			}
+			0x69 -> {
+				snapshot.distanceLsb = u16le(data, 8)
+			}
+			0x7C -> {
+				snapshot.distanceMsb = u16le(data, 10)
 			}
 			0xF4 -> {
 				snapshot.motorTempC = s16le(data, 0).toDouble()
@@ -107,6 +122,7 @@ object FarDriverProtocol {
 			}
 		}
 		snapshot.updatedAtMs = System.currentTimeMillis()
+		snapshot.refreshDerived()
 		return true
 	}
 
@@ -123,11 +139,22 @@ object FarDriverProtocol {
 		@Volatile var voltageV: Double? = null
 		@Volatile var lineCurrentA: Double? = null
 		@Volatile var rawRpm: Int? = null
+		@Volatile var measureSpeed: Int? = null
 		@Volatile var gear: Int? = null
 		@Volatile var motorTempC: Double? = null
 		@Volatile var controllerTempC: Double? = null
 		@Volatile var controllerSoc: Int? = null
 		@Volatile var brake: Boolean = false
+		@Volatile var distanceLsb: Int? = null
+		@Volatile var distanceMsb: Int? = null
+		@Volatile var odometerKm: Double? = null
+		@Volatile var wheelRatio: Int? = null
+		@Volatile var wheelRadius: Int? = null
+		@Volatile var wheelWidth: Int? = null
+		@Volatile var rateRatio: Int? = null
+		@Volatile var avgPowerWhPerKm: Double? = null
+		@Volatile var avgSpeedKmh: Double? = null
+		@Volatile var speedKmh: Double? = null
 		@Volatile var updatedAtMs: Long = 0L
 
 		val powerW: Double?
@@ -136,5 +163,27 @@ object FarDriverProtocol {
 				val i = lineCurrentA
 				return if (v != null && i != null) v * i else null
 			}
+
+		fun refreshDerived() {
+			val lsb = distanceLsb
+			val msb = distanceMsb
+			odometerKm = if (lsb != null && msb != null) {
+				((msb.toLong() shl 16) or lsb.toLong()) / 10.0
+			} else {
+				odometerKm
+			}
+			val pulses = measureSpeed
+			val ratio = rateRatio
+			val radius = wheelRadius
+			val width = wheelWidth
+			val wr = wheelRatio
+			speedKmh = if (pulses != null && ratio != null && ratio > 0 && radius != null && width != null && wr != null) {
+				pulses * (0.00376991136 * (radius * 1270.0 + width * wr) / ratio)
+			} else if (pulses != null) {
+				if (pulses == 0) 0.0 else 20.0
+			} else {
+				speedKmh
+			}
+		}
 	}
 }

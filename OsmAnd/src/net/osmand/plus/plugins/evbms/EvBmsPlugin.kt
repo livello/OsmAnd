@@ -34,6 +34,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		const val DEFAULT_POLL_MS = 2000
 		const val DEFAULT_SOC_STEP = 5
 		const val DEFAULT_STOP_SPEED = 3
+		const val REST_CURRENT_A = 5.0
 	}
 
 	val BMS_ADDRESS: CommonPreference<String> =
@@ -68,7 +69,16 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private var bmsBuffer = ByteArray(0)
 	private var controllerBuffer = ByteArray(0)
 	private var lastBms: JbdBmsProtocol.JbdBasicInfo? = null
+	private var lastCells: List<Double>? = null
 	private var lastLocation: Location? = null
+	@Volatile
+	var minCellVoltageV: Double? = null
+		private set
+	@Volatile
+	var restPackVoltageV: Double? = null
+		private set
+	private var farTripStartKm: Double? = null
+	private var pollCellsNext = false
 	@Volatile
 	var latestTelemetry: EvTelemetry? = null
 		private set
@@ -82,7 +92,12 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				return
 			}
 			if (bmsClient?.connected == true) {
-				bmsClient?.write(JbdBmsProtocol.readBasicInfo())
+				if (pollCellsNext) {
+					bmsClient?.write(JbdBmsProtocol.readCellVoltages())
+				} else {
+					bmsClient?.write(JbdBmsProtocol.readBasicInfo())
+				}
+				pollCellsNext = !pollCellsNext
 			}
 			publishSample()
 			handler.postDelayed(this, POLL_INTERVAL_MS.get().toLong().coerceAtLeast(500L))
@@ -146,17 +161,68 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 
 	override fun updateLocation(location: Location?) {
 		lastLocation = location
-		val remainingAh = lastBms?.remainingMah?.div(1000.0)
-		val voltageV = lastBms?.voltageV ?: farSnapshot.voltageV
-		rangeEstimator.add(System.currentTimeMillis(), remainingAh, voltageV, location)
-		val speed = if (location != null && location.hasSpeed()) location.speed * 3.6 else null
-		voice.onMotion(
-			speed,
-			rangeEstimator.remainingRangeKm,
-			getRouteLeftKm(),
-			STOP_SPEED_KMH.get().toDouble(),
-			ANNOUNCE_RANGE_ON_STOP.get()
+	}
+
+	fun fusedSpeedKmh(location: Location? = lastLocation): Double? {
+		val gpsSpeed = if (location != null && location.hasSpeed()) location.speed * 3.6 else null
+		val farSpeed = farSnapshot.speedKmh
+		if (rangeEstimator.gpsUnreliable) {
+			return farSpeed ?: gpsSpeed
+		}
+		if (gpsSpeed != null && gpsSpeed <= 160.0 &&
+			(location == null || !location.hasAccuracy() || location.accuracy <= 40f)
+		) {
+			return gpsSpeed
+		}
+		return farSpeed ?: gpsSpeed
+	}
+
+	fun batteryAnnounceTempC(): Double? {
+		val temps = lastBms?.temperaturesC
+		if (temps.isNullOrEmpty()) {
+			return null
+		}
+		val month = java.util.Calendar.getInstance().get(java.util.Calendar.MONTH) + 1
+		return if (month in 5..9) {
+			temps.maxOrNull()?.toDouble()
+		} else {
+			temps.minOrNull()?.toDouble()
+		}
+	}
+
+	fun farTripKm(): Double? {
+		val odo = farSnapshot.odometerKm ?: return null
+		val start = farTripStartKm
+		if (start == null) {
+			farTripStartKm = odo
+			return 0.0
+		}
+		return (odo - start).coerceAtLeast(0.0)
+	}
+
+	private fun buildStopReport(): EvVoiceAnnouncer.StopReport? {
+		val range = rangeEstimator.remainingRangeKm ?: return null
+		return EvVoiceAnnouncer.StopReport(
+			rangeKm = range,
+			routeLeftKm = getRouteLeftKm(),
+			minCellV = minCellVoltageV,
+			motorTempC = farSnapshot.motorTempC,
+			batteryTempC = batteryAnnounceTempC(),
+			controllerTempC = farSnapshot.controllerTempC
 		)
+	}
+
+	private fun updateRestMetrics(currentA: Double?, packVoltageV: Double?, cells: List<Double>?) {
+		if (currentA == null || kotlin.math.abs(currentA) > REST_CURRENT_A) {
+			return
+		}
+		if (packVoltageV != null && packVoltageV > 0) {
+			restPackVoltageV = packVoltageV
+		}
+		val minCell = cells?.minOrNull()
+		if (minCell != null && minCell > 0) {
+			minCellVoltageV = minCell
+		}
 	}
 
 	fun getRouteLeftKm(): Double? {
@@ -238,6 +304,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		if (connected) {
 			app.showToastMessage(app.getString(R.string.ev_bms_connected, label))
 			if (role == EvBleUartClient.Role.CONTROLLER) {
+				farTripStartKm = null
 				controllerClient?.write(FarDriverProtocol.startStatusCommand())
 			}
 			startPolling()
@@ -255,9 +322,16 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			val (frames, rest) = JbdBmsProtocol.extractFrames(bmsBuffer)
 			bmsBuffer = rest
 			for (frame in frames) {
-				val info = JbdBmsProtocol.parseBasicInfo(frame) ?: continue
-				lastBms = info
-				voice.onSoc(info.socPercent, SOC_STEP_PERCENT.get(), ANNOUNCE_SOC.get())
+				val info = JbdBmsProtocol.parseBasicInfo(frame)
+				if (info != null) {
+					lastBms = info
+					updateRestMetrics(info.currentA, info.voltageV, lastCells)
+					voice.onSoc(info.socPercent, SOC_STEP_PERCENT.get(), ANNOUNCE_SOC.get())
+					continue
+				}
+				val cells = JbdBmsProtocol.parseCellVoltages(frame) ?: continue
+				lastCells = cells
+				updateRestMetrics(lastBms?.currentA, lastBms?.voltageV, cells)
 			}
 		} else {
 			controllerBuffer += data
@@ -289,6 +363,15 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		val loc = lastLocation
 		val speed = if (loc != null && loc.hasSpeed()) loc.speed * 3.6 else null
 		val remainingAh = bms?.remainingMah?.div(1000.0)
+		updateRestMetrics(bms?.currentA ?: farSnapshot.lineCurrentA, bms?.voltageV ?: farSnapshot.voltageV, lastCells)
+		rangeEstimator.add(
+			System.currentTimeMillis(),
+			remainingAh,
+			bms?.voltageV ?: farSnapshot.voltageV,
+			restPackVoltageV,
+			loc,
+			farSnapshot.odometerKm
+		)
 		val sample = EvTelemetry(
 			lat = loc?.latitude,
 			lon = loc?.longitude,
@@ -300,6 +383,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			fullAh = bms?.fullMah?.div(1000.0),
 			bmsTempC = bms?.temperaturesC?.maxOrNull()?.toDouble(),
 			cycles = bms?.cycles,
+			minCellVoltageV = minCellVoltageV,
 			controllerVoltageV = farSnapshot.voltageV,
 			controllerCurrentA = farSnapshot.lineCurrentA,
 			controllerPowerW = farSnapshot.powerW,
@@ -309,12 +393,24 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			controllerTempC = farSnapshot.controllerTempC,
 			remainingRangeKm = rangeEstimator.remainingRangeKm,
 			consumptionAhPerKm = rangeEstimator.consumptionAhPerKm,
-			consumptionWhPerKm = rangeEstimator.consumptionWhPerKm
+			consumptionWhPerKm = rangeEstimator.consumptionWhPerKm,
+			farOdometerKm = farSnapshot.odometerKm,
+			farTripKm = farTripKm(),
+			farSpeedKmh = farSnapshot.speedKmh,
+			farAvgWhPerKm = farSnapshot.avgPowerWhPerKm,
+			gpsUnreliable = rangeEstimator.gpsUnreliable,
+			usedFarDriverDistance = rangeEstimator.usedFarDriverDistance
 		)
 		latestTelemetry = sample
 		if (recorder.isRecording) {
 			recorder.append(sample)
 		}
+		voice.onMotion(
+			fusedSpeedKmh(loc),
+			buildStopReport(),
+			STOP_SPEED_KMH.get().toDouble(),
+			ANNOUNCE_RANGE_ON_STOP.get()
+		)
 	}
 
 	override fun createWidgets(
@@ -343,6 +439,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			WidgetType.EV_BMS_SOC -> EvBmsTextWidget.Field.SOC
 			WidgetType.EV_BMS_RANGE -> EvBmsTextWidget.Field.RANGE
 			WidgetType.EV_BMS_CONSUMPTION -> EvBmsTextWidget.Field.CONSUMPTION
+			WidgetType.EV_FAR_TRIP -> EvBmsTextWidget.Field.FAR_TRIP
 			WidgetType.EV_BMS_VOLTAGE -> EvBmsTextWidget.Field.VOLTAGE
 			WidgetType.EV_BMS_CURRENT -> EvBmsTextWidget.Field.CURRENT
 			WidgetType.EV_BMS_POWER -> EvBmsTextWidget.Field.POWER

@@ -5,7 +5,9 @@ import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import net.osmand.PlatformUtil
 import net.osmand.plus.OsmandApplication
+import net.osmand.plus.R
 import net.osmand.plus.voice.JsTtsCommandPlayer
+import java.util.Locale
 
 class EvVoiceAnnouncer(private val app: OsmandApplication) {
 
@@ -14,6 +16,15 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 		const val STOP_HOLD_MS = 5000L
 		const val RANGE_REPEAT_MS = 60_000L
 	}
+
+	data class StopReport(
+		val rangeKm: Double,
+		val routeLeftKm: Double?,
+		val minCellV: Double?,
+		val motorTempC: Double?,
+		val batteryTempC: Double?,
+		val controllerTempC: Double?
+	)
 
 	private var tts: TextToSpeech? = null
 	private var ready = false
@@ -58,45 +69,58 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 		val last = lastSpokenSoc
 		if (last == null || kotlin.math.abs(soc - last) >= stepPercent) {
 			lastSpokenSoc = soc
-			speak(app.getString(net.osmand.plus.R.string.ev_bms_voice_soc, soc))
+			speak(app.getString(R.string.ev_bms_voice_soc, soc))
 		}
 	}
 
-	fun onMotion(
-		gpsSpeedKmh: Double?,
-		rangeKm: Double?,
-		routeLeftKm: Double?,
-		stopSpeedKmh: Double,
-		enabled: Boolean
-	) {
+	fun onMotion(speedKmh: Double?, report: StopReport?, stopSpeedKmh: Double, enabled: Boolean) {
 		if (!enabled) {
 			return
 		}
-		val speed = gpsSpeedKmh ?: return
+		val speed = speedKmh ?: return
 		val now = System.currentTimeMillis()
 		if (speed < stopSpeedKmh) {
 			if (stoppedSinceMs == null) {
 				stoppedSinceMs = now
 			}
 			val held = now - (stoppedSinceMs ?: now)
-			if (held >= STOP_HOLD_MS && now - lastRangeAnnounceMs >= RANGE_REPEAT_MS && rangeKm != null) {
+			if (held >= STOP_HOLD_MS && now - lastRangeAnnounceMs >= RANGE_REPEAT_MS && report != null) {
 				lastRangeAnnounceMs = now
-				val rangeRounded = Math.round(rangeKm).toInt().coerceAtLeast(0)
-				val text = if (routeLeftKm != null) {
-					val destRounded = Math.round(routeLeftKm).toInt().coerceAtLeast(0)
-					app.getString(
-						net.osmand.plus.R.string.ev_bms_voice_range_to_charge,
-						rangeRounded,
-						destRounded
-					)
-				} else {
-					app.getString(net.osmand.plus.R.string.ev_bms_voice_range, rangeRounded)
-				}
-				speak(text)
+				speak(buildStopText(report))
 			}
 		} else {
 			stoppedSinceMs = null
 		}
+	}
+
+	private fun buildStopText(report: StopReport): String {
+		val range = Math.round(report.rangeKm).toInt().coerceAtLeast(0)
+		val parts = ArrayList<String>()
+		parts.add(app.getString(R.string.ev_bms_voice_range, range))
+		val routeKm = report.routeLeftKm
+		if (routeKm != null) {
+			val dest = Math.round(routeKm).toInt().coerceAtLeast(0)
+			parts.add(app.getString(R.string.ev_bms_voice_to_charge, dest))
+		}
+		val vmin = report.minCellV
+		if (vmin != null) {
+			parts.add(app.getString(R.string.ev_bms_voice_voltage, String.format(Locale.US, "%.2f", vmin)))
+		}
+		val motor = report.motorTempC
+		if (motor != null) {
+			parts.add(app.getString(R.string.ev_bms_voice_motor, Math.round(motor).toInt()))
+		}
+		val batt = report.batteryTempC?.let { Math.round(it).toInt() }
+		val ctrl = report.controllerTempC?.let { Math.round(it).toInt() }
+		when {
+			batt != null && ctrl != null ->
+				parts.add(app.getString(R.string.ev_bms_voice_batt_ctrl, batt, ctrl))
+			batt != null ->
+				parts.add(app.getString(R.string.ev_bms_voice_battery, batt))
+			ctrl != null ->
+				parts.add(app.getString(R.string.ev_bms_voice_controller, ctrl))
+		}
+		return parts.joinToString(". ")
 	}
 
 	private fun speak(text: String) {
