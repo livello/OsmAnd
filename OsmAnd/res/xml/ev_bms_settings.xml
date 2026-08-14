@@ -49,6 +49,19 @@
 		android:summaryOn="@string/shared_string_enabled"
 		android:title="@string/ev_bms_record_telemetry" />
 
+	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
+		android:key="ev_bms_record_gpx"
+		android:layout="@layout/preference_with_descr_dialog_and_switch"
+		android:summaryOff="@string/shared_string_disabled"
+		android:summaryOn="@string/shared_string_enabled"
+		android:title="@string/ev_bms_record_gpx" />
+
+	<Preference
+		android:key="ev_bms_telemetry_fields"
+		android:layout="@layout/preference_with_descr"
+		android:persistent="false"
+		android:title="@string/ev_bms_telemetry_fields" />
+
 	<Preference
 		android:key="ev_bms_csv_folder"
 		android:layout="@layout/preference_with_descr"
@@ -162,6 +175,26 @@
 		android:summaryOff="@string/shared_string_disabled"
 		android:summaryOn="@string/shared_string_enabled"
 		android:title="@string/ev_bms_announce_link" />
+
+	<PreferenceCategory
+		android:key="ev_bms_charge"
+		android:layout="@layout/preference_category_with_descr"
+		android:title="@string/ev_bms_charge_settings" />
+
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="ev_bms_charge_still_sec"
+		android:layout="@layout/preference_with_descr"
+		android:title="@string/ev_bms_charge_still_sec" />
+
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="ev_bms_charge_still_kmh"
+		android:layout="@layout/preference_with_descr"
+		android:title="@string/ev_bms_charge_still_kmh" />
+
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="ev_bms_charge_current_a"
+		android:layout="@layout/preference_with_descr"
+		android:title="@string/ev_bms_charge_current_a" />
 
 	<PreferenceCategory
 		android:key="ev_bms_range"

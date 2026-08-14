@@ -122,7 +122,6 @@ class HikeModeController(
 		if (settings.SAVE_TRACK_INTERVAL.get() < HIKE_TRACK_INTERVAL_MS) {
 			settings.SAVE_TRACK_INTERVAL.set(HIKE_TRACK_INTERVAL_MS)
 		}
-		plugin.RECORD_TELEMETRY.set(false)
 		if (plugin.POLL_INTERVAL_MS.get() < HIKE_POLL_MS) {
 			plugin.POLL_INTERVAL_MS.set(HIKE_POLL_MS)
 		}

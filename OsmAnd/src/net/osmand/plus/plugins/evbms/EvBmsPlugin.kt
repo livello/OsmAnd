@@ -39,10 +39,11 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		const val DEFAULT_SOC_STEP = 5
 		const val DEFAULT_STOP_SPEED = 3
 		const val REST_CURRENT_A = 5.0
-		const val CHARGE_DETECT_A = 5.0
 		const val CHARGE_HOLD_SAMPLES = 3
-		const val CHARGE_AH_RISE = 0.05
 		const val DATA_STALE_MS = 5000L
+		const val DEFAULT_CHARGE_STILL_SEC = 60
+		const val DEFAULT_CHARGE_STILL_KMH = 3
+		const val DEFAULT_CHARGE_CURRENT_A = 5
 	}
 
 	val BMS_ADDRESS: CommonPreference<String> =
@@ -57,6 +58,16 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerIntPreference("ev_bms_poll_interval_ms", DEFAULT_POLL_MS).makeGlobal().makeShared()
 	val RECORD_TELEMETRY: CommonPreference<Boolean> =
 		registerBooleanPreference("ev_bms_record_telemetry", true).makeGlobal().makeShared()
+	val RECORD_GPX: CommonPreference<Boolean> =
+		registerBooleanPreference("ev_bms_record_gpx", true).makeGlobal().makeShared()
+	val TELEMETRY_FIELDS: CommonPreference<String> =
+		registerStringPreference("ev_bms_telemetry_fields", TelemetryField.DEFAULT_IDS).makeGlobal().makeShared()
+	val CHARGE_STILL_SEC: CommonPreference<Int> =
+		registerIntPreference("ev_bms_charge_still_sec", DEFAULT_CHARGE_STILL_SEC).makeGlobal().makeShared()
+	val CHARGE_STILL_KMH: CommonPreference<Int> =
+		registerIntPreference("ev_bms_charge_still_kmh", DEFAULT_CHARGE_STILL_KMH).makeGlobal().makeShared()
+	val CHARGE_CURRENT_A: CommonPreference<Int> =
+		registerIntPreference("ev_bms_charge_current_a", DEFAULT_CHARGE_CURRENT_A).makeGlobal().makeShared()
 	val ANNOUNCE_SOC: CommonPreference<Boolean> =
 		registerBooleanPreference("ev_bms_announce_soc", true).makeGlobal().makeShared()
 	val SOC_STEP_PERCENT: CommonPreference<Int> =
@@ -131,7 +142,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		private set
 	private var farTripStartKm: Double? = null
 	private var lastChargeAh: Double? = null
-	private var parkedAhMark: Double? = null
+	private var stillSinceMs: Long? = null
 	private var charging = false
 	private var chargeHold = 0
 	private var chargeExitHold = 0
@@ -295,20 +306,31 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		return ((trackM - baseline).coerceAtLeast(0f) / 1000.0)
 	}
 
-	private fun updateChargeCycle(currentA: Double?, remainingAh: Double?) {
-		val speed = fusedSpeedKmh() ?: 0.0
-		val parked = speed < STOP_SPEED_KMH.get()
-		if (!parked) {
-			parkedAhMark = remainingAh
-		} else if (parkedAhMark == null) {
-			parkedAhMark = remainingAh
+	private fun isVehicleMoving(): Boolean {
+		val limit = CHARGE_STILL_KMH.get().toDouble()
+		val gps = if (lastLocation != null && lastLocation!!.hasSpeed()) {
+			lastLocation!!.speed * 3.6
+		} else {
+			null
 		}
-		val ahRising = remainingAh != null && parkedAhMark != null &&
-				remainingAh - parkedAhMark!! >= CHARGE_AH_RISE
+		val ctrl = ctrlSpeedKmh()
+		return (gps ?: 0.0) >= limit || (ctrl ?: 0.0) >= limit
+	}
+
+	private fun updateChargeCycle(currentA: Double?, remainingAh: Double?) {
+		val now = System.currentTimeMillis()
+		if (isVehicleMoving()) {
+			stillSinceMs = null
+		} else if (stillSinceMs == null) {
+			stillSinceMs = now
+		}
+		val stillMs = CHARGE_STILL_SEC.get().toLong().coerceAtLeast(15L) * 1000L
+		val stillLongEnough = stillSinceMs != null && now - stillSinceMs!! >= stillMs
+		val minA = CHARGE_CURRENT_A.get().toDouble().coerceAtLeast(1.0)
 		val absI = currentA?.let { kotlin.math.abs(it) } ?: 0.0
-		val currentIntoPack = currentA != null && absI >= CHARGE_DETECT_A &&
+		val intoPack = currentA != null && absI >= minA &&
 				(lastChargeAh == null || remainingAh == null || remainingAh >= lastChargeAh!! - 0.02)
-		val chargeLike = parked && (currentIntoPack || ahRising)
+		val chargeLike = stillLongEnough && intoPack
 		if (chargeLike) {
 			chargeHold++
 			chargeExitHold = 0
@@ -318,15 +340,14 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			}
 		} else if (charging) {
 			chargeHold = 0
-			val idle = currentA == null || absI < 1.0
+			val idle = currentA == null || absI < minA * 0.4
 			val discharging = remainingAh != null && lastChargeAh != null &&
 					lastChargeAh!! - remainingAh >= 0.02
-			if (idle || discharging || !parked) {
+			if (idle || discharging || isVehicleMoving()) {
 				chargeExitHold++
 				if (chargeExitHold >= CHARGE_HOLD_SAMPLES) {
 					charging = false
 					chargeExitHold = 0
-					parkedAhMark = remainingAh
 					CHARGE_CYCLE_ACTIVE.set(true)
 					CHARGE_END_TRACK_M.set(app.savingTrackHelper.distance.toInt().coerceAtLeast(0))
 				}
@@ -719,7 +740,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		val bmsFresh = isBmsFresh()
 		val ctrlFresh = isControllerFresh()
 		latestTelemetry = sample
-		if (recorder.isRecording && !isHikeMode()) {
+		if (recorder.isRecording) {
 			recorder.append(sample)
 		}
 		voice.onLink(
@@ -882,14 +903,41 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	}
 
 	fun applyHikeTelemetryState() {
-		if (isHikeMode() || !RECORD_TELEMETRY.get()) {
+		if (!RECORD_TELEMETRY.get()) {
 			recorder.stop()
 			return
 		}
+		recorder.setFolderUri(CSV_FOLDER_URI.get())
+		recorder.setFields(selectedTelemetryFields())
+		recorder.setWriteGpx(RECORD_GPX.get())
 		if (!recorder.isRecording) {
-			recorder.setFolderUri(CSV_FOLDER_URI.get())
 			recorder.start()
 		}
+	}
+
+	fun selectedTelemetryFields(): List<TelemetryField> = TelemetryField.parse(TELEMETRY_FIELDS.get())
+
+	fun setTelemetryFields(selected: List<TelemetryField>) {
+		if (selected.isEmpty()) {
+			return
+		}
+		TELEMETRY_FIELDS.set(selected.joinToString(",") { it.id })
+		if (recorder.isRecording) {
+			recorder.stop()
+			applyHikeTelemetryState()
+		}
+	}
+
+	fun restartTelemetryIfRecording() {
+		if (recorder.isRecording) {
+			recorder.stop()
+			applyHikeTelemetryState()
+		}
+	}
+
+	fun telemetryFieldsSummary(ctx: android.content.Context): String {
+		val selected = selectedTelemetryFields().size
+		return ctx.getString(R.string.ev_bms_telemetry_fields_summary, selected, TelemetryField.entries.size)
 	}
 
 	fun setCsvFolderUri(uri: android.net.Uri): Boolean {

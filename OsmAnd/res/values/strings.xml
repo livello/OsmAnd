@@ -969,12 +969,12 @@ You will be able to pair this scanner again at any time.</string>
 <b>📊 Widgets</b><br/>
 • 🔋 SOC, pack voltage, pack current, battery temperature — from the BMS.<br/>
 • 📏 Remaining range and ⚡ consumption (Wh/km, 5-minute window).<br/>
-• 🔌 Distance on charge — trip-recording distance after the BMS stops charging.<br/>
+• 🔌 Distance on charge — trip-recording distance after a real charge cycle ends.<br/>
 • 🛵 Controller trip, motor power, motor temperature, controller / MOSFET temperature.<br/>
-• 🥾 Hike — lightens the map and slows BLE polling.<br/>
+• 🥾 Hike — lightens the map and slows BLE polling to 5 s, while telemetry keeps writing.<br/>
 Tap a numeric widget to switch compact numbers / labels.<br/><br/>
 <b>🔌 Distance on charge</b><br/>
-Charging is detected while you are stopped and pack current is at least 2 A into the battery, or remaining Ah is rising. When charging ends, the widget starts from OsmAnd trip recording distance (plugin Trip recording). Start or keep recording before you unplug. A new recording session resets the baseline. The widget shows a dash until the first charge-end is seen in this session.<br/><br/>
+A charge cycle starts only when GPS and the controller show no motion for the standstill time (default 1 minute) and pack current is at least the charge-current threshold. Regen on a descent, hard braking and being towed do not reset the counter. When charging ends, the widget uses OsmAnd trip recording distance. Start or keep recording before you unplug. A new recording session resets the baseline. The widget shows a dash until the first charge-end is seen in this session.<br/><br/>
 <b>📏 Remaining range</b><br/>
 Energy used versus distance over a rolling 5-minute window. Distance prefers GPS. If GPS jumps, accuracy is worse than 40 m, or implied speed is above 160 km/h, the controller odometer is used instead.<br/>
 Coverage Wh/km is the most conservative of: the 5-minute window, the trip average, controller average Wh/km, and the 80th percentile of recent segments. Remaining energy is remaining Ah × rest pack voltage, then reduced by:<br/>
@@ -991,13 +991,14 @@ Optional route profile adds climb energy and credits 55 percent of descent regen
 • ❄️ Battery freezing — default 0 °C, coldest BMS sensor.<br/>
 Temperature and cell alerts speak only while that BLE link is up and telemetry is fresh (a few seconds). Stale values after a drop-out are ignored.<br/>
 • 📡 Link loss and restore for BMS and controller, after a short hold so brief drop-outs do not chatter.<br/><br/>
-<b>💾 CSV</b><br/>
-VESC Tool-compatible semicolon logs (including gnss_lat / gnss_lon), folder picker and export.<br/><br/>
+<b>💾 CSV / GPX</b><br/>
+Semicolon CSV and optional GPX 1.1 with the same selected fields. Choose columns, folder and export from plugin settings.<br/><br/>
 <b>🥾 Hike mode</b><br/>
-Keeps range and GPS, slows BLE polling to at least 5 s, stops CSV, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
+Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
-• Threshold alerts stay silent without a live BMS or controller link<br/>
-• Voice: BMS / controller link lost and restored]]></string>
+• Distance on charge starts only after standstill (GPS and controller) plus charge current — ignores regen and towing<br/>
+• GPX telemetry and a field picker for CSV / GPX<br/>
+• Hike mode keeps writing telemetry every 5 s]]></string>
     <string name="ev_bms_widget_group">EV battery</string>
     <string name="ev_bms_devices">Bluetooth devices</string>
     <string name="ev_bms_jbd_title">Battery BMS</string>
@@ -1011,6 +1012,29 @@ Keeps range and GPS, slows BLE polling to at least 5 s, stops CSV, and turns off
     <string name="ev_bms_voice">Voice</string>
     <string name="ev_bms_poll_interval">Telemetry interval</string>
     <string name="ev_bms_record_telemetry">Write telemetry CSV</string>
+    <string name="ev_bms_record_gpx">Write telemetry GPX</string>
+    <string name="ev_bms_telemetry_fields">Telemetry fields</string>
+    <string name="ev_bms_telemetry_fields_summary">%1$d of %2$d selected</string>
+    <string name="ev_bms_telemetry_fields_empty">Select at least one field</string>
+    <string name="ev_bms_charge_settings">Distance on charge</string>
+    <string name="ev_bms_charge_still_sec">Standstill before charge</string>
+    <string name="ev_bms_charge_still_kmh">Motion threshold</string>
+    <string name="ev_bms_charge_current_a">Charge current</string>
+    <string name="ev_bms_field_time">Time</string>
+    <string name="ev_bms_field_lat">Latitude</string>
+    <string name="ev_bms_field_lon">Longitude</string>
+    <string name="ev_bms_field_gps_speed">GPS speed</string>
+    <string name="ev_bms_field_remaining_ah">Remaining Ah</string>
+    <string name="ev_bms_field_full_ah">Full Ah</string>
+    <string name="ev_bms_field_cycles">Cycles</string>
+    <string name="ev_bms_field_min_cell">Min cell</string>
+    <string name="ev_bms_field_ctrl_voltage">Controller voltage</string>
+    <string name="ev_bms_field_ctrl_current">Controller current</string>
+    <string name="ev_bms_field_rpm">RPM</string>
+    <string name="ev_bms_field_gear">Gear</string>
+    <string name="ev_bms_field_coverage">Coverage Wh/km</string>
+    <string name="ev_bms_field_odometer">Odometer</string>
+    <string name="ev_bms_field_ctrl_speed">Controller speed</string>
     <string name="ev_bms_announce_soc">Announce battery charge</string>
     <string name="ev_bms_soc_step">Charge announcement step</string>
     <string name="ev_bms_announce_range_on_stop">Announce remaining range when stopped</string>
@@ -1044,7 +1068,7 @@ Keeps range and GPS, slows BLE polling to at least 5 s, stops CSV, and turns off
     <string name="ev_bms_widget_far_trip">Controller trip</string>
     <string name="ev_bms_widget_far_trip_desc">Trip distance from the motor controller odometer</string>
     <string name="ev_bms_widget_charge_trip">Distance on charge</string>
-    <string name="ev_bms_widget_charge_trip_desc">Trip recording distance after the BMS stopped charging</string>
+    <string name="ev_bms_widget_charge_trip_desc">Trip recording distance after a charge cycle that required standstill and charge current, so regen and towing do not reset it</string>
     <string name="ev_bms_unit_wh_per_km">Wh/km</string>
     <string name="ev_bms_compact_mode">Compact numbers</string>
     <string name="ev_bms_full_mode">Show labels</string>
@@ -1059,17 +1083,17 @@ Keeps range and GPS, slows BLE polling to at least 5 s, stops CSV, and turns off
     <string name="ev_bms_widget_controller_temp">Controller temperature</string>
     <string name="ev_bms_widget_controller_temp_desc">MOSFET / controller temperature</string>
     <string name="ev_bms_widget_hike">Hike</string>
-    <string name="ev_bms_widget_hike_desc">Turns off heavy map layers, 3D, weather, online tiles, extra Bluetooth plugins and CSV telemetry. Keeps BMS range, GPS and a slower BLE poll.</string>
+    <string name="ev_bms_widget_hike_desc">Turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins. Keeps BMS range, GPS and telemetry every 5 s with a slower BLE poll.</string>
     <string name="ev_bms_hike_on">Hike mode on</string>
     <string name="ev_bms_hike_off">Hike mode off</string>
     <string name="ev_bms_protocol">BMS protocol</string>
     <string name="ev_bms_protocol_auto">Auto</string>
     <string name="ev_bms_protocol_jbd">JBD / Xiaoxiang</string>
     <string name="ev_bms_protocol_ant">ANT BMS</string>
-    <string name="ev_bms_csv_folder">CSV folder</string>
-    <string name="ev_bms_export_csv">Export CSV</string>
-    <string name="ev_bms_export_csv_desc">Share recorded VESC Tool CSV logs</string>
-    <string name="ev_bms_csv_none">No CSV files yet</string>
+    <string name="ev_bms_csv_folder">Log folder</string>
+    <string name="ev_bms_export_csv">Export logs</string>
+    <string name="ev_bms_export_csv_desc">Share recorded CSV and GPX telemetry</string>
+    <string name="ev_bms_csv_none">No telemetry files yet</string>
     <string name="ev_bms_announce_range_vs_route">Warn when range is less than the remaining route</string>
     <string name="ev_bms_voice_range_short">Remaining range is less than the route. Range %1$d kilometers, route %2$d kilometers</string>
     <string name="ev_bms_widget_battery_temp">Battery temperature</string>
@@ -1100,6 +1124,7 @@ Keeps range and GPS, slows BLE polling to at least 5 s, stops CSV, and turns off
     <string name="ev_bms_n_volt">%1$.2f V</string>
     <string name="ev_bms_n_percent">%1$d %%</string>
     <string name="ev_bms_n_celsius">%1$d °C</string>
+    <string name="ev_bms_n_amp">%1$d A</string>
     <string name="map_rendering_engine_v2_unavailable">Version 2 (OpenGL) is not included in this APK. This Nightly build uses the legacy renderer. Rebuild with the OpenGL flavor to enable it.</string>
     <string name="background_opacity">Background opacity</string>
     <string name="corner_radius">Corner radius</string>

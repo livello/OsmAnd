@@ -72,7 +72,12 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		setupControllerProtocol()
 		setupPollInterval()
 		setupSwitch(plugin.RECORD_TELEMETRY.id)
+		setupSwitch(plugin.RECORD_GPX.id)
+		setupTelemetryFields()
 		setupCsvFolder()
+		setupChargeStillSec()
+		setupChargeStillKmh()
+		setupChargeCurrent()
 		setupSwitch(plugin.ANNOUNCE_SOC.id)
 		setupSocStep()
 		setupSwitch(plugin.ANNOUNCE_RANGE_ON_STOP.id)
@@ -229,6 +234,53 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		)
 	}
 
+	private fun setupTelemetryFields() {
+		val pref = findPreference<Preference>(plugin.TELEMETRY_FIELDS.id) ?: return
+		pref.summary = plugin.telemetryFieldsSummary(requireContext())
+	}
+
+	private fun setupChargeStillSec() {
+		val pref = findPreference<ListPreferenceEx>(plugin.CHARGE_STILL_SEC.id) ?: return
+		pref.setEntries(
+			arrayOf(
+				getString(R.string.ev_bms_n_sec, 30),
+				getString(R.string.ev_bms_n_sec, 60),
+				getString(R.string.ev_bms_n_sec, 90),
+				getString(R.string.ev_bms_n_sec, 120)
+			)
+		)
+		pref.setEntryValues(arrayOf<Any>(30, 60, 90, 120))
+		pref.setValue(plugin.CHARGE_STILL_SEC.get())
+	}
+
+	private fun setupChargeStillKmh() {
+		val pref = findPreference<ListPreferenceEx>(plugin.CHARGE_STILL_KMH.id) ?: return
+		pref.setEntries(
+			arrayOf(
+				getString(R.string.ev_bms_n_kmh, 1),
+				getString(R.string.ev_bms_n_kmh, 2),
+				getString(R.string.ev_bms_n_kmh, 3)
+			)
+		)
+		pref.setEntryValues(arrayOf<Any>(1, 2, 3))
+		pref.setValue(plugin.CHARGE_STILL_KMH.get())
+	}
+
+	private fun setupChargeCurrent() {
+		val pref = findPreference<ListPreferenceEx>(plugin.CHARGE_CURRENT_A.id) ?: return
+		pref.setEntries(
+			arrayOf(
+				getString(R.string.ev_bms_n_amp, 2),
+				getString(R.string.ev_bms_n_amp, 3),
+				getString(R.string.ev_bms_n_amp, 5),
+				getString(R.string.ev_bms_n_amp, 8),
+				getString(R.string.ev_bms_n_amp, 10)
+			)
+		)
+		pref.setEntryValues(arrayOf<Any>(2, 3, 5, 8, 10))
+		pref.setValue(plugin.CHARGE_CURRENT_A.get())
+	}
+
 	private fun setupCsvFolder() {
 		val pref = findPreference<Preference>("ev_bms_csv_folder") ?: return
 		pref.summary = plugin.csvFolderSummary()
@@ -247,6 +299,10 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			}
 			plugin.CONTROLLER_ADDRESS.id -> {
 				startScan(activity, EvBleUartClient.Role.CONTROLLER)
+				return true
+			}
+			plugin.TELEMETRY_FIELDS.id, "ev_bms_telemetry_fields" -> {
+				showTelemetryFieldsDialog(activity)
 				return true
 			}
 			"ev_bms_csv_folder" -> {
@@ -286,6 +342,9 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		if (prefId == plugin.RECORD_TELEMETRY.id) {
 			plugin.applyHikeTelemetryState()
 		}
+		if (prefId == plugin.RECORD_GPX.id) {
+			plugin.restartTelemetryIfRecording()
+		}
 		if (prefId == plugin.BMS_PROTOCOL.id) {
 			val act = activity ?: return
 			val name = plugin.BMS_NAME.get()
@@ -303,6 +362,30 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			}
 			setupControllerTitle()
 		}
+	}
+
+	private fun showTelemetryFieldsDialog(activity: Activity) {
+		val all = TelemetryField.entries.toTypedArray()
+		val selected = plugin.selectedTelemetryFields().toMutableSet()
+		val labels = all.map { getString(it.titleRes) }.toTypedArray()
+		val checked = BooleanArray(all.size) { all[it] in selected }
+		val themed = UiUtilities.getThemedContext(activity, isNightMode())
+		AlertDialog.Builder(themed)
+			.setTitle(R.string.ev_bms_telemetry_fields)
+			.setMultiChoiceItems(labels, checked) { _, which, isChecked ->
+				checked[which] = isChecked
+			}
+			.setPositiveButton(R.string.shared_string_apply) { _, _ ->
+				val chosen = all.filterIndexed { index, _ -> checked[index] }
+				if (chosen.isEmpty()) {
+					app.showToastMessage(R.string.ev_bms_telemetry_fields_empty)
+					return@setPositiveButton
+				}
+				plugin.setTelemetryFields(chosen)
+				setupTelemetryFields()
+			}
+			.setNegativeButton(R.string.shared_string_cancel, null)
+			.show()
 	}
 
 	private fun showExportDialog(activity: Activity) {

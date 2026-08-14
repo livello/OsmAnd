@@ -4469,12 +4469,12 @@
 <b>📊 Виджеты</b><br/>
 • 🔋 SOC, напряжение и ток пакета, температура батареи — с BMS.<br/>
 • 📏 Запас хода и ⚡ расход (Вт·ч/км, окно 5 минут).<br/>
-• 🔌 Пробег на заряде — дистанция записи поездки после окончания зарядки по BMS.<br/>
+• 🔌 Пробег на заряде — дистанция записи поездки после настоящего цикла зарядки.<br/>
 • 🛵 Пробег контроллера, мощность, температура мотора и контроллера / MOSFET.<br/>
-• 🥾 Поход — облегчает карту и замедляет опрос BLE.<br/>
+• 🥾 Поход — облегчает карту и замедляет опрос BLE до 5 с, телеметрия продолжает писаться.<br/>
 Нажатие по числовому виджету переключает компактные числа и подписи.<br/><br/>
 <b>🔌 Пробег на заряде</b><br/>
-Зарядка определяется на остановке при токе пакета от 2 А в батарею или при росте остатка А·ч. Когда зарядка прекращается, виджет отсчитывает расстояние плагина «Запись поездки». Включите или продолжайте запись до отключения зарядки. Новая сессия записи сбрасывает базу. Пока конец зарядки не зафиксирован, виджет показывает прочерк.<br/><br/>
+Цикл зарядки начинается только если GPS и контроллер не показывают движение в течение времени стоянки (по умолчанию 1 минута) и ток пакета не ниже порога зарядного тока. Рекуперация на спуске, резкое торможение и буксировка на тросе счётчик не сбрасывают. Когда зарядка прекращается, виджет берёт расстояние плагина «Запись поездки». Включите или продолжайте запись до отключения зарядки. Новая сессия записи сбрасывает базу. Пока конец зарядки не зафиксирован, виджет показывает прочерк.<br/><br/>
 <b>📏 Запас хода</b><br/>
 Расход энергии к дистанции за скользящие 5 минут. Дистанция берётся с GPS. Если координаты скачут, точность хуже 40 м или скорость выше 160 км/ч, используется одометр контроллера.<br/>
 Покрытие Вт·ч/км — самое консервативное из: окна 5 минут, среднего за поездку, среднего контроллера и 80-го процентиля недавних отрезков. Остаток энергии: остаток А·ч × напряжение пакета на малом токе, затем поправки:<br/>
@@ -4491,13 +4491,14 @@
 • ❄️ Замерзает батарея — по умолчанию 0 °C, самый холодный датчик BMS.<br/>
 Температура и ячейки озвучиваются только при живой BLE-связи и свежей телеметрии (несколько секунд). Старые значения после обрыва игнорируются.<br/>
 • 📡 Потеря и восстановление связи с BMS и контроллером, с короткой задержкой, чтобы краткие обрывы не дребезжали.<br/><br/>
-<b>💾 CSV</b><br/>
-Логи в формате VESC Tool (точка с запятой, gnss_lat / gnss_lon), выбор папки и экспорт.<br/><br/>
+<b>💾 CSV / GPX</b><br/>
+CSV с точкой с запятой и опциональный GPX 1.1 с теми же выбранными полями. Столбцы, папка и экспорт — в настройках плагина.<br/><br/>
 <b>🥾 Режим «Поход»</b><br/>
-Оставляет запас хода и GPS, замедляет опрос BLE не реже 5 с, отключает CSV, тяжёлые слои карты, 3D, погоду, онлайн-тайлы и лишние Bluetooth-плагины.]]></string>
+Оставляет запас хода, GPS и телеметрию раз в 5 с, замедляет опрос BLE не реже 5 с, отключает тяжёлые слои карты, 3D, погоду, онлайн-тайлы и лишние Bluetooth-плагины.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Список изменений</b> · %1$s<br/>
-• Пороги не озвучиваются без живой связи с BMS или контроллером<br/>
-• Голос: потеря и восстановление связи с BMS и контроллером]]></string>
+• Пробег на заряде начинается только после стоянки (GPS и контроллер) и зарядного тока — рекуперация и буксировка не сбрасывают счётчик<br/>
+• Телеметрия GPX и выбор полей для CSV / GPX<br/>
+• Режим «Поход» продолжает писать телеметрию раз в 5 с]]></string>
     <string name="ev_bms_widget_group">Тяговая батарея</string>
     <string name="ev_bms_devices">Устройства Bluetooth</string>
     <string name="ev_bms_jbd_title">BMS батареи</string>
@@ -4511,6 +4512,29 @@
     <string name="ev_bms_voice">Голос</string>
     <string name="ev_bms_poll_interval">Интервал телеметрии</string>
     <string name="ev_bms_record_telemetry">Писать телеметрию в CSV</string>
+    <string name="ev_bms_record_gpx">Писать телеметрию в GPX</string>
+    <string name="ev_bms_telemetry_fields">Поля телеметрии</string>
+    <string name="ev_bms_telemetry_fields_summary">Выбрано %1$d из %2$d</string>
+    <string name="ev_bms_telemetry_fields_empty">Выберите хотя бы одно поле</string>
+    <string name="ev_bms_charge_settings">Пробег на заряде</string>
+    <string name="ev_bms_charge_still_sec">Стоянка перед зарядкой</string>
+    <string name="ev_bms_charge_still_kmh">Порог движения</string>
+    <string name="ev_bms_charge_current_a">Зарядный ток</string>
+    <string name="ev_bms_field_time">Время</string>
+    <string name="ev_bms_field_lat">Широта</string>
+    <string name="ev_bms_field_lon">Долгота</string>
+    <string name="ev_bms_field_gps_speed">Скорость GPS</string>
+    <string name="ev_bms_field_remaining_ah">Остаток А·ч</string>
+    <string name="ev_bms_field_full_ah">Полная ёмкость А·ч</string>
+    <string name="ev_bms_field_cycles">Циклы</string>
+    <string name="ev_bms_field_min_cell">Минимум ячейки</string>
+    <string name="ev_bms_field_ctrl_voltage">Напряжение контроллера</string>
+    <string name="ev_bms_field_ctrl_current">Ток контроллера</string>
+    <string name="ev_bms_field_rpm">Обороты</string>
+    <string name="ev_bms_field_gear">Передача</string>
+    <string name="ev_bms_field_coverage">Покрытие Вт·ч/км</string>
+    <string name="ev_bms_field_odometer">Одометр</string>
+    <string name="ev_bms_field_ctrl_speed">Скорость контроллера</string>
     <string name="ev_bms_announce_soc">Озвучивать заряд батареи</string>
     <string name="ev_bms_soc_step">Шаг объявления заряда</string>
     <string name="ev_bms_announce_range_on_stop">Озвучивать остаток пробега на остановках</string>
@@ -4544,7 +4568,7 @@
     <string name="ev_bms_widget_far_trip">Пробег контроллера</string>
     <string name="ev_bms_widget_far_trip_desc">Пробег сессии по одометру моторного контроллера</string>
     <string name="ev_bms_widget_charge_trip">Пробег на заряде</string>
-    <string name="ev_bms_widget_charge_trip_desc">Расстояние по записи поездки после окончания зарядки по данным BMS</string>
+    <string name="ev_bms_widget_charge_trip_desc">Расстояние по записи поездки после цикла зарядки: стоянка без движения и зарядный ток, чтобы рекуперация и буксировка не сбрасывали счётчик</string>
     <string name="ev_bms_unit_wh_per_km">Вт·ч/км</string>
     <string name="ev_bms_compact_mode">Только числа</string>
     <string name="ev_bms_full_mode">Показать подписи</string>
@@ -4559,17 +4583,17 @@
     <string name="ev_bms_widget_controller_temp">Температура контроллера</string>
     <string name="ev_bms_widget_controller_temp_desc">Температура MOSFET / контроллера</string>
     <string name="ev_bms_widget_hike">Поход</string>
-    <string name="ev_bms_widget_hike_desc">Отключает тяжёлые слои карты, 3D, погоду, онлайн-тайлы, лишние Bluetooth-плагины и запись CSV. Оставляет запас хода по BMS, GPS и более редкий опрос BLE.</string>
+    <string name="ev_bms_widget_hike_desc">Отключает тяжёлые слои карты, 3D, погоду, онлайн-тайлы и лишние Bluetooth-плагины. Оставляет запас хода по BMS, GPS и телеметрию раз в 5 с при более редком опросе BLE.</string>
     <string name="ev_bms_hike_on">Режим «Поход» включён</string>
     <string name="ev_bms_hike_off">Режим «Поход» выключен</string>
     <string name="ev_bms_protocol">Протокол BMS</string>
     <string name="ev_bms_protocol_auto">Авто</string>
     <string name="ev_bms_protocol_jbd">JBD / Xiaoxiang</string>
     <string name="ev_bms_protocol_ant">ANT BMS</string>
-    <string name="ev_bms_csv_folder">Папка CSV</string>
-    <string name="ev_bms_export_csv">Экспорт CSV</string>
-    <string name="ev_bms_export_csv_desc">Отправить записанные логи CSV для VESC Tool</string>
-    <string name="ev_bms_csv_none">Файлов CSV пока нет</string>
+    <string name="ev_bms_csv_folder">Папка логов</string>
+    <string name="ev_bms_export_csv">Экспорт логов</string>
+    <string name="ev_bms_export_csv_desc">Отправить записанные CSV и GPX</string>
+    <string name="ev_bms_csv_none">Файлов телеметрии пока нет</string>
     <string name="ev_bms_announce_range_vs_route">Предупреждать, если запас хода меньше остатка маршрута</string>
     <string name="ev_bms_voice_range_short">Запас хода меньше остатка маршрута. Запас %1$d километров, маршрут %2$d километров</string>
     <string name="ev_bms_widget_battery_temp">Температура батареи</string>
@@ -4600,6 +4624,7 @@
     <string name="ev_bms_n_volt">%1$.2f В</string>
     <string name="ev_bms_n_percent">%1$d %%</string>
     <string name="ev_bms_n_celsius">%1$d °C</string>
+    <string name="ev_bms_n_amp">%1$d А</string>
     <string name="map_rendering_engine_v2_unavailable">Версия 2 (OpenGL) в этой сборке не входит. Nightly собран с движком Version 1 (legacy). Чтобы включить OpenGL, нужна сборка flavor opengl, а не legacy.</string>
     <string name="unknown_bt_device">Неизвестное устройство</string>
     <string name="obd_vin">VIN</string>
