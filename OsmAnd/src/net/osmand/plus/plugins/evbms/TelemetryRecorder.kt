@@ -35,6 +35,7 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 	private var folderUri: String? = null
 	private var fields: List<TelemetryField> = TelemetryField.parse(null)
 	private var writeGpx = false
+	private var lastFingerprint: String? = null
 
 	fun setFolderUri(uri: String?) {
 		folderUri = uri?.takeIf { it.isNotBlank() }
@@ -61,6 +62,7 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 		if (writeGpx) {
 			openGpx("$stamp.gpx")
 		}
+		lastFingerprint = null
 		return true
 	}
 
@@ -129,8 +131,20 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 
 	@Synchronized
 	fun append(sample: EvTelemetry) {
+		val fingerprint = fields.joinToString("\u001f") { it.fingerprint(sample) }
+		if (fingerprint == lastFingerprint) {
+			return
+		}
+		lastFingerprint = fingerprint
 		appendCsv(sample)
-		appendGpx(sample)
+		appendGpx(sample, null, null)
+	}
+
+	@Synchronized
+	fun appendNamedPoint(sample: EvTelemetry, name: String, description: String) {
+		lastFingerprint = null
+		appendCsv(sample)
+		appendGpx(sample, name, description)
 	}
 
 	private fun appendCsv(sample: EvTelemetry) {
@@ -143,7 +157,7 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 		}
 	}
 
-	private fun appendGpx(sample: EvTelemetry) {
+	private fun appendGpx(sample: EvTelemetry, name: String?, description: String?) {
 		val w = gpxWriter ?: return
 		val lat = sample.lat
 		val lon = sample.lon
@@ -156,6 +170,12 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 			sb.append("""<trkpt lat="""").append(fmt(lat, "%.8f")).append('"')
 				.append(""" lon="""").append(fmt(lon, "%.8f")).append("\">\n")
 			sb.append("<time>").append(iso).append("</time>\n")
+			if (!name.isNullOrBlank()) {
+				sb.append("<name>").append(xml(name)).append("</name>\n")
+			}
+			if (!description.isNullOrBlank()) {
+				sb.append("<desc>").append(xml(description)).append("</desc>\n")
+			}
 			val extras = fields.filter { it != TelemetryField.LAT && it != TelemetryField.LON && it != TelemetryField.TIME_MS }
 			val body = extras.map { it.id to it.csvValue(sample) }.filter { it.second.isNotEmpty() }
 			if (body.isNotEmpty()) {
@@ -189,6 +209,7 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 		} catch (_: Exception) {
 		}
 		csvWriter = null
+		lastFingerprint = null
 	}
 
 	@get:Synchronized

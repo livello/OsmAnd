@@ -196,6 +196,25 @@
 		android:layout="@layout/preference_with_descr"
 		android:title="@string/ev_bms_charge_current_a" />
 
+	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
+		android:key="ev_bms_announce_charge_eta"
+		android:layout="@layout/preference_with_descr_dialog_and_switch"
+		android:summaryOff="@string/shared_string_disabled"
+		android:summaryOn="@string/shared_string_enabled"
+		android:title="@string/ev_bms_announce_charge_eta" />
+
+	<Preference
+		android:key="ev_bms_charge_history"
+		android:layout="@layout/preference_with_descr"
+		android:persistent="false"
+		android:title="@string/ev_bms_charge_history" />
+
+	<Preference
+		android:key="ev_bms_trip_history"
+		android:layout="@layout/preference_with_descr"
+		android:persistent="false"
+		android:title="@string/ev_bms_trip_history" />
+
 	<PreferenceCategory
 		android:key="ev_bms_range"
 		android:layout="@layout/preference_category_with_descr"

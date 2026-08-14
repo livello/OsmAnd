@@ -31,6 +31,8 @@ import net.osmand.plus.views.mapwidgets.widgets.MapWidget
 import net.osmand.plus.widgets.ctxmenu.ContextMenuAdapter
 import net.osmand.plus.widgets.ctxmenu.callback.OnDataChangeUiAdapter
 import net.osmand.plus.widgets.ctxmenu.data.ContextMenuItem
+import org.json.JSONObject
+import java.util.Locale
 
 class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.Listener {
 
@@ -44,6 +46,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		const val DEFAULT_CHARGE_STILL_SEC = 60
 		const val DEFAULT_CHARGE_STILL_KMH = 3
 		const val DEFAULT_CHARGE_CURRENT_A = 5
+		const val CHARGE_ETA_REPEAT_MS = 300_000L
 	}
 
 	val BMS_ADDRESS: CommonPreference<String> =
@@ -108,6 +111,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerIntPreference("ev_bms_battery_freeze_c", 0).makeGlobal().makeShared()
 	val ANNOUNCE_LINK: CommonPreference<Boolean> =
 		registerBooleanPreference("ev_bms_announce_link", true).makeGlobal().makeShared()
+	val ANNOUNCE_CHARGE_ETA: CommonPreference<Boolean> =
+		registerBooleanPreference("ev_bms_announce_charge_eta", true).makeGlobal().makeShared()
 	val HIKE_MODE: CommonPreference<Boolean> =
 		registerBooleanPreference("ev_bms_hike_mode", false).makeGlobal().makeShared()
 	val HIKE_SNAPSHOT: CommonPreference<String> =
@@ -116,11 +121,20 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerIntPreference("ev_bms_charge_end_track_m", 0).makeGlobal()
 	private val CHARGE_CYCLE_ACTIVE: CommonPreference<Boolean> =
 		registerBooleanPreference("ev_bms_charge_cycle_active", false).makeGlobal()
+	private val CHARGE_SESSION: CommonPreference<String> =
+		registerStringPreference("ev_bms_charge_session", "").makeGlobal()
+	private val TRIP_SESSION: CommonPreference<String> =
+		registerStringPreference("ev_bms_trip_session", "").makeGlobal()
+	private val CHARGE_HISTORY: CommonPreference<String> =
+		registerStringPreference("ev_bms_charge_history", "").makeGlobal().makeShared()
+	private val TRIP_HISTORY: CommonPreference<String> =
+		registerStringPreference("ev_bms_trip_history", "").makeGlobal().makeShared()
 
 	private val handler = Handler(Looper.getMainLooper())
 	private val rangeEstimator = RangeEstimator()
 	private val recorder = TelemetryRecorder(app)
 	private val voice = EvVoiceAnnouncer(app)
+	private val historyStore = EvHistoryStore(app)
 	private val hikeMode = HikeModeController(app, this)
 	private val farSnapshot = FarDriverProtocol.FarDriverSnapshot()
 	private val vescSnapshot = VescProtocol.VescSnapshot()
@@ -146,6 +160,26 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private var charging = false
 	private var chargeHold = 0
 	private var chargeExitHold = 0
+	private var chargeStartMs = 0L
+	private var chargeStartAh: Double? = null
+	private var chargeStartTempC: Double? = null
+	private var chargeStartLat: Double? = null
+	private var chargeStartLon: Double? = null
+	private var chargeFrozenCurrentA: Double? = null
+	private var chargeFullAh: Double? = null
+	private var chargeLastAh: Double? = null
+	private var chargeLastAhMs = 0L
+	private var tripStartMs = 0L
+	private var tripStartVoltageV: Double? = null
+	private var tripStartTempC: Double? = null
+	private var tripStartLat: Double? = null
+	private var tripStartLon: Double? = null
+	private var tripMinCellV: Double? = null
+	private var tripLastVoltageV: Double? = null
+	private var tripLastTempC: Double? = null
+	private var tripMovingMs = 0L
+	private var tripLastMoveMs = 0L
+	private val pendingGpxEvents = ArrayList<Pair<String, String>>()
 	private var lastBmsRxMs = 0L
 	private var lastCtrlRxMs = 0L
 	private var pollCellsNext = false
@@ -224,6 +258,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		bmsClient = EvBleUartClient(app, EvBleUartClient.Role.BMS, this)
 		controllerClient = EvBleUartClient(app, EvBleUartClient.Role.CONTROLLER, this)
 		voice.init()
+		restoreSessions()
 		return true
 	}
 
@@ -290,6 +325,32 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		return (odo - start).coerceAtLeast(0.0)
 	}
 
+	fun isCharging(): Boolean = charging
+
+	fun chargeRemainingMs(): Long? {
+		if (!charging) {
+			return null
+		}
+		val current = chargeFrozenCurrentA ?: return null
+		val full = chargeFullAh ?: return null
+		val lastAh = chargeLastAh ?: return null
+		if (current < 0.4 || full <= 0) {
+			return null
+		}
+		val elapsedH = if (chargeLastAhMs > 0L) {
+			(System.currentTimeMillis() - chargeLastAhMs).coerceAtLeast(0L) / 3_600_000.0
+		} else {
+			0.0
+		}
+		val estimatedAh = lastAh + current * elapsedH
+		val leftAh = (full - estimatedAh).coerceAtLeast(0.0)
+		return (leftAh / current * 3_600_000.0).toLong()
+	}
+
+	fun chargeHistory(): List<EvHistoryStore.ChargeRecord> = historyStore.parseCharges(CHARGE_HISTORY.get())
+
+	fun tripHistory(): List<EvHistoryStore.ChargeTripRecord> = historyStore.parseTrips(TRIP_HISTORY.get())
+
 	fun chargeTripKm(): Double? {
 		if (charging) {
 			return 0.0
@@ -317,9 +378,19 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		return (gps ?: 0.0) >= limit || (ctrl ?: 0.0) >= limit
 	}
 
-	private fun updateChargeCycle(currentA: Double?, remainingAh: Double?) {
+	private fun updateChargeCycle(
+		currentA: Double?,
+		remainingAh: Double?,
+		fullAh: Double?,
+		voltageV: Double?,
+		tempC: Double?,
+		minCellV: Double?,
+		loc: Location?,
+		bmsFresh: Boolean
+	) {
 		val now = System.currentTimeMillis()
-		if (isVehicleMoving()) {
+		val moving = isVehicleMoving()
+		if (moving) {
 			stillSinceMs = null
 		} else if (stillSinceMs == null) {
 			stillSinceMs = now
@@ -328,39 +399,365 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		val stillLongEnough = stillSinceMs != null && now - stillSinceMs!! >= stillMs
 		val minA = CHARGE_CURRENT_A.get().toDouble().coerceAtLeast(1.0)
 		val absI = currentA?.let { kotlin.math.abs(it) } ?: 0.0
-		val intoPack = currentA != null && absI >= minA &&
+		val intoPack = bmsFresh && currentA != null && absI >= minA &&
 				(lastChargeAh == null || remainingAh == null || remainingAh >= lastChargeAh!! - 0.02)
 		val chargeLike = stillLongEnough && intoPack
 		if (chargeLike) {
 			chargeHold++
 			chargeExitHold = 0
 			if (!charging && chargeHold >= CHARGE_HOLD_SAMPLES) {
-				charging = true
-				CHARGE_CYCLE_ACTIVE.set(false)
+				beginCharge(now, remainingAh, fullAh, absI, tempC, loc)
 			}
 		} else if (charging) {
 			chargeHold = 0
-			val idle = currentA == null || absI < minA * 0.4
-			val discharging = remainingAh != null && lastChargeAh != null &&
-					lastChargeAh!! - remainingAh >= 0.02
-			if (idle || discharging || isVehicleMoving()) {
-				chargeExitHold++
-				if (chargeExitHold >= CHARGE_HOLD_SAMPLES) {
-					charging = false
+			if (bmsFresh) {
+				val idle = currentA == null || absI < minA * 0.4
+				val discharging = remainingAh != null && lastChargeAh != null &&
+						lastChargeAh!! - remainingAh >= 0.02
+				val full = remainingAh != null && fullAh != null && remainingAh >= fullAh - 0.05
+				if (idle || discharging || moving || full) {
+					chargeExitHold++
+					if (chargeExitHold >= CHARGE_HOLD_SAMPLES) {
+						finishCharge(now, remainingAh, tempC, loc)
+					}
+				} else {
 					chargeExitHold = 0
-					CHARGE_CYCLE_ACTIVE.set(true)
-					CHARGE_END_TRACK_M.set(app.savingTrackHelper.distance.toInt().coerceAtLeast(0))
 				}
 			} else {
 				chargeExitHold = 0
+				val eta = chargeRemainingMs()
+				if (eta != null && eta <= 0L) {
+					finishCharge(now, estimatedRemainingAh(), tempC, loc)
+				}
 			}
 		} else {
 			chargeHold = 0
 			chargeExitHold = 0
 		}
+		if (charging) {
+			if (bmsFresh) {
+				if (remainingAh != null) {
+					chargeLastAh = remainingAh
+					chargeLastAhMs = now
+				}
+				if (absI >= 0.4) {
+					chargeFrozenCurrentA = absI
+				}
+				if (fullAh != null && fullAh > 0) {
+					chargeFullAh = fullAh
+				}
+			}
+			persistChargeSession()
+		} else {
+			updateTripSession(now, moving, voltageV, tempC, minCellV)
+		}
 		if (remainingAh != null) {
 			lastChargeAh = remainingAh
 		}
+	}
+
+	private fun beginCharge(
+		now: Long,
+		remainingAh: Double?,
+		fullAh: Double?,
+		currentA: Double,
+		tempC: Double?,
+		loc: Location?
+	) {
+		if (CHARGE_CYCLE_ACTIVE.get() || tripStartMs > 0L) {
+			finishTrip(now, loc)
+		}
+		charging = true
+		CHARGE_CYCLE_ACTIVE.set(false)
+		chargeStartMs = now
+		chargeStartAh = remainingAh
+		chargeStartTempC = tempC
+		chargeStartLat = loc?.latitude
+		chargeStartLon = loc?.longitude
+		chargeFrozenCurrentA = currentA.takeIf { it >= 0.4 }
+		chargeFullAh = fullAh
+		chargeLastAh = remainingAh
+		chargeLastAhMs = now
+		persistChargeSession()
+		markGpxEvent(
+			app.getString(R.string.ev_bms_gpx_charge_start),
+			chargeEventDescription(start = true, remainingAh, tempC, null)
+		)
+	}
+
+	private fun finishCharge(now: Long, remainingAh: Double?, tempC: Double?, loc: Location?) {
+		val startAh = chargeStartAh
+		val chargedAh = if (startAh != null && remainingAh != null) {
+			(remainingAh - startAh).coerceAtLeast(0.0)
+		} else {
+			null
+		}
+		val record = EvHistoryStore.ChargeRecord(
+			startMs = if (chargeStartMs > 0L) chargeStartMs else now,
+			endMs = now,
+			startTempC = chargeStartTempC,
+			endTempC = tempC,
+			chargedAh = chargedAh,
+			startLat = chargeStartLat,
+			startLon = chargeStartLon,
+			endLat = loc?.latitude,
+			endLon = loc?.longitude
+		)
+		saveChargeRecord(record)
+		markGpxEvent(
+			app.getString(R.string.ev_bms_gpx_charge_end),
+			chargeEventDescription(start = false, remainingAh, tempC, chargedAh)
+		)
+		charging = false
+		chargeExitHold = 0
+		CHARGE_CYCLE_ACTIVE.set(true)
+		CHARGE_END_TRACK_M.set(app.savingTrackHelper.distance.toInt().coerceAtLeast(0))
+		CHARGE_SESSION.set("")
+		clearChargeRuntime()
+		startTripSession(now, loc)
+		if (ANNOUNCE_CHARGE_ETA.get()) {
+			voice.onChargeFinished()
+		}
+	}
+
+	private fun startTripSession(now: Long, loc: Location?) {
+		tripStartMs = now
+		tripStartVoltageV = lastBms?.voltageV ?: ctrlVoltageV()
+		tripStartTempC = batteryAnnounceTempC()
+		tripStartLat = loc?.latitude
+		tripStartLon = loc?.longitude
+		tripMinCellV = minCellVoltageV
+		tripLastVoltageV = tripStartVoltageV
+		tripLastTempC = tripStartTempC
+		tripMovingMs = 0L
+		tripLastMoveMs = 0L
+		persistTripSession()
+	}
+
+	private fun updateTripSession(
+		now: Long,
+		moving: Boolean,
+		voltageV: Double?,
+		tempC: Double?,
+		minCellV: Double?
+	) {
+		if (!CHARGE_CYCLE_ACTIVE.get() || tripStartMs <= 0L) {
+			return
+		}
+		if (moving) {
+			if (tripLastMoveMs > 0L) {
+				tripMovingMs += (now - tripLastMoveMs).coerceAtLeast(0L)
+			}
+			tripLastMoveMs = now
+		} else {
+			tripLastMoveMs = 0L
+		}
+		if (voltageV != null) {
+			tripLastVoltageV = voltageV
+		}
+		if (tempC != null) {
+			tripLastTempC = tempC
+		}
+		if (minCellV != null) {
+			tripMinCellV = minOf(tripMinCellV ?: minCellV, minCellV)
+		}
+		persistTripSession()
+	}
+
+	private fun finishTrip(now: Long, loc: Location?) {
+		if (tripStartMs <= 0L && !CHARGE_CYCLE_ACTIVE.get()) {
+			return
+		}
+		val start = if (tripStartMs > 0L) tripStartMs else now
+		val record = EvHistoryStore.ChargeTripRecord(
+			startMs = start,
+			endMs = now,
+			startVoltageV = tripStartVoltageV,
+			endVoltageV = tripLastVoltageV ?: lastBms?.voltageV,
+			minCellV = tripMinCellV ?: minCellVoltageV,
+			startTempC = tripStartTempC,
+			endTempC = tripLastTempC ?: batteryAnnounceTempC(),
+			distanceKm = chargeTripKm(),
+			movingMs = tripMovingMs,
+			startLat = tripStartLat,
+			startLon = tripStartLon,
+			endLat = loc?.latitude,
+			endLon = loc?.longitude
+		)
+		if (record.distanceKm != null && record.distanceKm > 0.02 || record.movingMs > 30_000L) {
+			saveTripRecord(record)
+			markGpxEvent(
+				app.getString(R.string.ev_bms_gpx_charge_trip),
+				tripEventDescription(record)
+			)
+		}
+		TRIP_SESSION.set("")
+		tripStartMs = 0L
+		tripMovingMs = 0L
+		tripLastMoveMs = 0L
+	}
+
+	private fun estimatedRemainingAh(): Double? {
+		val lastAh = chargeLastAh ?: return null
+		val current = chargeFrozenCurrentA ?: return lastAh
+		if (chargeLastAhMs <= 0L) {
+			return lastAh
+		}
+		val elapsedH = (System.currentTimeMillis() - chargeLastAhMs).coerceAtLeast(0L) / 3_600_000.0
+		return lastAh + current * elapsedH
+	}
+
+	private fun clearChargeRuntime() {
+		chargeStartMs = 0L
+		chargeStartAh = null
+		chargeStartTempC = null
+		chargeStartLat = null
+		chargeStartLon = null
+		chargeFrozenCurrentA = null
+		chargeFullAh = null
+		chargeLastAh = null
+		chargeLastAhMs = 0L
+	}
+
+	private fun persistChargeSession() {
+		if (!charging || chargeStartMs <= 0L) {
+			return
+		}
+		val json = JSONObject()
+		json.put("startMs", chargeStartMs)
+		json.putD("startAh", chargeStartAh)
+		json.putD("startTempC", chargeStartTempC)
+		json.putD("startLat", chargeStartLat)
+		json.putD("startLon", chargeStartLon)
+		json.putD("currentA", chargeFrozenCurrentA)
+		json.putD("fullAh", chargeFullAh)
+		json.putD("lastAh", chargeLastAh)
+		json.put("lastAhMs", chargeLastAhMs)
+		CHARGE_SESSION.set(json.toString())
+	}
+
+	private fun persistTripSession() {
+		if (tripStartMs <= 0L) {
+			return
+		}
+		val json = JSONObject()
+		json.put("startMs", tripStartMs)
+		json.putD("startVoltageV", tripStartVoltageV)
+		json.putD("startTempC", tripStartTempC)
+		json.putD("startLat", tripStartLat)
+		json.putD("startLon", tripStartLon)
+		json.putD("minCellV", tripMinCellV)
+		json.putD("lastVoltageV", tripLastVoltageV)
+		json.putD("lastTempC", tripLastTempC)
+		json.put("movingMs", tripMovingMs)
+		TRIP_SESSION.set(json.toString())
+	}
+
+	private fun restoreSessions() {
+		val chargeRaw = CHARGE_SESSION.get()
+		if (!chargeRaw.isNullOrBlank()) {
+			try {
+				val json = JSONObject(chargeRaw)
+				chargeStartMs = json.optLong("startMs")
+				chargeStartAh = json.optNullableDouble("startAh")
+				chargeStartTempC = json.optNullableDouble("startTempC")
+				chargeStartLat = json.optNullableDouble("startLat")
+				chargeStartLon = json.optNullableDouble("startLon")
+				chargeFrozenCurrentA = json.optNullableDouble("currentA")
+				chargeFullAh = json.optNullableDouble("fullAh")
+				chargeLastAh = json.optNullableDouble("lastAh")
+				chargeLastAhMs = json.optLong("lastAhMs")
+				if (chargeStartMs > 0L) {
+					charging = true
+					CHARGE_CYCLE_ACTIVE.set(false)
+				}
+			} catch (_: Exception) {
+			}
+		}
+		val tripRaw = TRIP_SESSION.get()
+		if (!charging && !tripRaw.isNullOrBlank()) {
+			try {
+				val json = JSONObject(tripRaw)
+				tripStartMs = json.optLong("startMs")
+				tripStartVoltageV = json.optNullableDouble("startVoltageV")
+				tripStartTempC = json.optNullableDouble("startTempC")
+				tripStartLat = json.optNullableDouble("startLat")
+				tripStartLon = json.optNullableDouble("startLon")
+				tripMinCellV = json.optNullableDouble("minCellV")
+				tripLastVoltageV = json.optNullableDouble("lastVoltageV")
+				tripLastTempC = json.optNullableDouble("lastTempC")
+				tripMovingMs = json.optLong("movingMs")
+			} catch (_: Exception) {
+			}
+		}
+	}
+
+	private fun JSONObject.putD(key: String, value: Double?): JSONObject {
+		if (value == null || value.isNaN() || value.isInfinite()) {
+			put(key, JSONObject.NULL)
+		} else {
+			put(key, value)
+		}
+		return this
+	}
+
+	private fun JSONObject.optNullableDouble(key: String): Double? {
+		if (!has(key) || isNull(key)) {
+			return null
+		}
+		val value = optDouble(key, Double.NaN)
+		return if (value.isNaN()) null else value
+	}
+
+	private fun saveChargeRecord(row: EvHistoryStore.ChargeRecord) {
+		val rows = chargeHistory() + row
+		CHARGE_HISTORY.set(historyStore.encodeCharges(rows))
+		historyStore.appendChargeCsv(row)
+	}
+
+	private fun saveTripRecord(row: EvHistoryStore.ChargeTripRecord) {
+		val rows = tripHistory() + row
+		TRIP_HISTORY.set(historyStore.encodeTrips(rows))
+		historyStore.appendTripCsv(row)
+	}
+
+	private fun markGpxEvent(name: String, description: String) {
+		pendingGpxEvents.add(name to description)
+	}
+
+	private fun chargeEventDescription(
+		start: Boolean,
+		remainingAh: Double?,
+		tempC: Double?,
+		chargedAh: Double?
+	): String {
+		val parts = ArrayList<String>()
+		parts.add(app.getString(if (start) R.string.ev_bms_gpx_charge_start else R.string.ev_bms_gpx_charge_end))
+		if (tempC != null) {
+			parts.add(String.format(Locale.US, "%.1f °C", tempC))
+		}
+		if (remainingAh != null) {
+			parts.add(String.format(Locale.US, "%.2f Ah", remainingAh))
+		}
+		if (chargedAh != null) {
+			parts.add(String.format(Locale.US, "+%.2f Ah", chargedAh))
+		}
+		return parts.joinToString(" · ")
+	}
+
+	private fun tripEventDescription(row: EvHistoryStore.ChargeTripRecord): String {
+		val parts = ArrayList<String>()
+		parts.add(app.getString(R.string.ev_bms_gpx_charge_trip))
+		if (row.distanceKm != null) {
+			parts.add(String.format(Locale.US, "%.2f km", row.distanceKm))
+		}
+		if (row.startVoltageV != null && row.endVoltageV != null) {
+			parts.add(String.format(Locale.US, "%.1f→%.1f V", row.startVoltageV, row.endVoltageV))
+		}
+		if (row.minCellV != null) {
+			parts.add(String.format(Locale.US, "min %.3f V", row.minCellV))
+		}
+		return parts.joinToString(" · ")
 	}
 
 	private fun buildStopReport(bmsFresh: Boolean, ctrlFresh: Boolean): EvVoiceAnnouncer.StopReport? {
@@ -689,8 +1086,19 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		val loc = lastLocation
 		val speed = if (loc != null && loc.hasSpeed()) loc.speed * 3.6 else null
 		val remainingAh = bms?.remainingMah?.div(1000.0)
+		val bmsFresh = isBmsFresh()
+		val ctrlFresh = isControllerFresh()
 		updateRestMetrics(bms?.currentA ?: ctrlCurrentA(), bms?.voltageV ?: ctrlVoltageV(), lastCells)
-		updateChargeCycle(bms?.currentA, remainingAh)
+		updateChargeCycle(
+			currentA = bms?.currentA,
+			remainingAh = remainingAh,
+			fullAh = bms?.fullMah?.div(1000.0),
+			voltageV = bms?.voltageV ?: ctrlVoltageV(),
+			tempC = batteryAnnounceTempC(),
+			minCellV = minCellVoltageV,
+			loc = loc,
+			bmsFresh = bmsFresh
+		)
 		rangeEstimator.add(
 			System.currentTimeMillis(),
 			remainingAh,
@@ -737,15 +1145,23 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			gpsUnreliable = rangeEstimator.gpsUnreliable,
 			usedFarDriverDistance = rangeEstimator.usedFarDriverDistance
 		)
-		val bmsFresh = isBmsFresh()
-		val ctrlFresh = isControllerFresh()
+		val bmsFreshAfter = isBmsFresh()
+		val ctrlFreshAfter = isControllerFresh()
 		latestTelemetry = sample
+		val events = ArrayList(pendingGpxEvents)
+		pendingGpxEvents.clear()
 		if (recorder.isRecording) {
-			recorder.append(sample)
+			if (events.isEmpty()) {
+				recorder.append(sample)
+			} else {
+				for ((name, desc) in events) {
+					recorder.appendNamedPoint(sample, name, desc)
+				}
+			}
 		}
 		voice.onLink(
-			bmsUp = bmsFresh,
-			controllerUp = ctrlFresh,
+			bmsUp = bmsFreshAfter,
+			controllerUp = ctrlFreshAfter,
 			expectBms = !BMS_ADDRESS.get().isNullOrEmpty(),
 			expectController = !CONTROLLER_ADDRESS.get().isNullOrEmpty(),
 			enabled = ANNOUNCE_LINK.get()
@@ -789,6 +1205,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			tempIntervalMs,
 			ANNOUNCE_BATTERY_FREEZE.get() && bmsFresh
 		)
+		voice.onChargeEta(chargeRemainingMs(), CHARGE_ETA_REPEAT_MS, ANNOUNCE_CHARGE_ETA.get() && charging)
 	}
 
 	fun isLinkHealthy(): Boolean = isBmsConnected() && isControllerConnected()
@@ -885,6 +1302,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			WidgetType.EV_BMS_CONSUMPTION -> EvBmsTextWidget.Field.CONSUMPTION
 			WidgetType.EV_FAR_TRIP -> EvBmsTextWidget.Field.FAR_TRIP
 			WidgetType.EV_CHARGE_TRIP -> EvBmsTextWidget.Field.CHARGE_TRIP
+			WidgetType.EV_CHARGE_ETA -> EvBmsTextWidget.Field.CHARGE_ETA
 			WidgetType.EV_BMS_VOLTAGE -> EvBmsTextWidget.Field.VOLTAGE
 			WidgetType.EV_BMS_CURRENT -> EvBmsTextWidget.Field.CURRENT
 			WidgetType.EV_BMS_POWER -> EvBmsTextWidget.Field.POWER

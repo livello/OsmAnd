@@ -50,6 +50,9 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 	private var ctrlDownSinceMs: Long? = null
 	private var announcedBmsLost = false
 	private var announcedCtrlLost = false
+	private var lastChargeEtaMs = 0L
+	private var lastChargeEtaBucket = -1
+	private var chargeEtaActive = false
 
 	fun init() {
 		if (tts != null) {
@@ -90,6 +93,8 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 		ctrlDownSinceMs = null
 		announcedBmsLost = false
 		announcedCtrlLost = false
+		chargeEtaActive = false
+		lastChargeEtaBucket = -1
 	}
 
 	fun onLink(
@@ -372,6 +377,47 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 				parts.add(app.getString(R.string.ev_bms_voice_controller, ctrl))
 		}
 		return parts.joinToString(". ")
+	}
+
+	fun onChargeEta(remainingMs: Long?, intervalMs: Long, enabled: Boolean) {
+		if (!enabled || remainingMs == null) {
+			chargeEtaActive = false
+			lastChargeEtaBucket = -1
+			return
+		}
+		val minutes = ((remainingMs + 59_999L) / 60_000L).toInt().coerceAtLeast(0)
+		val bucket = when {
+			minutes > 60 -> 4
+			minutes > 30 -> 3
+			minutes > 10 -> 2
+			minutes > 5 -> 1
+			else -> 0
+		}
+		val now = System.currentTimeMillis()
+		val first = !chargeEtaActive
+		val crossed = lastChargeEtaBucket >= 0 && bucket < lastChargeEtaBucket
+		chargeEtaActive = true
+		if (first || crossed || now - lastChargeEtaMs >= intervalMs) {
+			lastChargeEtaMs = now
+			lastChargeEtaBucket = bucket
+			speak(formatChargeEta(minutes))
+		}
+	}
+
+	fun onChargeFinished() {
+		chargeEtaActive = false
+		lastChargeEtaBucket = -1
+		speak(app.getString(R.string.ev_bms_voice_charge_done))
+	}
+
+	private fun formatChargeEta(totalMinutes: Int): String {
+		val hours = totalMinutes / 60
+		val minutes = totalMinutes % 60
+		return if (hours > 0) {
+			app.getString(R.string.ev_bms_voice_charge_eta, hours, minutes)
+		} else {
+			app.getString(R.string.ev_bms_voice_charge_eta_min, minutes)
+		}
 	}
 
 	private fun speak(text: String) {

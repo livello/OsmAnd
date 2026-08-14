@@ -4492,13 +4492,16 @@
 Температура и ячейки озвучиваются только при живой BLE-связи и свежей телеметрии (несколько секунд). Старые значения после обрыва игнорируются.<br/>
 • 📡 Потеря и восстановление связи с BMS и контроллером, с короткой задержкой, чтобы краткие обрывы не дребезжали.<br/><br/>
 <b>💾 CSV / GPX</b><br/>
-CSV с точкой с запятой и опциональный GPX 1.1 с теми же выбранными полями. Столбцы, папка и экспорт — в настройках плагина.<br/><br/>
+CSV с точкой с запятой и опциональный GPX 1.1 с выбранными полями. Повторы без изменений не пишутся. Старт/конец зарядки и пробег на заряде — именованные точки текущего GPX; откройте файл в «Мои места», чтобы увидеть их на карте.<br/><br/>
+<b>🔌 История зарядок</b><br/>
+Таблицы в настройках плагина: сессии зарядки (время, температура батареи на старте и финише, залитые А·ч по BMS) и пробеги на заряде (напряжения, минимум ячейки, температуры, дистанция, дата, время езды).<br/><br/>
 <b>🥾 Режим «Поход»</b><br/>
 Оставляет запас хода, GPS и телеметрию раз в 5 с, замедляет опрос BLE не реже 5 с, отключает тяжёлые слои карты, 3D, погоду, онлайн-тайлы и лишние Bluetooth-плагины.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Список изменений</b> · %1$s<br/>
-• Пробег на заряде начинается только после стоянки (GPS и контроллер) и зарядного тока — рекуперация и буксировка не сбрасывают счётчик<br/>
-• Телеметрия GPX и выбор полей для CSV / GPX<br/>
-• Режим «Поход» продолжает писать телеметрию раз в 5 с]]></string>
+• Диалог полей телеметрии с живыми значениями; запас хода в логе; «покрытие» переименовано в расход<br/>
+• Без повторной записи неизменённых сэмплов; именованные точки GPX зарядки и пробега на заряде<br/>
+• Виджет и голос «время до конца заряда», в том числе после потери связи с BMS<br/>
+• История зарядок и пробегов на заряде]]></string>
     <string name="ev_bms_widget_group">Тяговая батарея</string>
     <string name="ev_bms_devices">Устройства Bluetooth</string>
     <string name="ev_bms_jbd_title">BMS батареи</string>
@@ -4532,7 +4535,34 @@ CSV с точкой с запятой и опциональный GPX 1.1 с т�
     <string name="ev_bms_field_ctrl_current">Ток контроллера</string>
     <string name="ev_bms_field_rpm">Обороты</string>
     <string name="ev_bms_field_gear">Передача</string>
-    <string name="ev_bms_field_coverage">Покрытие Вт·ч/км</string>
+    <string name="ev_bms_field_coverage">Расход Вт·ч/км</string>
+    <string name="ev_bms_field_range">Запас хода</string>
+    <string name="ev_bms_field_group_gps">GPS</string>
+    <string name="ev_bms_field_group_battery">Батарея</string>
+    <string name="ev_bms_field_group_controller">Контроллер</string>
+    <string name="ev_bms_field_group_ride">Поездка</string>
+    <string name="ev_bms_value_none">—</string>
+    <string name="ev_bms_widget_charge_eta">Время до конца заряда</string>
+    <string name="ev_bms_widget_charge_eta_desc">Оценка оставшегося времени текущей зарядки. Продолжает идти после потери связи с BMS, считая ток неизменным</string>
+    <string name="ev_bms_announce_charge_eta">Озвучивать время до конца заряда</string>
+    <string name="ev_bms_voice_charge_eta">До конца зарядки %1$d часов %2$d минут</string>
+    <string name="ev_bms_voice_charge_eta_min">До конца зарядки %1$d минут</string>
+    <string name="ev_bms_voice_charge_done">Зарядка окончена</string>
+    <string name="ev_bms_charge_history">История зарядок</string>
+    <string name="ev_bms_trip_history">История пробега на заряде</string>
+    <string name="ev_bms_history_count">Записей: %1$d</string>
+    <string name="ev_bms_history_empty">Записей пока нет</string>
+    <string name="ev_bms_history_duration">Длительность %1$s</string>
+    <string name="ev_bms_history_temp">Температура батареи %1$s → %2$s °C</string>
+    <string name="ev_bms_history_charged_ah">Залито %1$s А·ч</string>
+    <string name="ev_bms_history_date">Дата %1$s</string>
+    <string name="ev_bms_history_distance">Расстояние %1$s км</string>
+    <string name="ev_bms_history_ride">Езда %1$s, всего %2$s</string>
+    <string name="ev_bms_history_voltage">Напряжение %1$s → %2$s В</string>
+    <string name="ev_bms_history_min_cell">Минимум ячейки %1$s В</string>
+    <string name="ev_bms_gpx_charge_start">Начало зарядки</string>
+    <string name="ev_bms_gpx_charge_end">Конец зарядки</string>
+    <string name="ev_bms_gpx_charge_trip">Пробег на заряде</string>
     <string name="ev_bms_field_odometer">Одометр</string>
     <string name="ev_bms_field_ctrl_speed">Скорость контроллера</string>
     <string name="ev_bms_announce_soc">Озвучивать заряд батареи</string>

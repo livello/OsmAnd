@@ -26,7 +26,7 @@ class EvBmsTextWidget(
 ) : SimpleWidget(mapActivity, widgetType, customId, widgetsPanel) {
 
 	enum class Field {
-		SOC, RANGE, CONSUMPTION, FAR_TRIP, CHARGE_TRIP, VOLTAGE, CURRENT, POWER, BATTERY_TEMP, MOTOR_TEMP, CONTROLLER_TEMP;
+		SOC, RANGE, CONSUMPTION, FAR_TRIP, CHARGE_TRIP, CHARGE_ETA, VOLTAGE, CURRENT, POWER, BATTERY_TEMP, MOTOR_TEMP, CONTROLLER_TEMP;
 
 		fun controllerLink(): Boolean {
 			return this == FAR_TRIP || this == POWER || this == MOTOR_TEMP || this == CONTROLLER_TEMP
@@ -99,6 +99,17 @@ class EvBmsTextWidget(
 					sub = null
 				}
 			}
+			Field.CHARGE_ETA -> {
+				val ms = plugin.chargeRemainingMs()
+				if (!plugin.isCharging() || ms == null) {
+					text = NO_VALUE
+					sub = null
+				} else {
+					val seconds = (ms / 1000L).toInt().coerceAtLeast(0)
+					text = OsmAndFormatter.getFormattedDurationShort(seconds)
+					sub = null
+				}
+			}
 			Field.VOLTAGE -> {
 				text = sample?.voltageV?.let { String.format(Locale.US, "%.1f", it) } ?: NO_VALUE
 				sub = "V"
@@ -143,7 +154,11 @@ class EvBmsTextWidget(
 	}
 
 	private fun applyLinkFrame() {
-		val linked = if (field.controllerLink()) plugin.isControllerConnected() else plugin.isBmsConnected()
+		val linked = when {
+			field == Field.CHARGE_ETA -> plugin.isCharging() || plugin.isBmsConnected()
+			field.controllerLink() -> plugin.isControllerConnected()
+			else -> plugin.isBmsConnected()
+		}
 		EvWidgetLinkFrame.apply(getView(), linked, app)
 	}
 

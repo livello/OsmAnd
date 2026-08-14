@@ -992,13 +992,16 @@ Optional route profile adds climb energy and credits 55 percent of descent regen
 Temperature and cell alerts speak only while that BLE link is up and telemetry is fresh (a few seconds). Stale values after a drop-out are ignored.<br/>
 • 📡 Link loss and restore for BMS and controller, after a short hold so brief drop-outs do not chatter.<br/><br/>
 <b>💾 CSV / GPX</b><br/>
-Semicolon CSV and optional GPX 1.1 with the same selected fields. Choose columns, folder and export from plugin settings.<br/><br/>
+Semicolon CSV and optional GPX 1.1 with the selected fields. Unchanged samples are not written again. Charge start/end and distance-on-charge are named points on the current GPX track — open the file in My Places to see them on the map.<br/><br/>
+<b>🔌 Charge history</b><br/>
+Tables in plugin settings: charge sessions (time, start/end battery temperature, Ah from the BMS) and distance-on-charge rides (voltages, min cell, temperatures, distance, date, moving time).<br/><br/>
 <b>🥾 Hike mode</b><br/>
 Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
-• Distance on charge starts only after standstill (GPS and controller) plus charge current — ignores regen and towing<br/>
-• GPX telemetry and a field picker for CSV / GPX<br/>
-• Hike mode keeps writing telemetry every 5 s]]></string>
+• Live telemetry field picker with current values; remaining range in the log; coverage labeled as consumption<br/>
+• Skip unchanged telemetry samples; named GPX points for charge and charge-trip<br/>
+• Time-to-full widget and voice while charging, including after BMS link loss<br/>
+• Charge and distance-on-charge history tables]]></string>
     <string name="ev_bms_widget_group">EV battery</string>
     <string name="ev_bms_devices">Bluetooth devices</string>
     <string name="ev_bms_jbd_title">Battery BMS</string>
@@ -1032,7 +1035,34 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_field_ctrl_current">Controller current</string>
     <string name="ev_bms_field_rpm">RPM</string>
     <string name="ev_bms_field_gear">Gear</string>
-    <string name="ev_bms_field_coverage">Coverage Wh/km</string>
+    <string name="ev_bms_field_coverage">Consumption Wh/km</string>
+    <string name="ev_bms_field_range">Remaining range</string>
+    <string name="ev_bms_field_group_gps">GPS</string>
+    <string name="ev_bms_field_group_battery">Battery</string>
+    <string name="ev_bms_field_group_controller">Controller</string>
+    <string name="ev_bms_field_group_ride">Ride</string>
+    <string name="ev_bms_value_none">—</string>
+    <string name="ev_bms_widget_charge_eta">Time to full</string>
+    <string name="ev_bms_widget_charge_eta_desc">Estimated time left on the current charge. Continues after BMS link loss, assuming charge current stays the same</string>
+    <string name="ev_bms_announce_charge_eta">Announce time to full</string>
+    <string name="ev_bms_voice_charge_eta">Until charge complete %1$d hours %2$d minutes</string>
+    <string name="ev_bms_voice_charge_eta_min">Until charge complete %1$d minutes</string>
+    <string name="ev_bms_voice_charge_done">Charge complete</string>
+    <string name="ev_bms_charge_history">Charge history</string>
+    <string name="ev_bms_trip_history">Distance on charge history</string>
+    <string name="ev_bms_history_count">%1$d records</string>
+    <string name="ev_bms_history_empty">No records yet</string>
+    <string name="ev_bms_history_duration">Duration %1$s</string>
+    <string name="ev_bms_history_temp">Battery temperature %1$s → %2$s °C</string>
+    <string name="ev_bms_history_charged_ah">Charged %1$s Ah</string>
+    <string name="ev_bms_history_date">Date %1$s</string>
+    <string name="ev_bms_history_distance">Distance %1$s km</string>
+    <string name="ev_bms_history_ride">Moving %1$s, total %2$s</string>
+    <string name="ev_bms_history_voltage">Voltage %1$s → %2$s V</string>
+    <string name="ev_bms_history_min_cell">Min cell %1$s V</string>
+    <string name="ev_bms_gpx_charge_start">Charge start</string>
+    <string name="ev_bms_gpx_charge_end">Charge end</string>
+    <string name="ev_bms_gpx_charge_trip">Distance on charge</string>
     <string name="ev_bms_field_odometer">Odometer</string>
     <string name="ev_bms_field_ctrl_speed">Controller speed</string>
     <string name="ev_bms_announce_soc">Announce battery charge</string>

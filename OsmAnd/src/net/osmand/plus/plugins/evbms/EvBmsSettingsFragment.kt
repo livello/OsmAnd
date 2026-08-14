@@ -5,7 +5,14 @@ import android.content.Intent
 import android.location.LocationManager
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.view.LayoutInflater
 import android.widget.ArrayAdapter
+import android.widget.CheckBox
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.FragmentManager
@@ -19,7 +26,12 @@ import net.osmand.plus.settings.fragments.BaseSettingsFragment
 import net.osmand.plus.settings.preferences.ListPreferenceEx
 import net.osmand.plus.settings.preferences.SwitchPreferenceEx
 import net.osmand.plus.utils.AndroidUtils
+import net.osmand.plus.utils.ColorUtilities
+import net.osmand.plus.utils.OsmAndFormatter
 import net.osmand.plus.utils.UiUtilities
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanListener {
 
@@ -29,6 +41,18 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 	private var pendingScanRole: EvBleUartClient.Role? = null
 	private var picker: AlertDialog? = null
 	private var pickerAdapter: ArrayAdapter<String>? = null
+	private val uiHandler = Handler(Looper.getMainLooper())
+	private val fieldValueViews = ArrayList<Pair<TelemetryField, TextView>>()
+	private val refreshFieldValues = object : Runnable {
+		override fun run() {
+			val ctx = context ?: return
+			val sample = plugin.latestTelemetry
+			for ((field, view) in fieldValueViews) {
+				view.text = field.liveValue(ctx, sample)
+			}
+			uiHandler.postDelayed(this, 1000)
+		}
+	}
 
 	private val csvFolderLauncher = registerForActivityResult(
 		object : ActivityResultContracts.OpenDocumentTree() {
@@ -94,6 +118,8 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		setupSwitch(plugin.ANNOUNCE_BATTERY_FREEZE.id)
 		setupTempThreshold(plugin.BATTERY_FREEZE_C, arrayOf(5, 0, -5, -10))
 		setupSwitch(plugin.ANNOUNCE_LINK.id)
+		setupSwitch(plugin.ANNOUNCE_CHARGE_ETA.id)
+		setupHistoryPrefs()
 		setupRouteProfile()
 	}
 
@@ -109,6 +135,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 	}
 
 	override fun onDestroyView() {
+		uiHandler.removeCallbacks(refreshFieldValues)
 		dismissPicker()
 		plugin.scanListener = null
 		plugin.stopScans()
@@ -286,6 +313,15 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		pref.summary = plugin.csvFolderSummary()
 	}
 
+	private fun setupHistoryPrefs() {
+		val charges = plugin.chargeHistory().size
+		findPreference<Preference>("ev_bms_charge_history")?.summary =
+			getString(R.string.ev_bms_history_count, charges)
+		val trips = plugin.tripHistory().size
+		findPreference<Preference>("ev_bms_trip_history")?.summary =
+			getString(R.string.ev_bms_history_count, trips)
+	}
+
 	private fun setupSwitch(key: String) {
 		findPreference<SwitchPreferenceEx>(key)
 	}
@@ -311,6 +347,14 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			}
 			"ev_bms_export_csv" -> {
 				showExportDialog(activity)
+				return true
+			}
+			"ev_bms_charge_history" -> {
+				showChargeHistoryDialog(activity)
+				return true
+			}
+			"ev_bms_trip_history" -> {
+				showTripHistoryDialog(activity)
 				return true
 			}
 		}
@@ -365,18 +409,77 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 	}
 
 	private fun showTelemetryFieldsDialog(activity: Activity) {
-		val all = TelemetryField.entries.toTypedArray()
-		val selected = plugin.selectedTelemetryFields().toMutableSet()
-		val labels = all.map { getString(it.titleRes) }.toTypedArray()
-		val checked = BooleanArray(all.size) { all[it] in selected }
 		val themed = UiUtilities.getThemedContext(activity, isNightMode())
+		val selected = plugin.selectedTelemetryFields().toMutableSet()
+		val inflater = LayoutInflater.from(themed)
+		val pad = AndroidUtils.dpToPx(themed, 16f)
+		val root = LinearLayout(themed).apply {
+			orientation = LinearLayout.VERTICAL
+			setPadding(0, pad / 2, 0, pad / 2)
+		}
+		val actions = LinearLayout(themed).apply {
+			orientation = LinearLayout.HORIZONTAL
+			setPadding(pad, 0, pad, pad / 2)
+		}
+		fun actionButton(label: String, onClick: () -> Unit): TextView {
+			return TextView(themed).apply {
+				text = label
+				setTextColor(ColorUtilities.getActiveColor(themed, isNightMode()))
+				setPadding(0, pad / 4, pad, pad / 4)
+				setOnClickListener { onClick() }
+			}
+		}
+		val checkboxes = ArrayList<Pair<TelemetryField, CheckBox>>()
+		fieldValueViews.clear()
+		fun bindChecks() {
+			for ((field, box) in checkboxes) {
+				box.isChecked = field in selected
+			}
+		}
+		actions.addView(actionButton(getString(R.string.shared_string_select_all)) {
+			selected.clear()
+			selected.addAll(TelemetryField.entries)
+			bindChecks()
+		})
+		actions.addView(actionButton(getString(R.string.shared_string_reset)) {
+			selected.clear()
+			selected.addAll(TelemetryField.parse(TelemetryField.DEFAULT_IDS))
+			bindChecks()
+		})
+		root.addView(actions)
+		for ((groupRes, fields) in TelemetryField.grouped()) {
+			val header = TextView(themed).apply {
+				text = getString(groupRes)
+				setTextColor(ColorUtilities.getSecondaryTextColor(themed, isNightMode()))
+				setPadding(pad, pad / 2, pad, pad / 4)
+			}
+			root.addView(header)
+			for (field in fields) {
+				val row = inflater.inflate(R.layout.ev_bms_telemetry_field_row, root, false)
+				val box = row.findViewById<CheckBox>(R.id.compound_button)
+				val title = row.findViewById<TextView>(R.id.title)
+				val value = row.findViewById<TextView>(R.id.value)
+				title.text = getString(field.titleRes)
+				value.text = field.liveValue(themed, plugin.latestTelemetry)
+				box.isChecked = field in selected
+				UiUtilities.setupCompoundButton(box, isNightMode(), UiUtilities.CompoundButtonType.GLOBAL)
+				row.setOnClickListener {
+					box.isChecked = !box.isChecked
+					if (box.isChecked) selected.add(field) else selected.remove(field)
+				}
+				checkboxes.add(field to box)
+				fieldValueViews.add(field to value)
+				root.addView(row)
+			}
+		}
+		val scroll = ScrollView(themed).apply { addView(root) }
+		uiHandler.removeCallbacks(refreshFieldValues)
+		uiHandler.post(refreshFieldValues)
 		AlertDialog.Builder(themed)
 			.setTitle(R.string.ev_bms_telemetry_fields)
-			.setMultiChoiceItems(labels, checked) { _, which, isChecked ->
-				checked[which] = isChecked
-			}
+			.setView(scroll)
 			.setPositiveButton(R.string.shared_string_apply) { _, _ ->
-				val chosen = all.filterIndexed { index, _ -> checked[index] }
+				val chosen = TelemetryField.entries.filter { it in selected }
 				if (chosen.isEmpty()) {
 					app.showToastMessage(R.string.ev_bms_telemetry_fields_empty)
 					return@setPositiveButton
@@ -385,7 +488,89 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 				setupTelemetryFields()
 			}
 			.setNegativeButton(R.string.shared_string_cancel, null)
+			.setOnDismissListener {
+				uiHandler.removeCallbacks(refreshFieldValues)
+				fieldValueViews.clear()
+			}
 			.show()
+	}
+
+	private fun showChargeHistoryDialog(activity: Activity) {
+		val rows = plugin.chargeHistory().asReversed()
+		if (rows.isEmpty()) {
+			app.showToastMessage(R.string.ev_bms_history_empty)
+			return
+		}
+		val themed = UiUtilities.getThemedContext(activity, isNightMode())
+		val text = buildHistoryText(themed) { buf ->
+			for (row in rows) {
+				buf.append(fmtDateTime(row.startMs)).append(" → ").append(fmtTime(row.endMs)).append('\n')
+				buf.append(getString(R.string.ev_bms_history_duration, fmtDuration(row.durationMs()))).append('\n')
+				buf.append(getString(R.string.ev_bms_history_temp, n(row.startTempC), n(row.endTempC))).append('\n')
+				buf.append(getString(R.string.ev_bms_history_charged_ah, n(row.chargedAh))).append("\n\n")
+			}
+		}
+		AlertDialog.Builder(themed)
+			.setTitle(R.string.ev_bms_charge_history)
+			.setView(text)
+			.setPositiveButton(R.string.shared_string_close, null)
+			.show()
+	}
+
+	private fun showTripHistoryDialog(activity: Activity) {
+		val rows = plugin.tripHistory().asReversed()
+		if (rows.isEmpty()) {
+			app.showToastMessage(R.string.ev_bms_history_empty)
+			return
+		}
+		val themed = UiUtilities.getThemedContext(activity, isNightMode())
+		val text = buildHistoryText(themed) { buf ->
+			for (row in rows) {
+				buf.append(fmtDateTime(row.startMs)).append(" → ").append(fmtTime(row.endMs)).append('\n')
+				buf.append(getString(R.string.ev_bms_history_date, fmtDate(row.startMs))).append('\n')
+				buf.append(getString(R.string.ev_bms_history_distance, n(row.distanceKm))).append('\n')
+				buf.append(getString(R.string.ev_bms_history_ride, fmtDuration(row.movingMs), fmtDuration(row.durationMs()))).append('\n')
+				buf.append(getString(R.string.ev_bms_history_voltage, n(row.startVoltageV), n(row.endVoltageV))).append('\n')
+				buf.append(getString(R.string.ev_bms_history_min_cell, n(row.minCellV))).append('\n')
+				buf.append(getString(R.string.ev_bms_history_temp, n(row.startTempC), n(row.endTempC))).append("\n\n")
+			}
+		}
+		AlertDialog.Builder(themed)
+			.setTitle(R.string.ev_bms_trip_history)
+			.setView(text)
+			.setPositiveButton(R.string.shared_string_close, null)
+			.show()
+	}
+
+	private fun buildHistoryText(themed: android.content.Context, fill: (StringBuilder) -> Unit): ScrollView {
+		val pad = AndroidUtils.dpToPx(themed, 16f)
+		val view = TextView(themed).apply {
+			setPadding(pad, pad, pad, pad)
+			setTextIsSelectable(true)
+			val buf = StringBuilder()
+			fill(buf)
+			text = buf.toString().trim()
+		}
+		return ScrollView(themed).apply { addView(view) }
+	}
+
+	private fun fmtDateTime(ms: Long): String =
+		SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(ms))
+
+	private fun fmtTime(ms: Long): String =
+		SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(ms))
+
+	private fun fmtDate(ms: Long): String =
+		SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(Date(ms))
+
+	private fun fmtDuration(ms: Long): String =
+		OsmAndFormatter.getFormattedDurationShort((ms / 1000L).toInt().coerceAtLeast(0))
+
+	private fun n(v: Double?): String {
+		if (v == null || v.isNaN() || v.isInfinite()) {
+			return getString(R.string.ev_bms_value_none)
+		}
+		return String.format(Locale.US, "%.2f", v)
 	}
 
 	private fun showExportDialog(activity: Activity) {
