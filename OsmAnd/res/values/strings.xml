@@ -961,7 +961,23 @@ You will be able to pair this scanner again at any time.</string>
     • Intake temperature, Ambient temperature, Coolant temperature, Engine Oil Temperature\n
     • Vehicle speed, Throttle Position, Battery voltage\n</string>
     <string name="ev_bms_plugin_name">EV BMS + FarDriver</string>
-    <string name="ev_bms_plugin_description">Connect to a JBD/Xiaoxiang or ANT BMS and a FarDriver ND96530 controller over Bluetooth LE. Records VESC Tool-compatible CSV telemetry, estimates remaining range from GPS and 5-minute average battery use, announces state of charge, remaining range when stopped, and warns when range is less than the remaining navigation route.</string>
+    <string name="ev_bms_plugin_description"><![CDATA[🔋 Live battery and motor telemetry over Bluetooth LE. Green widget frame when both BMS and FarDriver links are up.<br/><br/>
+<b>📡 Devices</b><br/>
+• JBD / Xiaoxiang BMS (FF00) or ANT BMS (FFE0 / FFE1)<br/>
+• FarDriver ND96530 controller (FFE0 / FFEC)<br/>
+• Widgets show a green frame only when both links are connected<br/><br/>
+<b>📏 Remaining range</b><br/>
+Energy used versus distance over a rolling 5-minute window. Distance prefers GPS. If GPS jumps, accuracy is worse than 40 m, or implied speed is above 160 km/h, the FarDriver odometer is used instead.<br/><br/>
+Coverage Wh/km is the most conservative of: the 5-minute window, the trip average, FarDriver average Wh/km, and the 80th percentile of recent segments. Remaining energy is remaining Ah × rest pack voltage, then reduced by:<br/>
+• Weak cell: rest min cell between 3.00 V (cutoff) and 3.50 V, compared with remaining Ah<br/>
+• Temperature: full above 20 °C, down to about 50 percent in frost<br/>
+Optional route profile adds climb energy and credits 55 percent of descent regen for a 280 kg vehicle.<br/><br/>
+<b>⚠️ Cell voltage alerts</b><br/>
+Min cell voltage is sampled only while pack current is below 5 A, so sag under load is ignored. Default: low below 3.50 V, critically low below 3.30 V. Thresholds and repeat interval are in plugin settings. Critical alerts interrupt a low alert immediately.<br/><br/>
+<b>🗣️ Other voice</b><br/>
+SOC steps, remaining range once a minute when stopped, and a warning when range is less than the remaining navigation distance.<br/><br/>
+<b>💾 CSV</b><br/>
+VESC Tool-compatible semicolon logs, with a folder picker and export. Hike mode keeps range and slows BLE polling while stopping CSV and heavy map layers.]]></string>
     <string name="ev_bms_widget_group">EV battery</string>
     <string name="ev_bms_devices">Bluetooth devices</string>
     <string name="ev_bms_jbd_title">Battery BMS</string>
@@ -1031,6 +1047,12 @@ You will be able to pair this scanner again at any time.</string>
     <string name="ev_bms_voice_range_short">Remaining range is less than the route. Range %1$d kilometers, route %2$d kilometers</string>
     <string name="ev_bms_widget_battery_temp">Battery temperature</string>
     <string name="ev_bms_widget_battery_temp_desc">Battery pack temperature from the BMS</string>
+    <string name="ev_bms_announce_cell_voltage">Cell voltage alerts</string>
+    <string name="ev_bms_low_cell">Low battery threshold</string>
+    <string name="ev_bms_critical_cell">Critical battery threshold</string>
+    <string name="ev_bms_cell_alert_interval">Cell alert interval</string>
+    <string name="ev_bms_voice_cell_low">Low battery. Minimum cell %1$s volts</string>
+    <string name="ev_bms_voice_cell_critical">Critically low battery. Minimum cell %1$s volts</string>
     <string name="map_rendering_engine_v2_unavailable">Version 2 (OpenGL) is not included in this APK. This Nightly build uses the legacy renderer. Rebuild with the OpenGL flavor to enable it.</string>
     <string name="background_opacity">Background opacity</string>
     <string name="corner_radius">Corner radius</string>

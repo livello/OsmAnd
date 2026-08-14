@@ -34,6 +34,7 @@ class EvHikeWidget(
 			setIcons(widgetType)
 			updateWidgetView()
 		}
+		EvWidgetLinkFrame.apply(view, plugin.isLinkHealthy(), app)
 	}
 
 	override fun getOnClickListener(): View.OnClickListener {

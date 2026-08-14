@@ -76,6 +76,10 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		setupSwitch(plugin.ANNOUNCE_RANGE_ON_STOP.id)
 		setupSwitch(plugin.ANNOUNCE_RANGE_VS_ROUTE.id)
 		setupStopSpeed()
+		setupSwitch(plugin.ANNOUNCE_CELL_VOLTAGE.id)
+		setupCellThreshold(plugin.LOW_CELL_MV, arrayOf(3600, 3550, 3500, 3450, 3400))
+		setupCellThreshold(plugin.CRITICAL_CELL_MV, arrayOf(3400, 3350, 3300, 3250, 3200, 3100))
+		setupCellAlertInterval()
 		setupRouteProfile()
 	}
 
@@ -139,6 +143,20 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		pref.setEntries(arrayOf("2 km/h", "3 km/h", "5 km/h"))
 		pref.setEntryValues(arrayOf<Any>(2, 3, 5))
 		pref.setValue(plugin.STOP_SPEED_KMH.get())
+	}
+
+	private fun setupCellThreshold(prefHolder: net.osmand.plus.settings.backend.preferences.CommonPreference<Int>, millivolts: Array<Int>) {
+		val pref = findPreference<ListPreferenceEx>(prefHolder.id) ?: return
+		pref.setEntries(millivolts.map { String.format(java.util.Locale.US, "%.2f V", it / 1000.0) }.toTypedArray())
+		pref.setEntryValues(millivolts.map { it as Any }.toTypedArray())
+		pref.setValue(prefHolder.get())
+	}
+
+	private fun setupCellAlertInterval() {
+		val pref = findPreference<ListPreferenceEx>(plugin.CELL_ALERT_INTERVAL_SEC.id) ?: return
+		pref.setEntries(arrayOf("15 s", "30 s", "1 min", "2 min", "5 min"))
+		pref.setEntryValues(arrayOf<Any>(15, 30, 60, 120, 300))
+		pref.setValue(plugin.CELL_ALERT_INTERVAL_SEC.get())
 	}
 
 	private fun setupRouteProfile() {

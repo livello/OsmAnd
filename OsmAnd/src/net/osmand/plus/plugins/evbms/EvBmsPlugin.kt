@@ -1,6 +1,7 @@
 package net.osmand.plus.plugins.evbms
 
 import android.app.Activity
+import androidx.core.text.HtmlCompat
 import android.graphics.drawable.Drawable
 import android.os.Handler
 import android.os.Looper
@@ -67,6 +68,14 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerStringPreference("ev_bms_csv_folder_uri", "").makeGlobal().makeShared()
 	val ANNOUNCE_RANGE_VS_ROUTE: CommonPreference<Boolean> =
 		registerBooleanPreference("ev_bms_announce_range_vs_route", true).makeGlobal().makeShared()
+	val ANNOUNCE_CELL_VOLTAGE: CommonPreference<Boolean> =
+		registerBooleanPreference("ev_bms_announce_cell_voltage", true).makeGlobal().makeShared()
+	val LOW_CELL_MV: CommonPreference<Int> =
+		registerIntPreference("ev_bms_low_cell_mv", 3500).makeGlobal().makeShared()
+	val CRITICAL_CELL_MV: CommonPreference<Int> =
+		registerIntPreference("ev_bms_critical_cell_mv", 3300).makeGlobal().makeShared()
+	val CELL_ALERT_INTERVAL_SEC: CommonPreference<Int> =
+		registerIntPreference("ev_bms_cell_alert_interval_sec", 60).makeGlobal().makeShared()
 	val HIKE_MODE: CommonPreference<Boolean> =
 		registerBooleanPreference("ev_bms_hike_mode", false).makeGlobal().makeShared()
 	val HIKE_SNAPSHOT: CommonPreference<String> =
@@ -130,7 +139,10 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	}
 
 	override fun getDescription(linksEnabled: Boolean): CharSequence {
-		return app.getString(R.string.ev_bms_plugin_description)
+		return HtmlCompat.fromHtml(
+			app.getString(R.string.ev_bms_plugin_description),
+			HtmlCompat.FROM_HTML_MODE_LEGACY
+		)
 	}
 
 	override fun getLogoResourceId(): Int {
@@ -544,7 +556,18 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			getRouteLeftKm(),
 			ANNOUNCE_RANGE_VS_ROUTE.get()
 		)
+		voice.onRestCellVoltage(
+			minCellVoltageV,
+			sample.currentA,
+			REST_CURRENT_A,
+			LOW_CELL_MV.get() / 1000.0,
+			CRITICAL_CELL_MV.get() / 1000.0,
+			CELL_ALERT_INTERVAL_SEC.get().toLong().coerceAtLeast(15L) * 1000L,
+			ANNOUNCE_CELL_VOLTAGE.get()
+		)
 	}
+
+	fun isLinkHealthy(): Boolean = isBmsConnected() && isControllerConnected()
 
 	override fun createWidgets(
 		mapActivity: MapActivity,

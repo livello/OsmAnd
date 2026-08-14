@@ -93,6 +93,28 @@
 		android:layout="@layout/preference_with_descr"
 		android:title="@string/ev_bms_stop_speed" />
 
+	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
+		android:key="ev_bms_announce_cell_voltage"
+		android:layout="@layout/preference_with_descr_dialog_and_switch"
+		android:summaryOff="@string/shared_string_disabled"
+		android:summaryOn="@string/shared_string_enabled"
+		android:title="@string/ev_bms_announce_cell_voltage" />
+
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="ev_bms_low_cell_mv"
+		android:layout="@layout/preference_with_descr"
+		android:title="@string/ev_bms_low_cell" />
+
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="ev_bms_critical_cell_mv"
+		android:layout="@layout/preference_with_descr"
+		android:title="@string/ev_bms_critical_cell" />
+
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="ev_bms_cell_alert_interval_sec"
+		android:layout="@layout/preference_with_descr"
+		android:title="@string/ev_bms_cell_alert_interval" />
+
 	<PreferenceCategory
 		android:key="ev_bms_range"
 		android:layout="@layout/preference_category_with_descr"

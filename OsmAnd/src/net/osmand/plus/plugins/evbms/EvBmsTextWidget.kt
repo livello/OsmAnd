@@ -124,6 +124,7 @@ class EvBmsTextWidget(
 			cacheCompact = compact
 			updateWidgetView()
 		}
+		EvWidgetLinkFrame.apply(view, plugin.isLinkHealthy(), app)
 	}
 
 	override fun shouldShowIcon(): Boolean {

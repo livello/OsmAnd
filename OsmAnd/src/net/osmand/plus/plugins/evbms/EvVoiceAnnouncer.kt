@@ -35,6 +35,8 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 	private var lastRangeAnnounceMs = 0L
 	private var lastRangeShortMs = 0L
 	private var rangeShortActive = false
+	private var lastCellAlertMs = 0L
+	private var lastCellAlertLevel = 0
 
 	fun init() {
 		if (tts != null) {
@@ -65,6 +67,7 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 		lastSpokenSoc = null
 		stoppedSinceMs = null
 		rangeShortActive = false
+		lastCellAlertLevel = 0
 	}
 
 	fun onSoc(soc: Int?, stepPercent: Int, enabled: Boolean) {
@@ -96,6 +99,48 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 		} else if (rangeKm >= routeLeftKm) {
 			rangeShortActive = false
 		}
+	}
+
+	fun onRestCellVoltage(
+		minCellV: Double?,
+		currentA: Double?,
+		restCurrentA: Double,
+		lowV: Double,
+		criticalV: Double,
+		intervalMs: Long,
+		enabled: Boolean
+	) {
+		if (!enabled || minCellV == null || currentA == null) {
+			return
+		}
+		if (kotlin.math.abs(currentA) > restCurrentA) {
+			return
+		}
+		val crit = kotlin.math.min(criticalV, lowV - 0.05)
+		val level = when {
+			minCellV < crit -> 2
+			minCellV < lowV -> 1
+			else -> 0
+		}
+		if (level == 0) {
+			lastCellAlertLevel = 0
+			return
+		}
+		val now = System.currentTimeMillis()
+		val escalate = level > lastCellAlertLevel
+		if (!escalate && now - lastCellAlertMs < intervalMs) {
+			lastCellAlertLevel = level
+			return
+		}
+		lastCellAlertMs = now
+		lastCellAlertLevel = level
+		val voltage = String.format(Locale.US, "%.2f", minCellV)
+		speak(
+			app.getString(
+				if (level >= 2) R.string.ev_bms_voice_cell_critical else R.string.ev_bms_voice_cell_low,
+				voltage
+			)
+		)
 	}
 
 	fun onMotion(speedKmh: Double?, report: StopReport?, stopSpeedKmh: Double, enabled: Boolean) {
