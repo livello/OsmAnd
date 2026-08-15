@@ -1,12 +1,14 @@
 package net.osmand.plus.plugins.evbms
 
 import android.view.View
+import android.view.ViewGroup
 import net.osmand.plus.R
 import net.osmand.plus.activities.MapActivity
 import net.osmand.plus.plugins.PluginsHelper
 import net.osmand.plus.views.layers.base.OsmandMapLayer.DrawSettings
 import net.osmand.plus.views.mapwidgets.WidgetType
 import net.osmand.plus.views.mapwidgets.WidgetsPanel
+import net.osmand.plus.views.mapwidgets.widgets.MapWidget
 import net.osmand.plus.views.mapwidgets.widgets.SimpleWidget
 
 class EvHikeWidget(
@@ -21,6 +23,20 @@ class EvHikeWidget(
 	init {
 		updateWidgetView()
 		setIcons(widgetType)
+		EvWidgetChrome.applySideLayout(view, panel)
+	}
+
+	override fun attachView(
+		container: ViewGroup,
+		panel: WidgetsPanel,
+		followingWidgets: MutableList<MapWidget>
+	) {
+		EvWidgetChrome.attach(this, container, panel)
+	}
+
+	override fun recreateViewInternal() {
+		super.recreateViewInternal()
+		EvWidgetChrome.applySideLayout(view, panel)
 	}
 
 	override fun updateSimpleWidgetInfo(drawSettings: DrawSettings?) {
@@ -34,13 +50,10 @@ class EvHikeWidget(
 			setIcons(widgetType)
 			updateWidgetView()
 		}
+		EvWidgetChrome.applySideLayout(view, panel)
 	}
 
 	override fun getOnClickListener(): View.OnClickListener {
-		return View.OnClickListener {
-			plugin.toggleHikeMode(mapActivity)
-			cacheOn = null
-			updateSimpleWidgetInfo(null)
-		}
+		return View.OnClickListener { plugin.askShowSettingsDialog(mapActivity) }
 	}
 }

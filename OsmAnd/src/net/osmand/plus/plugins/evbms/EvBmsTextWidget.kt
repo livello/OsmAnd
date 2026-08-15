@@ -1,6 +1,8 @@
 package net.osmand.plus.plugins.evbms
 
+import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import net.osmand.plus.R
 import net.osmand.plus.activities.MapActivity
 import net.osmand.plus.helpers.AndroidUiHelper
@@ -12,6 +14,7 @@ import net.osmand.plus.utils.OsmAndFormatter
 import net.osmand.plus.views.layers.base.OsmandMapLayer.DrawSettings
 import net.osmand.plus.views.mapwidgets.WidgetType
 import net.osmand.plus.views.mapwidgets.WidgetsPanel
+import net.osmand.plus.views.mapwidgets.widgets.MapWidget
 import net.osmand.plus.views.mapwidgets.widgets.SimpleWidget
 import net.osmand.plus.widgets.popup.PopUpMenuItem
 import net.osmand.util.Algorithms
@@ -40,117 +43,91 @@ class EvBmsTextWidget(
 	private val plugin = PluginsHelper.requirePlugin(EvBmsPlugin::class.java)
 	private val compactPref: CommonPreference<Boolean> = registerCompactPref(customId)
 	private var cacheText: String? = null
-	private var cacheSub: String? = null
 	private var cacheCompact: Boolean? = null
 
 	init {
 		setText(NO_VALUE, null)
 		setIcons(widgetType)
 		updateWidgetView()
+		EvWidgetChrome.applySideLayout(view, panel)
 		applyLinkFrame()
+	}
+
+	override fun attachView(
+		container: ViewGroup,
+		panel: WidgetsPanel,
+		followingWidgets: MutableList<MapWidget>
+	) {
+		EvWidgetChrome.attach(this, container, panel)
+	}
+
+	override fun recreateViewInternal() {
+		super.recreateViewInternal()
+		EvWidgetChrome.applySideLayout(view, panel)
+		applyLinkFrame()
+	}
+
+	override fun updateValueAlign(fullRow: Boolean) {
+		if (isVerticalWidget()) {
+			super.updateValueAlign(fullRow)
+			return
+		}
+		val gravity = EvWidgetChrome.sideGravity(panel) or Gravity.CENTER_VERTICAL
+		textView.setGravity(gravity)
+		smallTextView?.setGravity(gravity)
+		EvWidgetChrome.applySideLayout(view, panel)
 	}
 
 	override fun updateSimpleWidgetInfo(drawSettings: DrawSettings?) {
 		val sample = plugin.latestTelemetry
-		var text: String
-		var sub: String?
-		when (field) {
-			Field.SOC -> {
-				text = sample?.socPercent?.toString() ?: NO_VALUE
-				sub = "%"
-			}
-			Field.RANGE -> {
-				val km = sample?.remainingRangeKm
-				if (km == null) {
-					text = NO_VALUE
-					sub = null
-				} else {
-					text = OsmAndFormatter.getFormattedDistance((km * 1000).toFloat(), app)
-					sub = null
-				}
-			}
-			Field.CONSUMPTION -> {
-				val wh = sample?.consumptionWhPerKm
-				if (wh == null) {
-					text = NO_VALUE
-					sub = null
-				} else {
-					text = String.format(Locale.US, "%.0f", wh)
-					sub = app.getString(R.string.ev_bms_unit_wh_per_km)
-				}
-			}
-			Field.FAR_TRIP -> {
-				val km = sample?.farTripKm
-				if (km == null) {
-					text = NO_VALUE
-					sub = null
-				} else {
-					text = OsmAndFormatter.getFormattedDistance((km * 1000).toFloat(), app)
-					sub = null
-				}
-			}
-			Field.CHARGE_TRIP -> {
-				val km = sample?.chargeTripKm
-				if (km == null) {
-					text = NO_VALUE
-					sub = null
-				} else {
-					text = OsmAndFormatter.getFormattedDistance((km * 1000).toFloat(), app)
-					sub = null
-				}
-			}
+		val text: String = when (field) {
+			Field.SOC -> sample?.socPercent?.toString() ?: NO_VALUE
+			Field.RANGE -> formatMetricKm(sample?.remainingRangeKm)
+			Field.CONSUMPTION -> sample?.consumptionWhPerKm?.let { String.format(Locale.US, "%.0f", it) } ?: NO_VALUE
+			Field.FAR_TRIP -> formatMetricKm(sample?.farTripKm)
+			Field.CHARGE_TRIP -> formatMetricKm(sample?.chargeTripKm)
 			Field.CHARGE_ETA -> {
 				val ms = plugin.chargeRemainingMs()
 				if (!plugin.isCharging() || ms == null) {
-					text = NO_VALUE
-					sub = null
+					NO_VALUE
 				} else {
-					val seconds = (ms / 1000L).toInt().coerceAtLeast(0)
-					text = OsmAndFormatter.getFormattedDurationShort(seconds)
-					sub = null
+					OsmAndFormatter.getFormattedDurationShort((ms / 1000L).toInt().coerceAtLeast(0))
 				}
 			}
-			Field.VOLTAGE -> {
-				text = sample?.voltageV?.let { String.format(Locale.US, "%.1f", it) } ?: NO_VALUE
-				sub = "V"
-			}
-			Field.CURRENT -> {
-				text = sample?.currentA?.let { String.format(Locale.US, "%.1f", it) } ?: NO_VALUE
-				sub = "A"
-			}
+			Field.VOLTAGE -> sample?.voltageV?.let { String.format(Locale.US, "%.1f", it) } ?: NO_VALUE
+			Field.CURRENT -> sample?.currentA?.let { String.format(Locale.US, "%.1f", it) } ?: NO_VALUE
 			Field.POWER -> {
 				val w = sample?.controllerPowerW ?: sample?.let { s ->
 					if (s.voltageV != null && s.currentA != null) s.voltageV * s.currentA else null
 				}
-				text = w?.let { String.format(Locale.US, "%.0f", it) } ?: NO_VALUE
-				sub = "W"
+				w?.let { String.format(Locale.US, "%.0f", it) } ?: NO_VALUE
 			}
-			Field.BATTERY_TEMP -> {
-				text = sample?.bmsTempC?.let { String.format(Locale.US, "%.0f", it) } ?: NO_VALUE
-				sub = "°C"
-			}
-			Field.MOTOR_TEMP -> {
-				text = sample?.motorTempC?.let { String.format(Locale.US, "%.0f", it) } ?: NO_VALUE
-				sub = "°C"
-			}
-			Field.CONTROLLER_TEMP -> {
-				text = sample?.controllerTempC?.let { String.format(Locale.US, "%.0f", it) } ?: NO_VALUE
-				sub = "°C"
-			}
+			Field.BATTERY_TEMP -> sample?.bmsTempC?.let { String.format(Locale.US, "%.0f", it) } ?: NO_VALUE
+			Field.MOTOR_TEMP -> sample?.motorTempC?.let { String.format(Locale.US, "%.0f", it) } ?: NO_VALUE
+			Field.CONTROLLER_TEMP -> sample?.controllerTempC?.let { String.format(Locale.US, "%.0f", it) } ?: NO_VALUE
 		}
 		val compact = isCompact()
-		if (compact && text != NO_VALUE && sub != null) {
-			text = glueUnit(text, sub)
-			sub = null
-		}
-		if (text != cacheText || sub != cacheSub || compact != cacheCompact) {
-			setText(text, sub)
+		if (text != cacheText || compact != cacheCompact) {
+			setText(text, null)
+			AndroidUiHelper.updateVisibility(smallTextView, false)
+			AndroidUiHelper.updateVisibility(smallTextViewShadow, false)
 			cacheText = text
-			cacheSub = sub
 			cacheCompact = compact
 			updateWidgetView()
 		}
 		applyLinkFrame()
+		EvWidgetChrome.applySideLayout(view, panel)
+	}
+
+	private fun formatMetricKm(km: Double?): String {
+		if (km == null) {
+			return NO_VALUE
+		}
+		return if (km >= 10.0) {
+			String.format(Locale.US, "%.0f", km)
+		} else {
+			String.format(Locale.US, "%.1f", km)
+		}
 	}
 
 	private fun applyLinkFrame() {
@@ -159,7 +136,7 @@ class EvBmsTextWidget(
 			field.controllerLink() -> plugin.isControllerConnected()
 			else -> plugin.isBmsConnected()
 		}
-		EvWidgetLinkFrame.apply(getView(), linked, app)
+		EvWidgetLinkFrame.apply(view, linked, panel)
 	}
 
 	override fun shouldShowIcon(): Boolean {
@@ -175,7 +152,7 @@ class EvBmsTextWidget(
 	}
 
 	override fun getOnClickListener(): View.OnClickListener {
-		return View.OnClickListener { toggleCompact() }
+		return View.OnClickListener { plugin.askShowSettingsDialog(mapActivity) }
 	}
 
 	override fun getWidgetActions(): MutableList<PopUpMenuItem> {
@@ -213,10 +190,6 @@ class EvBmsTextWidget(
 	}
 
 	private fun isCompact(): Boolean = compactPref.get()
-
-	private fun glueUnit(text: String, unit: String): String {
-		return if (unit.startsWith("%") || unit.startsWith("°")) text + unit else "$text $unit"
-	}
 
 	private fun registerCompactPref(customId: String?): CommonPreference<Boolean> {
 		val prefId = if (Algorithms.isEmpty(customId)) {

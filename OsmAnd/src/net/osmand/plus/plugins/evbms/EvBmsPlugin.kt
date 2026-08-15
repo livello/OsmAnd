@@ -6,6 +6,7 @@ import android.graphics.drawable.Drawable
 import android.os.Handler
 import android.os.Looper
 import android.view.View
+import androidx.fragment.app.FragmentActivity
 import net.osmand.Location
 import net.osmand.aidlapi.OsmAndCustomizationConstants
 import net.osmand.plus.OsmandApplication
@@ -1385,6 +1386,10 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 
 	fun shareCsv(activity: Activity, uris: List<android.net.Uri>) {
 		recorder.share(activity, uris)
+	}
+
+	fun askShowSettingsDialog(activity: FragmentActivity) {
+		EvBmsSettingsBottomSheet.showInstance(activity.supportFragmentManager)
 	}
 
 	private fun activePollIntervalMs(): Long {

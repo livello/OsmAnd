@@ -33,6 +33,18 @@
 		android:title="@string/ev_bms_controller_protocol" />
 
 	<PreferenceCategory
+		android:key="ev_bms_modes"
+		android:layout="@layout/preference_category_with_descr"
+		android:title="@string/ev_bms_widget_hike" />
+
+	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
+		android:key="ev_bms_hike_mode"
+		android:layout="@layout/preference_with_descr_dialog_and_switch"
+		android:summaryOff="@string/shared_string_disabled"
+		android:summaryOn="@string/shared_string_enabled"
+		android:title="@string/ev_bms_widget_hike" />
+
+	<PreferenceCategory
 		android:key="ev_bms_recording"
 		android:layout="@layout/preference_category_with_descr"
 		android:title="@string/ev_bms_recording" />

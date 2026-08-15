@@ -960,8 +960,8 @@ You will be able to pair this scanner again at any time.</string>
     • Fuel consumption, Fuel pressure, Remaining fuel\n
     • Intake temperature, Ambient temperature, Coolant temperature, Engine Oil Temperature\n
     • Vehicle speed, Throttle Position, Battery voltage\n</string>
-    <string name="ev_bms_plugin_name">EV BMS + controller</string>
-    <string name="ev_bms_plugin_description"><![CDATA[🔋 <b>EV BMS + controller</b> — live battery and motor telemetry over Bluetooth LE. Add widgets from Configure screen → EV battery. BMS widgets get a <font color="#2e7d32">green</font> frame when the BMS link is up and a <font color="#c62828">red</font> frame when it is lost. Controller widgets do the same for the motor controller.<br/><br/>
+    <string name="ev_bms_plugin_name">EV-Telemetry</string>
+    <string name="ev_bms_plugin_description"><![CDATA[🔋 <b>EV-Telemetry</b> — live battery and motor telemetry over Bluetooth LE. Add widgets from Configure screen → EV-Telemetry. BMS widgets show a <font color="#2e7d32">green</font> edge strip when the BMS link is up and a <font color="#c62828">red</font> strip when it is lost. Controller widgets do the same for the motor controller.<br/><br/>
 <b>📡 Devices</b><br/>
 • BMS: JBD / Xiaoxiang (service FF00) or ANT (FFE0 / FFE1). Protocol Auto / JBD / ANT.<br/>
 • Controller: FarDriver (FFE0 / FFEC) or VESC over Nordic UART. Protocol Auto / FarDriver / VESC.<br/>
@@ -972,7 +972,7 @@ You will be able to pair this scanner again at any time.</string>
 • 🔌 Distance on charge — trip-recording distance after a real charge cycle ends.<br/>
 • 🛵 Controller trip, motor power, motor temperature, controller / MOSFET temperature.<br/>
 • 🥾 Hike — lightens the map and slows BLE polling to 5 s, while telemetry keeps writing.<br/>
-Tap a numeric widget to switch compact numbers / labels.<br/><br/>
+Tap a plugin widget to open all plugin settings. Long-press a numeric widget for compact numbers / labels.<br/><br/>
 <b>🔌 Distance on charge</b><br/>
 A charge cycle starts only when GPS and the controller show no motion for the standstill time (default 1 minute) and pack current is at least the charge-current threshold. Regen on a descent, hard braking and being towed do not reset the counter. When charging ends, the widget uses OsmAnd trip recording distance. Start or keep recording before you unplug. A new recording session resets the baseline. The widget shows a dash until the first charge-end is seen in this session.<br/><br/>
 <b>📏 Remaining range</b><br/>
@@ -998,11 +998,14 @@ Tables in plugin settings: charge sessions (time, start/end battery temperature,
 <b>🥾 Hike mode</b><br/>
 Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+• Plugin renamed to EV-Telemetry; widgets right-align on the right panel with independent width<br/>
+• Link indicator is a 5 px edge strip; widgets show metric values without units<br/>
+• Tap a widget to open plugin settings (dismiss by tapping outside)<br/>
 • Live telemetry field picker with current values; remaining range in the log; coverage labeled as consumption<br/>
 • Skip unchanged telemetry samples; named GPX points for charge and charge-trip<br/>
 • Time-to-full widget and voice while charging, including after BMS link loss<br/>
 • Charge and distance-on-charge history tables]]></string>
-    <string name="ev_bms_widget_group">EV battery</string>
+    <string name="ev_bms_widget_group">EV-Telemetry</string>
     <string name="ev_bms_devices">Bluetooth devices</string>
     <string name="ev_bms_jbd_title">Battery BMS</string>
     <string name="ev_bms_controller_title">Motor controller</string>

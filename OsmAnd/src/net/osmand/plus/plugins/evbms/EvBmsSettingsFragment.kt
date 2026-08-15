@@ -5,9 +5,12 @@ import android.content.Intent
 import android.location.LocationManager
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import android.widget.CheckBox
 import android.widget.LinearLayout
@@ -34,6 +37,10 @@ import java.util.Date
 import java.util.Locale
 
 class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanListener {
+
+	companion object {
+		const val EMBEDDED_KEY = "ev_bms_settings_embedded"
+	}
 
 	private val plugin = PluginsHelper.requirePlugin(EvBmsPlugin::class.java)
 	private val found = ArrayList<Pair<String, String>>()
@@ -78,6 +85,27 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		}
 	}
 
+	private fun isEmbedded(): Boolean = arguments?.getBoolean(EMBEDDED_KEY) == true
+
+	override fun onCreateView(
+		inflater: LayoutInflater,
+		container: ViewGroup?,
+		savedInstanceState: Bundle?
+	): View {
+		val view = super.onCreateView(inflater, container, savedInstanceState)!!
+		if (isEmbedded()) {
+			view.findViewById<View>(R.id.appbar)?.visibility = View.GONE
+			view.setPadding(view.paddingLeft, 0, view.paddingRight, view.paddingBottom)
+		}
+		return view
+	}
+
+	override fun updateStatusBar() {
+		if (!isEmbedded()) {
+			super.updateStatusBar()
+		}
+	}
+
 	override fun setupPreferences() {
 		setupDevicePref(
 			plugin.BMS_ADDRESS.id,
@@ -94,6 +122,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		setupControllerTitle()
 		setupBmsProtocol()
 		setupControllerProtocol()
+		setupSwitch(plugin.HIKE_MODE.id)
 		setupPollInterval()
 		setupSwitch(plugin.RECORD_TELEMETRY.id)
 		setupSwitch(plugin.RECORD_GPX.id)
@@ -324,6 +353,18 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 
 	private fun setupSwitch(key: String) {
 		findPreference<SwitchPreferenceEx>(key)
+	}
+
+	override fun onPreferenceChange(preference: Preference, newValue: Any?): Boolean {
+		if (preference.key == plugin.HIKE_MODE.id) {
+			val enabled = newValue as? Boolean ?: return false
+			val mapActivity = getMapActivity()
+			if (mapActivity != null && plugin.isHikeMode() != enabled) {
+				plugin.toggleHikeMode(mapActivity)
+			}
+			return true
+		}
+		return super.onPreferenceChange(preference, newValue)
 	}
 
 	override fun onPreferenceClick(preference: Preference): Boolean {
