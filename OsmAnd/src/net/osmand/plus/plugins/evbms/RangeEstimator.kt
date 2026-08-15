@@ -80,7 +80,8 @@ class RangeEstimator(
 		fullAh: Double?,
 		farAvgWhPerKm: Double?,
 		routeElevation: RouteElevation?,
-		useRouteProfile: Boolean
+		useRouteProfile: Boolean,
+		massKg: Double = MASS_KG
 	) {
 		if (remainingAh == null || voltageV == null || voltageV <= 0.0) {
 			return
@@ -118,7 +119,8 @@ class RangeEstimator(
 			fullAh,
 			farAvgWhPerKm,
 			routeElevation,
-			useRouteProfile
+			useRouteProfile,
+			massKg
 		)
 	}
 
@@ -177,7 +179,8 @@ class RangeEstimator(
 		fullAh: Double?,
 		farAvgWhPerKm: Double?,
 		routeElevation: RouteElevation?,
-		useRouteProfile: Boolean
+		useRouteProfile: Boolean,
+		massKg: Double
 	) {
 		if (samples.size < 2) {
 			return
@@ -241,8 +244,9 @@ class RangeEstimator(
 		val remainingWh = currentRemainingAh * energyVoltageV * cellFactor * temperatureFactor(batteryTempC)
 		var effectiveWhPerKm = coverage
 		if (useRouteProfile && routeElevation != null && routeElevation.remainingKm > 0.05) {
-			val climbWh = MASS_KG * G * routeElevation.climbM / 3600.0
-			val regenWh = MASS_KG * G * routeElevation.descentM / 3600.0 * REGEN_EFFICIENCY
+			val mass = if (massKg.isFinite() && massKg > 0.0) massKg else MASS_KG
+			val climbWh = mass * G * routeElevation.climbM / 3600.0
+			val regenWh = mass * G * routeElevation.descentM / 3600.0 * REGEN_EFFICIENCY
 			effectiveWhPerKm = coverage + (climbWh - regenWh) / routeElevation.remainingKm
 		}
 		if (effectiveWhPerKm < 1.0) {

@@ -17,10 +17,25 @@ object EvWidgetLinkFrame {
 		small: OutlinedTextContainer?,
 		name: OutlinedTextContainer?
 	) {
-		root?.findViewById<View>(R.id.widget_bg)?.foreground = null
+		clearOuterFrame(root)
 		val color = if (connected) CONNECTED else DISCONNECTED
 		value?.setTextColor(color)
 		small?.setTextColor(color)
 		name?.setTextColor(color)
+	}
+
+	fun clearOuterFrame(root: View?) {
+		if (root == null) {
+			return
+		}
+		val widgetBg = root.findViewById<View>(R.id.widget_bg)
+		widgetBg?.foreground = null
+		widgetBg?.background = null
+		if (widgetBg != null && widgetBg !== root) {
+			root.background = null
+		} else if (widgetBg == null) {
+			root.foreground = null
+			root.background = null
+		}
 	}
 }

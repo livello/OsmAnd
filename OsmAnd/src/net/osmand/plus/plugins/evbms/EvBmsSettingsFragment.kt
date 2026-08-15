@@ -175,6 +175,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		setupSwitch(plugin.ANNOUNCE_CHARGE_ETA.id)
 		setupHistoryPrefs()
 		setupRouteProfile()
+		setupMassPrefs()
 		setupIcons()
 		refreshRecordingPref()
 		refreshCalibrationPref()
@@ -230,6 +231,8 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		decorate("ev_bms_charge_history", "📋", R.drawable.ic_action_history)
 		decorate("ev_bms_trip_history", "🛵", R.drawable.ic_action_track_recordable)
 		decorate(plugin.USE_ROUTE_PROFILE.id, "⛰️", R.drawable.ic_action_altitude)
+		decorate(plugin.VEHICLE_MASS_KG.id, "⚖️", R.drawable.ic_action_weight_limit)
+		decorate(plugin.DRIVER_MASS_KG.id, "👤", R.drawable.ic_action_user)
 	}
 
 	private fun decorate(key: String, emoji: String, iconRes: Int) {
@@ -432,6 +435,22 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		)
 	}
 
+	private fun setupMassPrefs() {
+		setupMassPref(plugin.VEHICLE_MASS_KG, R.string.ev_bms_vehicle_mass_desc)
+		setupMassPref(plugin.DRIVER_MASS_KG, R.string.ev_bms_driver_mass_desc)
+	}
+
+	private fun setupMassPref(
+		holder: net.osmand.plus.settings.backend.preferences.CommonPreference<Float>,
+		descRes: Int
+	) {
+		val pref = findPreference<EditTextPreferenceEx>(holder.id) ?: return
+		val text = plugin.formattedMassKg(holder.get())
+		pref.text = text
+		pref.summary = getString(R.string.ev_bms_n_kg, text)
+		pref.setDescription(descRes)
+	}
+
 	private fun setupTelemetryFields() {
 		val pref = findPreference<Preference>(plugin.TELEMETRY_FIELDS.id) ?: return
 		pref.summary = plugin.telemetryFieldsSummary(requireContext())
@@ -516,6 +535,26 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			setupCalFactor()
 			return true
 		}
+		if (preference.key == plugin.VEHICLE_MASS_KG.id) {
+			val parsed = plugin.parseMassKg(newValue as? String, 20f, 2000f)
+			if (parsed == null) {
+				app.showToastMessage(R.string.ev_bms_mass_invalid)
+				return false
+			}
+			plugin.VEHICLE_MASS_KG.set(parsed)
+			setupMassPrefs()
+			return true
+		}
+		if (preference.key == plugin.DRIVER_MASS_KG.id) {
+			val parsed = plugin.parseMassKg(newValue as? String, 0f, 400f)
+			if (parsed == null) {
+				app.showToastMessage(R.string.ev_bms_mass_invalid)
+				return false
+			}
+			plugin.DRIVER_MASS_KG.set(parsed)
+			setupMassPrefs()
+			return true
+		}
 		if (preference.key == plugin.BMS_PASSWORD.id) {
 			val parsed = plugin.parseJbdPassword(newValue as? String)
 			if (parsed == null) {
@@ -596,6 +635,9 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		super.onPreferenceChanged(prefId)
 		if (prefId == plugin.SPEED_CAL_FACTOR.id) {
 			setupCalFactor()
+		}
+		if (prefId == plugin.VEHICLE_MASS_KG.id || prefId == plugin.DRIVER_MASS_KG.id) {
+			setupMassPrefs()
 		}
 		if (prefId == plugin.BMS_PASSWORD.id) {
 			setupJbdPassword()

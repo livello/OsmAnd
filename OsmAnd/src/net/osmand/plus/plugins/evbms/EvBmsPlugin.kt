@@ -58,6 +58,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		const val DEFAULT_CHARGE_VOLT_STEP_MV = 1000
 		const val DEFAULT_STOP_ANNOUNCE_REPEATS = 2
 		const val DEFAULT_SPEED_CAL_DISTANCE_M = 1000
+		const val DEFAULT_VEHICLE_MASS_KG = 200f
+		const val DEFAULT_DRIVER_MASS_KG = 80f
 		const val SESSION_IDLE = "idle"
 		const val SESSION_RECORDING = "recording"
 		const val SESSION_PAUSED = "paused"
@@ -139,6 +141,10 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerIntPreference("ev_bms_speed_cal_distance_m", DEFAULT_SPEED_CAL_DISTANCE_M).makeGlobal().makeShared()
 	val SPEED_CAL_FACTOR: CommonPreference<Float> =
 		registerFloatPreference("ev_bms_speed_cal_factor", 1f).makeGlobal().makeShared()
+	val VEHICLE_MASS_KG: CommonPreference<Float> =
+		registerFloatPreference("ev_bms_vehicle_mass_kg", DEFAULT_VEHICLE_MASS_KG).makeGlobal().makeShared()
+	val DRIVER_MASS_KG: CommonPreference<Float> =
+		registerFloatPreference("ev_bms_driver_mass_kg", DEFAULT_DRIVER_MASS_KG).makeGlobal().makeShared()
 	private val CHARGE_END_TRACK_M: CommonPreference<Int> =
 		registerIntPreference("ev_bms_charge_end_track_m", 0).makeGlobal()
 	private val CHARGE_CYCLE_ACTIVE: CommonPreference<Boolean> =
@@ -215,6 +221,9 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private var tripLastTempC: Double? = null
 	private var tripMovingMs = 0L
 	private var tripLastMoveMs = 0L
+	private var chargeTripGpsKm = 0.0
+	private var chargeTripStartOdoKm: Double? = null
+	private var chargeTripLastLoc: Location? = null
 	private val pendingGpxEvents = ArrayList<Pair<String, String>>()
 	private var lastBmsRxMs = 0L
 	private var lastCtrlRxMs = 0L
@@ -400,7 +409,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		if (charging) {
 			return 0.0
 		}
-		if (!CHARGE_CYCLE_ACTIVE.get()) {
+		if (tripStartMs <= 0L || !hasTelemetrySession()) {
 			return null
 		}
 		val trackM = app.savingTrackHelper.distance
@@ -409,7 +418,11 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			baseline = 0
 			CHARGE_END_TRACK_M.set(0)
 		}
-		return ((trackM - baseline).coerceAtLeast(0f) / 1000.0)
+		val trackKm = (trackM - baseline).coerceAtLeast(0f) / 1000.0
+		val odoKm = chargeTripStartOdoKm?.let { start ->
+			ctrlOdometerKm()?.let { now -> (now - start).coerceAtLeast(0.0) }
+		} ?: 0.0
+		return maxOf(trackKm.toDouble(), chargeTripGpsKm, odoKm)
 	}
 
 	private fun isVehicleMoving(): Boolean {
@@ -494,6 +507,9 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			}
 			persistChargeSession()
 		} else {
+			if (isTelemetryRecording() && moving && tripStartMs <= 0L) {
+				startTripSession(now, loc)
+			}
 			updateTripSession(now, moving, voltageV, tempC, minCellV)
 		}
 		if (remainingAh != null) {
@@ -562,7 +578,6 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		charging = false
 		chargeExitHold = 0
 		CHARGE_CYCLE_ACTIVE.set(true)
-		CHARGE_END_TRACK_M.set(app.savingTrackHelper.distance.toInt().coerceAtLeast(0))
 		CHARGE_SESSION.set("")
 		clearChargeRuntime()
 		startTripSession(now, loc)
@@ -582,6 +597,10 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		tripLastTempC = tripStartTempC
 		tripMovingMs = 0L
 		tripLastMoveMs = 0L
+		chargeTripGpsKm = 0.0
+		chargeTripStartOdoKm = ctrlOdometerKm()
+		chargeTripLastLoc = loc?.let { Location(it) }
+		CHARGE_END_TRACK_M.set(app.savingTrackHelper.distance.toInt().coerceAtLeast(0))
 		persistTripSession()
 	}
 
@@ -592,10 +611,13 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		tempC: Double?,
 		minCellV: Double?
 	) {
-		if (!CHARGE_CYCLE_ACTIVE.get() || tripStartMs <= 0L) {
+		if (tripStartMs <= 0L) {
 			return
 		}
 		if (moving) {
+			if (isTelemetryRecording()) {
+				accumulateChargeTripDistance()
+			}
 			if (tripLastMoveMs > 0L) {
 				tripMovingMs += (now - tripLastMoveMs).coerceAtLeast(0L)
 			}
@@ -646,6 +668,23 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		tripStartMs = 0L
 		tripMovingMs = 0L
 		tripLastMoveMs = 0L
+		chargeTripGpsKm = 0.0
+		chargeTripStartOdoKm = null
+		chargeTripLastLoc = null
+	}
+
+	private fun accumulateChargeTripDistance() {
+		val loc = lastLocation
+		val prev = chargeTripLastLoc
+		if (loc != null && prev != null) {
+			val dKm = RangeEstimator.haversineKm(prev.latitude, prev.longitude, loc.latitude, loc.longitude)
+			if (dKm in 0.001..0.15) {
+				chargeTripGpsKm += dKm
+			}
+		}
+		if (loc != null) {
+			chargeTripLastLoc = Location(loc)
+		}
 	}
 
 	private fun estimatedRemainingAh(): Double? {
@@ -701,6 +740,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		json.putD("lastVoltageV", tripLastVoltageV)
 		json.putD("lastTempC", tripLastTempC)
 		json.put("movingMs", tripMovingMs)
+		json.put("gpsKm", chargeTripGpsKm)
+		json.putD("startOdoKm", chargeTripStartOdoKm)
 		TRIP_SESSION.set(json.toString())
 	}
 
@@ -738,6 +779,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				tripLastVoltageV = json.optNullableDouble("lastVoltageV")
 				tripLastTempC = json.optNullableDouble("lastTempC")
 				tripMovingMs = json.optLong("movingMs")
+				chargeTripGpsKm = json.optDouble("gpsKm", 0.0).coerceAtLeast(0.0)
+				chargeTripStartOdoKm = json.optNullableDouble("startOdoKm")
 			} catch (_: Exception) {
 			}
 		}
@@ -1239,7 +1282,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			bms?.fullMah?.div(1000.0),
 			ctrlAvgWhPerKm(),
 			remainingRouteElevation(),
-			USE_ROUTE_PROFILE.get()
+			USE_ROUTE_PROFILE.get(),
+			totalMassKg()
 		)
 		tickSpeedCalibration(loc)
 		val sample = EvTelemetry(
@@ -1715,6 +1759,31 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 
 	fun formattedSpeedCalFactor(): String {
 		return String.format(Locale.US, "%.3f", speedCalFactor())
+	}
+
+	fun totalMassKg(): Double {
+		val vehicle = VEHICLE_MASS_KG.get().toDouble().takeIf { it.isFinite() && it > 0.0 }
+			?: DEFAULT_VEHICLE_MASS_KG.toDouble()
+		val driver = DRIVER_MASS_KG.get().toDouble().takeIf { it.isFinite() && it >= 0.0 }
+			?: DEFAULT_DRIVER_MASS_KG.toDouble()
+		return (vehicle + driver).coerceAtLeast(1.0)
+	}
+
+	fun parseMassKg(raw: String?, minKg: Float, maxKg: Float): Float? {
+		val text = raw?.trim()?.replace(',', '.') ?: return null
+		val value = text.toFloatOrNull() ?: return null
+		if (!value.isFinite() || value < minKg || value > maxKg) {
+			return null
+		}
+		return value
+	}
+
+	fun formattedMassKg(value: Float): String {
+		return if (kotlin.math.abs(value - value.toInt()) < 0.05f) {
+			String.format(Locale.US, "%d", value.toInt())
+		} else {
+			String.format(Locale.US, "%.1f", value)
+		}
 	}
 
 	private fun speedCalFactor(): Double {

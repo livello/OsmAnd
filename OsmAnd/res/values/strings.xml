@@ -969,18 +969,18 @@ You will be able to pair this scanner again at any time.</string>
 <b>📊 Widgets</b><br/>
 • 🔋 SOC, pack voltage, pack current, battery temperature — from the BMS.<br/>
 • 📏 Remaining range and ⚡ consumption (Wh/km, 5-minute window).<br/>
-• 🔌 Distance on charge — trip-recording distance after a real charge cycle ends.<br/>
+• 🔌 Distance on charge — starts with motion while telemetry recording is on, resets when charging begins.<br/>
 • 🛵 Controller trip, motor power, motor temperature, controller / MOSFET temperature.<br/>
 • 🥾 Hike — lightens the map and slows BLE polling to 5 s, while telemetry keeps writing.<br/>
 Tap a plugin widget to open all plugin settings. Long-press a numeric widget for compact numbers / labels.<br/><br/>
 <b>🔌 Distance on charge</b><br/>
-A charge cycle starts only when GPS and the controller show no motion for the standstill time (default 1 minute) and pack current is at least the charge-current threshold. Regen on a descent, hard braking and being towed do not reset the counter. When charging ends, the widget uses OsmAnd trip recording distance. Start or keep recording before you unplug. A new recording session resets the baseline. The widget shows a dash until the first charge-end is seen in this session.<br/><br/>
+Counts as soon as the vehicle starts moving with telemetry recording on. GPS, controller odometer or OsmAnd trip recording supply the distance. The counter resets to zero when a real charge cycle starts (standstill plus charge current, so regen and towing do not reset it). While charging it stays at 0. A dash means recording is off or motion has not started yet.<br/><br/>
 <b>📏 Remaining range</b><br/>
 Energy used versus distance over a rolling 5-minute window. Distance prefers GPS. If GPS jumps, accuracy is worse than 40 m, or implied speed is above 160 km/h, the controller odometer is used instead.<br/>
 Coverage Wh/km is the most conservative of: the 5-minute window, the trip average, controller average Wh/km, and the 80th percentile of recent segments. Remaining energy is remaining Ah × rest pack voltage, then reduced by:<br/>
 • Weak cell: rest min cell between 3.00 V (cutoff) and 3.50 V, compared with remaining Ah.<br/>
 • Temperature: full above 20 °C, down to about 50 percent in frost.<br/>
-Optional route profile adds climb energy and credits 55 percent of descent regen for a 280 kg vehicle.<br/><br/>
+Optional route profile adds climb energy and credits 55 percent of descent regen for the combined vehicle and driver mass from settings.<br/><br/>
 <b>🗣️ Voice alerts</b> (plugin settings)<br/>
 • 🔋 SOC steps (default every 5 percent).<br/>
 • 📏 Remaining range once a minute when stopped, plus temps and min cell.<br/>
@@ -998,6 +998,10 @@ Tables in plugin settings: charge sessions (time, start/end battery temperature,
 <b>🥾 Hike mode</b><br/>
 Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+• EV-Telemetry widgets have no outer frame or filled box<br/>
+• Trip recording widgets align to the panel edge; right panel is right-aligned<br/>
+• Vehicle and driver mass settings feed climb energy and descent regen<br/>
+• Distance on charge starts with motion while telemetry recording is on, and resets when charging begins<br/>
 • Widget link status is the value color: black when connected, red when the BLE link is down<br/>
 • Telemetry fields picker is full screen; select-all and reset are emojis on the title row<br/>
 • While OsmAnd trip recording is on, EV-Telemetry writes into that GPX: charge waypoints, charts and coloring by Wh/km — no second track<br/>
@@ -1090,7 +1094,13 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_stop_speed">Stop speed threshold</string>
     <string name="ev_bms_range_settings">Remaining range</string>
     <string name="ev_bms_use_route_profile">Route profile and descent regen</string>
-    <string name="ev_bms_use_route_profile_desc">Use remaining climb and descent from the navigation route. Downhill regeneration is credited at 55 percent. Weak-cell cutoff, temperature derating, and conservative Wh/km stay on either way.</string>
+    <string name="ev_bms_use_route_profile_desc">Use remaining climb and descent from the navigation route. Downhill regeneration is credited at 55 percent for the combined vehicle and driver mass. Weak-cell cutoff, temperature derating, and conservative Wh/km stay on either way.</string>
+    <string name="ev_bms_vehicle_mass">Vehicle mass</string>
+    <string name="ev_bms_vehicle_mass_desc">Ready-to-ride vehicle mass without the rider, used for climb energy and descent regen.</string>
+    <string name="ev_bms_driver_mass">Driver mass</string>
+    <string name="ev_bms_driver_mass_desc">Rider mass added to the vehicle for climb energy and descent regen.</string>
+    <string name="ev_bms_mass_invalid">Enter a mass in kilograms in the allowed range</string>
+    <string name="ev_bms_n_kg">%1$s kg</string>
     <string name="ev_bms_status_connected">Connected</string>
     <string name="ev_bms_status_saved">Saved: %1$s (tap to rescan)</string>
     <string name="ev_bms_status_not_selected">Tap to scan and connect</string>
@@ -1117,7 +1127,7 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_widget_far_trip">Controller trip</string>
     <string name="ev_bms_widget_far_trip_desc">Trip distance from the motor controller odometer</string>
     <string name="ev_bms_widget_charge_trip">Distance on charge</string>
-    <string name="ev_bms_widget_charge_trip_desc">Trip recording distance after a charge cycle that required standstill and charge current, so regen and towing do not reset it</string>
+    <string name="ev_bms_widget_charge_trip_desc">Distance since motion started with telemetry recording on; resets when the vehicle is put on charge</string>
     <string name="ev_bms_unit_wh_per_km">Wh/km</string>
     <string name="ev_bms_compact_mode">Compact numbers</string>
     <string name="ev_bms_full_mode">Show labels</string>

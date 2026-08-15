@@ -12,6 +12,7 @@ import net.osmand.plus.views.mapwidgets.widgets.SimpleWidget
 
 object EvWidgetChrome {
 
+	@JvmStatic
 	fun attach(
 		widget: SimpleWidget,
 		container: ViewGroup,
@@ -31,6 +32,7 @@ object EvWidgetChrome {
 		}
 	}
 
+	@JvmStatic
 	fun applySideLayout(root: View, panel: WidgetsPanel) {
 		if (panel.isPanelVertical) {
 			return
@@ -51,6 +53,7 @@ object EvWidgetChrome {
 		root.findViewById<OutlinedTextContainer>(R.id.widget_text_small)?.setGravity(textGravity)
 	}
 
+	@JvmStatic
 	fun sideGravity(panel: WidgetsPanel): Int {
 		return if (panel == WidgetsPanel.RIGHT) Gravity.END else Gravity.START
 	}

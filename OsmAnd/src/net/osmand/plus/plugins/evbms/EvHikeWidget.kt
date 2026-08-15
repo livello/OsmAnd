@@ -8,6 +8,7 @@ import net.osmand.plus.plugins.PluginsHelper
 import net.osmand.plus.views.layers.base.OsmandMapLayer.DrawSettings
 import net.osmand.plus.views.mapwidgets.WidgetType
 import net.osmand.plus.views.mapwidgets.WidgetsPanel
+import net.osmand.plus.views.mapwidgets.appearance.ResolvedPanelAppearance
 import net.osmand.plus.views.mapwidgets.widgets.MapWidget
 import net.osmand.plus.views.mapwidgets.widgets.SimpleWidget
 
@@ -51,6 +52,12 @@ class EvHikeWidget(
 			updateWidgetView()
 		}
 		EvWidgetChrome.applySideLayout(view, panel)
+		EvWidgetLinkFrame.clearOuterFrame(view)
+	}
+
+	override fun applySimpleWidgetAppearance(appearance: ResolvedPanelAppearance) {
+		super.applySimpleWidgetAppearance(appearance)
+		EvWidgetLinkFrame.clearOuterFrame(view)
 	}
 
 	override fun getOnClickListener(): View.OnClickListener {

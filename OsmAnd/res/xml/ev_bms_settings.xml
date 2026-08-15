@@ -273,4 +273,18 @@
 		android:summaryOn="@string/shared_string_enabled"
 		android:title="@string/ev_bms_use_route_profile" />
 
+	<net.osmand.plus.settings.preferences.EditTextPreferenceEx
+		android:key="ev_bms_vehicle_mass_kg"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:persistent="false"
+		android:inputType="numberDecimal"
+		android:title="@string/ev_bms_vehicle_mass" />
+
+	<net.osmand.plus.settings.preferences.EditTextPreferenceEx
+		android:key="ev_bms_driver_mass_kg"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:persistent="false"
+		android:inputType="numberDecimal"
+		android:title="@string/ev_bms_driver_mass" />
+
 </PreferenceScreen>
