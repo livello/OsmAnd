@@ -961,18 +961,27 @@ You will be able to pair this scanner again at any time.</string>
     • Intake temperature, Ambient temperature, Coolant temperature, Engine Oil Temperature\n
     • Vehicle speed, Throttle Position, Battery voltage\n</string>
     <string name="ev_bms_plugin_name">EV-Telemetry</string>
-    <string name="ev_bms_plugin_description"><![CDATA[🔋 <b>EV-Telemetry</b> — live battery and motor telemetry over Bluetooth LE. Add widgets from Configure screen → EV-Telemetry. Widget text is <font color="#000000">black</font> while the matching BLE link is up and <font color="#c62828">red</font> when it is lost. BMS widgets follow the battery link; controller widgets follow the motor controller.<br/><br/>
+    <string name="ev_bms_plugin_description"><![CDATA[🔋 <b>EV-Telemetry</b> — live battery and motor telemetry over Bluetooth LE. Tap a plugin widget to open the full-height hub: ⚙️ settings, ☑️ fields, 📊 charts, 📋 history, 📜 journal, ℹ️ about. The last tab is restored. Add widgets from Configure screen → EV-Telemetry. Widget text is <font color="#000000">black</font> while the matching BLE link is up and <font color="#c62828">red</font> when it is lost. BMS widgets follow the battery; controller widgets follow the motor controller. Long-press a numeric widget for compact numbers or labels.<br/><br/>
 <b>📡 Devices</b><br/>
-• BMS: JBD / Xiaoxiang (service FF00) or ANT (FFE0 / FFE1). Protocol Auto / JBD / ANT.<br/>
-• Controller: FarDriver (FFE0 / FFEC) or VESC over Nordic UART. Protocol Auto / FarDriver / VESC.<br/>
-• Controller type is shown live from firmware / hardware name.<br/><br/>
+• BMS: JBD / Xiaoxiang (service FF00) or ANT (FFE0 / FFE1). Protocol Auto / JBD / ANT. A 6-digit JBD password unlocks locked packs.<br/>
+• Controller: FarDriver (FFE0 / FFEC) or VESC over Nordic UART. Protocol Auto / FarDriver / VESC. Type is shown from firmware / hardware name.<br/>
+• After a drop, both BLE links retry on their own (backoff, scan-then-connect, stale-link watchdog).<br/><br/>
 <b>📊 Widgets</b><br/>
-• 🔋 SOC, pack voltage, pack current, min cell voltage, battery temperature — from the BMS.<br/>
+• 🔋 SOC (auto-calibrated from min cell voltage per BMS MAC), pack voltage, pack current, min cell, battery temperature.<br/>
 • 📏 Remaining range and ⚡ consumption (Wh/km, 5-minute window).<br/>
-• 🔌 Distance on charge — starts with motion while telemetry recording is on, resets when charging begins.<br/>
+• 🛣️ Range reserve — remaining route minus remaining range. Positive means a shortfall.<br/>
+• 🔌 Distance on charge — starts with motion while telemetry recording is on, resets when a real charge begins.<br/>
+• ⏳ Charge: time to full, elapsed time, watt-hours into the pack.<br/>
 • 🛵 Controller trip, motor power, motor temperature, controller / MOSFET temperature.<br/>
-• 🥾 Hike — lightens the map and slows BLE polling to 5 s, while telemetry keeps writing.<br/>
-Tap a plugin widget to open all plugin settings. Long-press a numeric widget for compact numbers / labels.<br/><br/>
+• 🥾 Hike — lightens the map and slows BLE polling to 5 s; telemetry keeps writing.<br/><br/>
+<b>☑️ Fields</b><br/>
+Choose which values go into CSV, GPX and live charts. The hub list uses the full height of the tab, with live values beside each field.<br/><br/>
+<b>📊 Charts</b><br/>
+A line graph for every selected numeric field. ⏸️ / ▶️ pauses drawing and stops buffering in the background.<br/><br/>
+<b>📋 History</b><br/>
+Charge sessions: duration, Ah from the BMS, start/end battery temperature. 📈 opens a collapsed chart of charge current, temperature, min and max cell voltage — computed once from recorded telemetry and stored.<br/>
+Distance-on-charge rides: distance, moving and total time, battery and motor temperatures. 📈 opens power, Wh/km, motor temperature and min cell voltage. 🗑️ deletes a row and its chart.<br/>
+A new charge cannot start until you have ridden and used battery past the thresholds in settings; BLE drop-outs no longer split one charge into many.<br/><br/>
 <b>🔌 Distance on charge</b><br/>
 Counts as soon as the vehicle starts moving with telemetry recording on. GPS, controller odometer or OsmAnd trip recording supply the distance. The counter resets to zero when a real charge cycle starts (standstill plus charge current, so regen and towing do not reset it). While charging it stays at 0. A dash means recording is off or motion has not started yet.<br/><br/>
 <b>📏 Remaining range</b><br/>
@@ -981,23 +990,29 @@ Coverage Wh/km is the most conservative of: the 5-minute window, the trip averag
 • Weak cell: rest min cell between 3.00 V (cutoff) and 3.50 V, compared with remaining Ah.<br/>
 • Temperature: full above 20 °C, down to about 50 percent in frost.<br/>
 Optional route profile adds climb energy and credits 55 percent of descent regen for the combined vehicle and driver mass from settings.<br/><br/>
+<b>🛣️ Range reserve</b><br/>
+Remaining navigation distance minus remaining range. Speak the current value when stopped. Small and low shortfall alerts use thresholds (default 5 km and 15 km) and only the worse level is spoken, with hysteresis.<br/><br/>
 <b>🗣️ Voice alerts</b> (plugin settings)<br/>
-• 🔋 SOC steps (default every 5 percent).<br/>
-• 📏 Remaining range once a minute when stopped, plus temps and min cell.<br/>
+• 🔋 Battery charge on pack voltage steps (or SOC percent while charging).<br/>
+• 📏 Remaining range when stopped, plus temps and min cell; optional current range reserve.<br/>
 • 🧭 Warning when range is less than the remaining navigation distance.<br/>
-• ⚠️ Cell voltage at rest (|I| < 5 A): low 3.50 V, critical 3.30 V. Critical interrupts a low alert immediately.<br/>
+• 🛣️ Small / low range reserve.<br/>
+• ⚠️ Cell voltage at rest (|I| &lt; 5 A): low 3.50 V, critical 3.30 V. Critical interrupts a low alert immediately.<br/>
 • 🔥 Motor heating — default 90 °C from the controller.<br/>
 • 🥵 Battery overheating — default 50 °C, hottest BMS sensor.<br/>
 • ❄️ Battery freezing — default 0 °C, coldest BMS sensor.<br/>
-Temperature and cell alerts speak only while that BLE link is up and telemetry is fresh (a few seconds). Stale values after a drop-out are ignored.<br/>
-• 📡 Link loss and restore for BMS and controller, after a short hold so brief drop-outs do not chatter.<br/><br/>
+• ⏳ Time to full while charging.<br/>
+• 📡 Link loss and restore for BMS and controller, after a short hold so brief drop-outs do not chatter.<br/>
+Temperature and cell alerts speak only while that BLE link is up and telemetry is fresh (a few seconds). Stale values after a drop-out are ignored.<br/><br/>
 <b>💾 CSV / GPX</b><br/>
-Semicolon CSV and optional GPX 1.1 with the selected fields. Unchanged samples are not written again. While OsmAnd trip recording is on, EV-Telemetry does not write a second GPX: charge start/end, distance-on-charge and Wh/km go into that track. Open it in My Places for waypoints, charts and coloring by consumption.<br/><br/>
-<b>🔌 Charge history</b><br/>
-Tables in plugin settings: charge sessions (time, start/end battery temperature, Ah from the BMS) and distance-on-charge rides (voltages, min cell, temperatures, distance, date, moving time).<br/><br/>
+Semicolon CSV and optional GPX 1.1 with the selected fields. Unchanged samples are not written again. While OsmAnd trip recording is on, EV-Telemetry does not write a second GPX: charge start/end, distance-on-charge and Wh/km go into that track. Open it in My Places for waypoints, charts and coloring by consumption.<br/>
+Controller speed and distance can be auto-calibrated against a GPS ride; the factor is editable.<br/><br/>
+<b>📜 Journal</b><br/>
+Optional DEBUG log of plugin and BLE actions, including TX/RX hex. Export or clear from the journal tab.<br/><br/>
 <b>🥾 Hike mode</b><br/>
 Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+• Fields tab: no sticky title or select-all / reset row, so the list uses the full height<br/>
 • Charts tab: ⏸️ / ▶️ pause so live graphs stop drawing and stop buffering in the background<br/>
 • Charge history shows start/end battery temperature and a collapsed chart of current, temperature, min and max cell voltage (computed once from telemetry)<br/>
 • Distance-on-charge history shows battery and motor temperatures and a collapsed chart of power, Wh/km, motor temperature and min cell voltage<br/>

@@ -262,11 +262,12 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		val themed = UiUtilities.getThemedContext(requireActivity(), nightMode)
 		val inflater = layoutInflater
 		val content = inflater.inflate(R.layout.ev_bms_telemetry_fields_dialog, container, false)
+		content.fitsSystemWindows = false
+		content.findViewById<View>(R.id.fields_toolbar).visibility = View.GONE
 		content.findViewById<View>(R.id.fields_actions).visibility = View.GONE
 		container.addView(content)
 		val selected = plugin.selectedTelemetryFields().toMutableSet()
 		val list = content.findViewById<LinearLayout>(R.id.fields_list)
-		val checkboxes = ArrayList<Pair<TelemetryField, CheckBox>>()
 		fun persist() {
 			val chosen = TelemetryField.entries.filter { it in selected }
 			if (chosen.isEmpty()) {
@@ -276,29 +277,6 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			plugin.setTelemetryFields(chosen)
 			settingsFragment()?.refreshTelemetryFieldsPref()
 			chartsKey = ""
-		}
-		fun bindChecks() {
-			for ((field, box) in checkboxes) {
-				box.isChecked = field in selected
-			}
-		}
-		content.findViewById<TextView>(R.id.select_all).apply {
-			contentDescription = getString(R.string.shared_string_select_all)
-			setOnClickListener {
-				selected.clear()
-				selected.addAll(TelemetryField.entries)
-				bindChecks()
-				persist()
-			}
-		}
-		content.findViewById<TextView>(R.id.reset).apply {
-			contentDescription = getString(R.string.shared_string_reset)
-			setOnClickListener {
-				selected.clear()
-				selected.addAll(TelemetryField.parse(TelemetryField.DEFAULT_IDS))
-				bindChecks()
-				persist()
-			}
 		}
 		for ((groupRes, fields) in TelemetryField.grouped()) {
 			list.addView(telemetryGroupHeader(themed, groupRes))
@@ -316,7 +294,6 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 					if (box.isChecked) selected.add(field) else selected.remove(field)
 					persist()
 				}
-				checkboxes.add(field to box)
 				fieldValueViews.add(field to value)
 				list.addView(row)
 			}
