@@ -130,7 +130,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		if (!isEmbedded()) {
 			return
 		}
-		val bottom = AndroidUtils.dpToPx(app, if (buttonsVisible) 88 else 12)
+		val bottom = AndroidUtils.dpToPx(app, if (buttonsVisible) 88f else 12f)
 		listView.setPadding(listView.paddingLeft, listView.paddingTop, listView.paddingRight, bottom)
 	}
 
