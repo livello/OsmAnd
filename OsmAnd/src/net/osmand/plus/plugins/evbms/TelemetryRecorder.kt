@@ -7,6 +7,7 @@ import androidx.documentfile.provider.DocumentFile
 import net.osmand.PlatformUtil
 import net.osmand.plus.OsmandApplication
 import net.osmand.plus.utils.AndroidUtils
+import net.osmand.shared.gpx.PointAttributes
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileWriter
@@ -27,7 +28,7 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 		const val DIR_NAME = "ev_telemetry"
 		private const val GPX_HEADER =
 			"""<?xml version="1.0" encoding="UTF-8"?>""" + "\n" +
-					"""<gpx version="1.1" creator="OsmAnd EV BMS" xmlns="http://www.topografix.com/GPX/1/1">""" +
+					"""<gpx version="1.1" creator="OsmAnd EV BMS" xmlns="http://www.topografix.com/GPX/1/1" xmlns:osmand="https://osmand.net/docs/technical/osmand-file-formats/osmand-gpx">""" +
 					"\n<trk>\n<trkseg>\n"
 		private const val GPX_FOOTER = "</trkseg>\n</trk>\n</gpx>\n"
 		private val GPX_POINT = Regex("""<trkpt\s+lat="([^"]+)"\s+lon="([^"]+)"""")
@@ -70,8 +71,22 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 		}
 	}
 
+	@Synchronized
 	fun setWriteGpx(enabled: Boolean) {
+		if (writeGpx == enabled) {
+			return
+		}
 		writeGpx = enabled
+		if (!enabled) {
+			try {
+				gpxWriter?.append(GPX_FOOTER)
+				gpxWriter?.flush()
+				gpxWriter?.close()
+			} catch (_: Exception) {
+			}
+			gpxWriter = null
+			gpxSpec = null
+		}
 	}
 
 	fun currentCsvSpec(): String? = csvSpec
@@ -212,6 +227,9 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 	}
 
 	private fun appendGpx(sample: EvTelemetry, name: String?, description: String?) {
+		if (!writeGpx) {
+			return
+		}
 		val w = gpxWriter ?: return
 		val lat = sample.lat
 		val lon = sample.lon
@@ -233,12 +251,28 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 			val extras = sessionFields.filter {
 				it != TelemetryField.LAT && it != TelemetryField.LON && it != TelemetryField.TIME_MS
 			}
-			val body = extras.map { it.id to it.csvValue(sample) }.filter { it.second.isNotEmpty() }
+			val body = LinkedHashMap<String, String>()
+			for (field in extras) {
+				val value = field.csvValue(sample)
+				if (value.isNotEmpty()) {
+					body[field.id] = value
+				}
+			}
+			fun addEv(tag: String, value: String) {
+				if (value.isNotEmpty()) {
+					body[tag] = value
+				}
+			}
+			addEv(PointAttributes.EV_TAG_CONSUMPTION, TelemetryField.CONSUMPTION.csvValue(sample))
+			addEv(PointAttributes.EV_TAG_VOLTAGE, TelemetryField.VOLTAGE.csvValue(sample))
+			addEv(PointAttributes.EV_TAG_CURRENT, TelemetryField.CURRENT.csvValue(sample))
+			addEv(PointAttributes.EV_TAG_SOC, TelemetryField.SOC.csvValue(sample))
+			addEv(PointAttributes.EV_TAG_CHARGE_TRIP, TelemetryField.CHARGE_TRIP.csvValue(sample))
 			if (body.isNotEmpty()) {
 				sb.append("<extensions>\n")
 				for ((id, value) in body) {
-					sb.append('<').append(id).append('>').append(xml(value))
-						.append("</").append(id).append(">\n")
+					sb.append("<osmand:").append(id).append('>').append(xml(value))
+						.append("</osmand:").append(id).append(">\n")
 				}
 				sb.append("</extensions>\n")
 			}

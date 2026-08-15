@@ -871,6 +871,12 @@ public class PluginsHelper {
 				trackPointsAnalysers.add(plugin.getTrackPointsAnalyser());
 			}
 		}
+		if (!isActive(EvBmsPlugin.class)) {
+			OsmandPlugin plugin = getPlugin(EvBmsPlugin.class);
+			if (plugin != null) {
+				trackPointsAnalysers.add(plugin.getTrackPointsAnalyser());
+			}
+		}
 		return (gpxTrackAnalysis, wptPt, pointAttributes) -> {
 			for (TrackPointsAnalyser analyser : trackPointsAnalysers) {
 				analyser.onAnalysePoint(gpxTrackAnalysis, wptPt, pointAttributes);

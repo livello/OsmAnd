@@ -10,7 +10,8 @@ import net.osmand.plus.R;
 public enum GpxDataSetTypeGroup {
 	GENERAL(0),
 	EXTERNAL_SENSORS(R.string.external_sensor_widgets),
-	VEHICLE_METRICS(R.string.vehicle_metrics_chart_category);
+	VEHICLE_METRICS(R.string.vehicle_metrics_chart_category),
+	EV_TELEMETRY(R.string.ev_bms_plugin_name);
 
 	@StringRes
 	private final int titleId;

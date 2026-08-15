@@ -37,6 +37,12 @@ class PointAttributes(
 
 		const val POINT_SPEED = "point_speed"
 		const val POINT_ELEVATION = "point_elevation"
+
+		const val EV_TAG_CONSUMPTION = "ev_wh_km"
+		const val EV_TAG_VOLTAGE = "ev_voltage"
+		const val EV_TAG_CURRENT = "ev_current"
+		const val EV_TAG_SOC = "ev_soc"
+		const val EV_TAG_CHARGE_TRIP = "ev_charge_trip"
 	}
 
 	var speed: Float = Float.NaN
@@ -134,8 +140,11 @@ class PointAttributes(
 		get() = vehicleData?.throttlePosition ?: Float.NaN
 		set(value) = setVehicleValue(value) { throttlePosition = it }
 
+	private var extra: MutableMap<String, Float>? = null
+
 	fun hasAnyValueSet(): Boolean = !speed.isNaN() || !elevation.isNaN() ||
-			hasAnySensorValueSet() || hasAnyDevValueSet() || hasAnyVehicleValueSet()
+			hasAnySensorValueSet() || hasAnyDevValueSet() || hasAnyVehicleValueSet() ||
+			extra?.isNotEmpty() == true
 
 	fun hasAnyDevValueSet(): Boolean = devData?.hasAnyValueSet() == true
 
@@ -174,7 +183,7 @@ class PointAttributes(
 			OBD_SPEED_COMMAND.gpxTag -> vehicleSpeed
 			OBD_THROTTLE_POSITION_COMMAND.gpxTag -> throttlePosition
 
-			else -> Float.NaN
+			else -> extra?.get(tag) ?: Float.NaN
 		}
 
 	fun setAttributeValue(tag: String, value: Float) {
@@ -206,6 +215,11 @@ class PointAttributes(
 			OBD_BATTERY_VOLTAGE_COMMAND.gpxTag -> batteryVoltage = value
 			OBD_SPEED_COMMAND.gpxTag -> vehicleSpeed = value
 			OBD_THROTTLE_POSITION_COMMAND.gpxTag -> throttlePosition = value
+			else -> {
+				if (!value.isNaN()) {
+					(extra ?: mutableMapOf<String, Float>().also { extra = it })[tag] = value
+				}
+			}
 		}
 	}
 
@@ -227,7 +241,12 @@ class PointAttributes(
 			SENSOR_TAG_TEMPERATURE,
 			SENSOR_TAG_TEMPERATURE_W,
 			SENSOR_TAG_TEMPERATURE_A,
-			POINT_ELEVATION -> !value.isNaN()
+			POINT_ELEVATION,
+			EV_TAG_CONSUMPTION,
+			EV_TAG_VOLTAGE,
+			EV_TAG_CURRENT,
+			EV_TAG_SOC,
+			EV_TAG_CHARGE_TRIP -> !value.isNaN()
 
 			else -> value > 0f
 		}

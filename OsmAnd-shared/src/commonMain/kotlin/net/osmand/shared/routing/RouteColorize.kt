@@ -4,6 +4,7 @@ import net.osmand.shared.ColorPalette
 import net.osmand.shared.extensions.currentTimeMillis
 import net.osmand.shared.gpx.GpxFile
 import net.osmand.shared.gpx.GpxTrackAnalysis
+import net.osmand.shared.gpx.PointAttributes
 import net.osmand.shared.util.KAlgorithms
 import net.osmand.shared.util.KMapUtils
 import net.osmand.shared.util.LoggerFactory
@@ -26,6 +27,7 @@ class RouteColorize {
 		ELEVATION,
 		SPEED,
 		SLOPE(bipolar = true),
+		CONSUMPTION,
 		NONE;
 	}
 
@@ -103,6 +105,11 @@ class RouteColorize {
 					lonList.add(p.lon)
 					if (type == ColorizationType.SPEED) {
 						valList.add(analysis.pointAttributes.get(wptIdx).speed.toDouble())
+					} else if (type == ColorizationType.CONSUMPTION) {
+						val raw = analysis.pointAttributes.getOrNull(wptIdx)
+							?.getAttributeValue(PointAttributes.EV_TAG_CONSUMPTION)?.toDouble()
+							?: 0.0
+						valList.add(if (raw.isNaN()) 0.0 else raw)
 					} else {
 						valList.add(analysis.pointAttributes.get(wptIdx).elevation.toDouble())
 					}
@@ -123,7 +130,15 @@ class RouteColorize {
 		} else {
 			listToArray(valList)
 		}
-		calculateMinMaxValue(analysis, maxProfileSpeed)
+		if (type == ColorizationType.CONSUMPTION) {
+			calculateMinMaxValue()
+			if (maxValue.isNaN() || minValue.isNaN() || maxValue <= minValue) {
+				minValue = 0.0
+				maxValue = 50.0
+			}
+		} else {
+			calculateMinMaxValue(analysis, maxProfileSpeed)
+		}
 		if (fixedValues) {
 			this.palette = if (isValidPalette(palette)) palette!! else getDefaultPalette(type)
 		} else {
@@ -336,7 +351,7 @@ class RouteColorize {
 			analysis: GpxTrackAnalysis
 		): Double {
 			return when (type) {
-				ColorizationType.SPEED -> 0.0
+				ColorizationType.SPEED, ColorizationType.CONSUMPTION -> 0.0
 				ColorizationType.ELEVATION -> analysis.minElevation
 				ColorizationType.SLOPE -> ColorPalette.SLOPE_MIN_VALUE
 				else -> (-1.0)
@@ -349,6 +364,16 @@ class RouteColorize {
 		): Double {
 			return when (type) {
 				ColorizationType.SPEED -> max(analysis.maxSpeed.toDouble(), maxProfileSpeed)
+				ColorizationType.CONSUMPTION -> {
+					var maxValue = 0.0
+					for (attribute in analysis.pointAttributes) {
+						val value = attribute.getAttributeValue(PointAttributes.EV_TAG_CONSUMPTION).toDouble()
+						if (!value.isNaN() && value > maxValue) {
+							maxValue = value
+						}
+					}
+					if (maxValue <= minValue) 50.0 else maxValue
+				}
 				ColorizationType.ELEVATION -> max(analysis.maxElevation, minValue + 50)
 				ColorizationType.SLOPE -> ColorPalette.SLOPE_MAX_VALUE
 				else -> (-1.0)

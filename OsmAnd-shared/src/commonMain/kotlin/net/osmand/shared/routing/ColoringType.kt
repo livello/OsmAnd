@@ -10,6 +10,7 @@ enum class ColoringType(val id: String, val titleId: String, val iconId: String)
 	// For gpx track only
 	TRACK_SOLID("solid", "track_coloring_solid", "ic_action_circle"),
 	SPEED("speed", "shared_string_speed", "ic_action_speed"),
+	CONSUMPTION("ev_wh_km", "ev_bms_coloring_consumption", "ic_action_obd_fuel_consumption"),
 	// For both route and gpx file
 	ALTITUDE("altitude", "altitude", "ic_action_hillshade_dark"),
 	SLOPE("slope", "shared_string_slope", "ic_action_altitude_ascent"),
@@ -17,7 +18,7 @@ enum class ColoringType(val id: String, val titleId: String, val iconId: String)
 
 	companion object {
 		val ROUTE_TYPES = arrayOf(DEFAULT, CUSTOM_COLOR, ALTITUDE, SLOPE, ATTRIBUTE)
-		val TRACK_TYPES = arrayOf(TRACK_SOLID, SPEED, ALTITUDE, SLOPE, ATTRIBUTE)
+		val TRACK_TYPES = arrayOf(TRACK_SOLID, SPEED, CONSUMPTION, ALTITUDE, SLOPE, ATTRIBUTE)
 
 		fun getRouteInfoAttribute(name: String?): String? {
 			return if (!name.isNullOrEmpty() && (name.startsWith(RouteStatisticsHelper.ROUTE_INFO_PREFIX) || name.startsWith(RouteStatisticsHelper.OLD_ROUTE_INFO_PREFIX))) {
@@ -37,6 +38,7 @@ enum class ColoringType(val id: String, val titleId: String, val iconId: String)
 		fun valueOf(scaleType: GradientScaleType?): ColoringType? {
 			return when (scaleType) {
 				GradientScaleType.SPEED -> SPEED
+				GradientScaleType.CONSUMPTION -> CONSUMPTION
 				GradientScaleType.ALTITUDE -> ALTITUDE
 				GradientScaleType.SLOPE -> SLOPE
 				else -> null
@@ -101,13 +103,14 @@ enum class ColoringType(val id: String, val titleId: String, val iconId: String)
 
 	fun isSolidSingleColor(): Boolean = isDefault() || isCustomColor() || isTrackSolid()
 
-	fun isGradient(): Boolean = this == SPEED || this == ALTITUDE || this == SLOPE
+	fun isGradient(): Boolean = this == SPEED || this == CONSUMPTION || this == ALTITUDE || this == SLOPE
 
 	fun isRouteInfoAttribute(): Boolean = this == ATTRIBUTE
 
 	fun toGradientScaleType(): GradientScaleType? {
 		return when (this) {
 			SPEED -> GradientScaleType.SPEED
+			CONSUMPTION -> GradientScaleType.CONSUMPTION
 			ALTITUDE -> GradientScaleType.ALTITUDE
 			SLOPE -> GradientScaleType.SLOPE
 			else -> null
@@ -117,6 +120,7 @@ enum class ColoringType(val id: String, val titleId: String, val iconId: String)
 	open fun toColorizationType(): RouteColorize.ColorizationType? {
 		return when(this){
 			SPEED -> RouteColorize.ColorizationType.SPEED
+			CONSUMPTION -> RouteColorize.ColorizationType.CONSUMPTION
 			ALTITUDE -> RouteColorize.ColorizationType.ELEVATION
 			SLOPE -> RouteColorize.ColorizationType.SLOPE
 			else -> null

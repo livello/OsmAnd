@@ -340,6 +340,7 @@ class GpxTrackAnalysis {
 		return when (colorizationType) {
 			ColorizationType.SPEED -> isSpeedSpecified()
 			ColorizationType.ELEVATION, ColorizationType.SLOPE -> isElevationSpecified()
+			ColorizationType.CONSUMPTION -> hasData(PointAttributes.EV_TAG_CONSUMPTION)
 			else -> true
 		}
 	}

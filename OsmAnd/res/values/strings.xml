@@ -961,7 +961,7 @@ You will be able to pair this scanner again at any time.</string>
     • Intake temperature, Ambient temperature, Coolant temperature, Engine Oil Temperature\n
     • Vehicle speed, Throttle Position, Battery voltage\n</string>
     <string name="ev_bms_plugin_name">EV-Telemetry</string>
-    <string name="ev_bms_plugin_description"><![CDATA[🔋 <b>EV-Telemetry</b> — live battery and motor telemetry over Bluetooth LE. Add widgets from Configure screen → EV-Telemetry. BMS widgets show a <font color="#2e7d32">green</font> edge strip when the BMS link is up and a <font color="#c62828">red</font> strip when it is lost. Controller widgets do the same for the motor controller.<br/><br/>
+    <string name="ev_bms_plugin_description"><![CDATA[🔋 <b>EV-Telemetry</b> — live battery and motor telemetry over Bluetooth LE. Add widgets from Configure screen → EV-Telemetry. Widget text is <font color="#000000">black</font> while the matching BLE link is up and <font color="#c62828">red</font> when it is lost. BMS widgets follow the battery link; controller widgets follow the motor controller.<br/><br/>
 <b>📡 Devices</b><br/>
 • BMS: JBD / Xiaoxiang (service FF00) or ANT (FFE0 / FFE1). Protocol Auto / JBD / ANT.<br/>
 • Controller: FarDriver (FFE0 / FFEC) or VESC over Nordic UART. Protocol Auto / FarDriver / VESC.<br/>
@@ -992,12 +992,15 @@ Optional route profile adds climb energy and credits 55 percent of descent regen
 Temperature and cell alerts speak only while that BLE link is up and telemetry is fresh (a few seconds). Stale values after a drop-out are ignored.<br/>
 • 📡 Link loss and restore for BMS and controller, after a short hold so brief drop-outs do not chatter.<br/><br/>
 <b>💾 CSV / GPX</b><br/>
-Semicolon CSV and optional GPX 1.1 with the selected fields. Unchanged samples are not written again. Charge start/end and distance-on-charge are named points on the current GPX track — open the file in My Places to see them on the map.<br/><br/>
+Semicolon CSV and optional GPX 1.1 with the selected fields. Unchanged samples are not written again. While OsmAnd trip recording is on, EV-Telemetry does not write a second GPX: charge start/end, distance-on-charge and Wh/km go into that track. Open it in My Places for waypoints, charts and coloring by consumption.<br/><br/>
 <b>🔌 Charge history</b><br/>
 Tables in plugin settings: charge sessions (time, start/end battery temperature, Ah from the BMS) and distance-on-charge rides (voltages, min cell, temperatures, distance, date, moving time).<br/><br/>
 <b>🥾 Hike mode</b><br/>
 Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+• Widget link status is the value color: black when connected, red when the BLE link is down<br/>
+• Telemetry fields picker is full screen; select-all and reset are emojis on the title row<br/>
+• While OsmAnd trip recording is on, EV-Telemetry writes into that GPX: charge waypoints, charts and coloring by Wh/km — no second track<br/>
 • Settings sheet uses divider lines instead of category headings, with tighter rows<br/>
 • Log export and telemetry field pickers open full screen; delete is a compact 🗑️ on the right edge<br/>
 • JBD / Xiaoxiang BMS password: enter the 6-digit code so locked packs still send telemetry<br/>
@@ -1028,7 +1031,11 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_poll_interval">Telemetry interval</string>
     <string name="ev_bms_record_telemetry">Write telemetry CSV</string>
     <string name="ev_bms_record_gpx">Write telemetry GPX</string>
+    <string name="ev_bms_record_gpx_desc">A separate GPX is written only when OsmAnd trip recording is off. While a trip is recording, EV telemetry is stored in that track: charge waypoints, charts and coloring by Wh/km.</string>
     <string name="ev_bms_telemetry_fields">Telemetry fields</string>
+    <string name="ev_bms_select_all_emoji">✅</string>
+    <string name="ev_bms_reset_emoji">↩️</string>
+    <string name="ev_bms_coloring_consumption">Consumption</string>
     <string name="ev_bms_telemetry_fields_summary">%1$d of %2$d selected</string>
     <string name="ev_bms_telemetry_fields_empty">Select at least one field</string>
     <string name="ev_bms_charge_settings">Distance on charge</string>

@@ -7,11 +7,16 @@ import android.os.Handler
 import android.os.Looper
 import android.view.View
 import androidx.fragment.app.FragmentActivity
+import com.github.mikephil.charting.charts.LineChart
 import net.osmand.Location
 import net.osmand.aidlapi.OsmAndCustomizationConstants
 import net.osmand.plus.OsmandApplication
 import net.osmand.plus.R
 import net.osmand.plus.activities.MapActivity
+import net.osmand.plus.charts.GPXDataSetAxisType
+import net.osmand.plus.charts.GPXDataSetType
+import net.osmand.plus.charts.GpxDataSetTypeGroup
+import net.osmand.plus.charts.OrderedLineDataSet
 import net.osmand.plus.plugins.OsmandPlugin
 import net.osmand.plus.plugins.evbms.ble.EvBleUartClient
 import net.osmand.plus.plugins.evbms.protocol.AntBmsProtocol
@@ -33,6 +38,8 @@ import net.osmand.plus.views.mapwidgets.widgets.MapWidget
 import net.osmand.plus.widgets.ctxmenu.ContextMenuAdapter
 import net.osmand.plus.widgets.ctxmenu.callback.OnDataChangeUiAdapter
 import net.osmand.plus.widgets.ctxmenu.data.ContextMenuItem
+import net.osmand.shared.gpx.GpxTrackAnalysis
+import org.json.JSONException
 import org.json.JSONObject
 import java.util.Locale
 
@@ -544,7 +551,13 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		saveChargeRecord(record)
 		markGpxEvent(
 			app.getString(R.string.ev_bms_gpx_charge_end),
-			chargeEventDescription(start = false, remainingAh, tempC, chargedAh)
+			chargeEventDescription(
+				start = false,
+				remainingAh,
+				tempC,
+				chargedAh,
+				if (chargeStartMs > 0L) now - chargeStartMs else null
+			)
 		)
 		charging = false
 		chargeExitHold = 0
@@ -767,10 +780,14 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		start: Boolean,
 		remainingAh: Double?,
 		tempC: Double?,
-		chargedAh: Double?
+		chargedAh: Double?,
+		durationMs: Long? = null
 	): String {
 		val parts = ArrayList<String>()
 		parts.add(app.getString(if (start) R.string.ev_bms_gpx_charge_start else R.string.ev_bms_gpx_charge_end))
+		if (durationMs != null && durationMs > 0L) {
+			parts.add(OsmAndFormatter.getFormattedDurationShort((durationMs / 1000L).toInt()))
+		}
 		if (tempC != null) {
 			parts.add(String.format(Locale.US, "%.1f °C", tempC))
 		}
@@ -788,6 +805,9 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		parts.add(app.getString(R.string.ev_bms_gpx_charge_trip))
 		if (row.distanceKm != null) {
 			parts.add(String.format(Locale.US, "%.2f km", row.distanceKm))
+		}
+		if (row.movingMs > 0L) {
+			parts.add(OsmAndFormatter.getFormattedDurationShort((row.movingMs / 1000L).toInt()))
 		}
 		if (row.startVoltageV != null && row.endVoltageV != null) {
 			parts.add(String.format(Locale.US, "%.1f→%.1f V", row.startVoltageV, row.endVoltageV))
@@ -1260,6 +1280,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		val events = ArrayList(pendingGpxEvents)
 		pendingGpxEvents.clear()
 		if (recorder.isRecording) {
+			recorder.setWriteGpx(RECORD_GPX.get() && !isTripRecording())
 			if (events.isEmpty()) {
 				recorder.append(sample)
 			} else {
@@ -1267,6 +1288,9 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 					recorder.appendNamedPoint(sample, name, desc)
 				}
 			}
+		}
+		for ((name, desc) in events) {
+			writeTripRecordingWaypoint(sample, name, desc)
 		}
 		voice.onLink(
 			bmsUp = bmsFreshAfter,
@@ -1437,7 +1461,61 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	fun applyHikeTelemetryState() {
 		recorder.setFolderUri(CSV_FOLDER_URI.get())
 		recorder.setFields(selectedTelemetryFields())
-		recorder.setWriteGpx(RECORD_GPX.get())
+		recorder.setWriteGpx(RECORD_GPX.get() && !isTripRecording())
+	}
+
+	fun isTripRecording(): Boolean = app.savingTrackHelper.isRecording
+
+	@Throws(JSONException::class)
+	override fun attachAdditionalInfoToRecordedTrack(location: Location, json: JSONObject) {
+		val sample = latestTelemetry ?: return
+		if (!isBmsFresh() && !isControllerFresh()) {
+			return
+		}
+		EvGpx.put(json, sample)
+	}
+
+	override fun getTrackPointsAnalyser(): GpxTrackAnalysis.TrackPointsAnalyser {
+		return EvTrackPointsAnalyser()
+	}
+
+	override fun getAvailableGPXDataSetTypes(
+		analysis: GpxTrackAnalysis,
+		out: MutableList<GPXDataSetType?>
+	) {
+		EvGpx.getAvailableGPXDataSetTypes(analysis, out)
+	}
+
+	override fun getOrderedLineDataSet(
+		chart: LineChart,
+		analysis: GpxTrackAnalysis,
+		graphType: GPXDataSetType,
+		chartAxisType: GPXDataSetAxisType,
+		calcWithoutGaps: Boolean,
+		useRightAxis: Boolean
+	): OrderedLineDataSet? {
+		if (graphType.typeGroup != GpxDataSetTypeGroup.EV_TELEMETRY) {
+			return null
+		}
+		return EvGpx.createDataSet(
+			app, chart, analysis, graphType, chartAxisType, useRightAxis, calcWithoutGaps
+		)
+	}
+
+	private fun writeTripRecordingWaypoint(sample: EvTelemetry, name: String, desc: String) {
+		if (!isTripRecording()) {
+			return
+		}
+		val lat = sample.lat ?: return
+		val lon = sample.lon ?: return
+		val color = when {
+			name.contains(app.getString(R.string.ev_bms_gpx_charge_start), true) -> 0xFF43A047.toInt()
+			name.contains(app.getString(R.string.ev_bms_gpx_charge_end), true) -> 0xFFFB8C00.toInt()
+			else -> 0xFF1E88E5.toInt()
+		}
+		app.savingTrackHelper.insertPointData(
+			lat, lon, desc, name, app.getString(R.string.ev_bms_plugin_name), color, "special_star", "circle"
+		)
 	}
 
 	fun selectedTelemetryFields(): List<TelemetryField> = TelemetryField.parse(TELEMETRY_FIELDS.get())

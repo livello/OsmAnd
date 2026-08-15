@@ -1,7 +1,9 @@
 package net.osmand.plus.plugins.evbms
 
 import android.app.Activity
+import android.app.Dialog
 import android.content.Intent
+import android.graphics.drawable.ColorDrawable
 import android.location.LocationManager
 import android.net.Uri
 import android.os.Build
@@ -12,6 +14,8 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.Window
+import android.view.WindowManager
 import android.widget.ArrayAdapter
 import android.widget.CheckBox
 import android.widget.ImageView
@@ -145,6 +149,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		setupPollInterval()
 		setupSwitch(plugin.RECORD_TELEMETRY.id)
 		setupSwitch(plugin.RECORD_GPX.id)
+		findPreference<SwitchPreferenceEx>(plugin.RECORD_GPX.id)?.setDescription(R.string.ev_bms_record_gpx_desc)
 		setupTelemetryFields()
 		setupCsvFolder()
 		setupChargeStillSec()
@@ -625,23 +630,8 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		val themed = UiUtilities.getThemedContext(activity, isNightMode())
 		val selected = plugin.selectedTelemetryFields().toMutableSet()
 		val inflater = LayoutInflater.from(themed)
-		val pad = AndroidUtils.dpToPx(themed, 16f)
-		val root = LinearLayout(themed).apply {
-			orientation = LinearLayout.VERTICAL
-			setPadding(0, pad / 4, 0, pad / 4)
-		}
-		val actions = LinearLayout(themed).apply {
-			orientation = LinearLayout.HORIZONTAL
-			setPadding(pad, 0, pad, pad / 4)
-		}
-		fun actionButton(label: String, onClick: () -> Unit): TextView {
-			return TextView(themed).apply {
-				text = label
-				setTextColor(ColorUtilities.getActiveColor(themed, isNightMode()))
-				setPadding(0, pad / 4, pad, pad / 4)
-				setOnClickListener { onClick() }
-			}
-		}
+		val content = inflater.inflate(R.layout.ev_bms_telemetry_fields_dialog, null)
+		val list = content.findViewById<LinearLayout>(R.id.fields_list)
 		val checkboxes = ArrayList<Pair<TelemetryField, CheckBox>>()
 		fieldValueViews.clear()
 		fun bindChecks() {
@@ -649,21 +639,26 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 				box.isChecked = field in selected
 			}
 		}
-		actions.addView(actionButton(getString(R.string.shared_string_select_all)) {
-			selected.clear()
-			selected.addAll(TelemetryField.entries)
-			bindChecks()
-		})
-		actions.addView(actionButton(getString(R.string.shared_string_reset)) {
-			selected.clear()
-			selected.addAll(TelemetryField.parse(TelemetryField.DEFAULT_IDS))
-			bindChecks()
-		})
-		root.addView(actions)
+		content.findViewById<TextView>(R.id.select_all).apply {
+			contentDescription = getString(R.string.shared_string_select_all)
+			setOnClickListener {
+				selected.clear()
+				selected.addAll(TelemetryField.entries)
+				bindChecks()
+			}
+		}
+		content.findViewById<TextView>(R.id.reset).apply {
+			contentDescription = getString(R.string.shared_string_reset)
+			setOnClickListener {
+				selected.clear()
+				selected.addAll(TelemetryField.parse(TelemetryField.DEFAULT_IDS))
+				bindChecks()
+			}
+		}
 		for ((groupRes, fields) in TelemetryField.grouped()) {
-			root.addView(telemetryGroupHeader(themed, groupRes))
+			list.addView(telemetryGroupHeader(themed, groupRes))
 			for (field in fields) {
-				val row = inflater.inflate(R.layout.ev_bms_telemetry_field_row, root, false)
+				val row = inflater.inflate(R.layout.ev_bms_telemetry_field_row, list, false)
 				val box = row.findViewById<CheckBox>(R.id.compound_button)
 				val title = row.findViewById<TextView>(R.id.title)
 				val value = row.findViewById<TextView>(R.id.value)
@@ -677,38 +672,46 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 				}
 				checkboxes.add(field to box)
 				fieldValueViews.add(field to value)
-				root.addView(row)
+				list.addView(row)
 			}
 		}
-		val scroll = ScrollView(themed).apply {
-			layoutParams = ViewGroup.LayoutParams(
-				ViewGroup.LayoutParams.MATCH_PARENT,
-				ViewGroup.LayoutParams.MATCH_PARENT
-			)
-			isFillViewport = true
-			addView(root)
+		val dialog = Dialog(themed)
+		dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+		dialog.setContentView(content)
+		dialog.setOnDismissListener {
+			uiHandler.removeCallbacks(refreshFieldValues)
+			fieldValueViews.clear()
+		}
+		content.findViewById<View>(R.id.cancel).setOnClickListener { dialog.dismiss() }
+		content.findViewById<View>(R.id.apply).setOnClickListener {
+			val chosen = TelemetryField.entries.filter { it in selected }
+			if (chosen.isEmpty()) {
+				app.showToastMessage(R.string.ev_bms_telemetry_fields_empty)
+				return@setOnClickListener
+			}
+			plugin.setTelemetryFields(chosen)
+			setupTelemetryFields()
+			dialog.dismiss()
 		}
 		uiHandler.removeCallbacks(refreshFieldValues)
 		uiHandler.post(refreshFieldValues)
-		AlertDialog.Builder(themed)
-			.setTitle(R.string.ev_bms_telemetry_fields)
-			.setView(scroll)
-			.setPositiveButton(R.string.shared_string_apply) { _, _ ->
-				val chosen = TelemetryField.entries.filter { it in selected }
-				if (chosen.isEmpty()) {
-					app.showToastMessage(R.string.ev_bms_telemetry_fields_empty)
-					return@setPositiveButton
-				}
-				plugin.setTelemetryFields(chosen)
-				setupTelemetryFields()
+		dialog.show()
+		dialog.window?.apply {
+			setGravity(Gravity.FILL)
+			decorView.setPadding(0, 0, 0, 0)
+			setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+			attributes = attributes.apply {
+				width = ViewGroup.LayoutParams.MATCH_PARENT
+				height = ViewGroup.LayoutParams.MATCH_PARENT
+				horizontalMargin = 0f
+				verticalMargin = 0f
 			}
-			.setNegativeButton(R.string.shared_string_cancel, null)
-			.setOnDismissListener {
-				uiHandler.removeCallbacks(refreshFieldValues)
-				fieldValueViews.clear()
-			}
-			.create()
-			.showFullScreen()
+			addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+			statusBarColor = ColorUtilities.getListBgColor(themed, isNightMode())
+			setBackgroundDrawable(
+				ColorDrawable(ColorUtilities.getListBgColor(themed, isNightMode()))
+			)
+		}
 	}
 
 	private fun telemetryGroupHeader(themed: android.content.Context, groupRes: Int): View {
@@ -727,7 +730,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		return LinearLayout(themed).apply {
 			orientation = LinearLayout.HORIZONTAL
 			gravity = Gravity.CENTER_VERTICAL
-			setPadding(hPad, AndroidUtils.dpToPx(themed, 8f), hPad, AndroidUtils.dpToPx(themed, 4f))
+			setPadding(hPad, AndroidUtils.dpToPx(themed, 4f), hPad, AndroidUtils.dpToPx(themed, 2f))
 			addView(line)
 			addView(label)
 		}

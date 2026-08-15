@@ -24,6 +24,7 @@ class WptPt : GpxExtensions, Linkable {
 	var altitudeColor: Int = 0
 	var speedColor: Int = 0
 	var slopeColor: Int = 0
+	var consumptionColor: Int = 0
 
 	var deleted: Boolean = false
 	var firstPoint: Boolean = false
@@ -97,6 +98,7 @@ class WptPt : GpxExtensions, Linkable {
 		speedColor = wptPt.speedColor
 		altitudeColor = wptPt.altitudeColor
 		slopeColor = wptPt.slopeColor
+		consumptionColor = wptPt.consumptionColor
 		colourARGB = wptPt.colourARGB
 		distance = wptPt.distance
 		copyLinks(wptPt.metadata?.links)
@@ -236,6 +238,7 @@ class WptPt : GpxExtensions, Linkable {
 		return when (type) {
 			RouteColorize.ColorizationType.SPEED -> speedColor
 			RouteColorize.ColorizationType.ELEVATION -> altitudeColor
+			RouteColorize.ColorizationType.CONSUMPTION -> consumptionColor
 			else -> slopeColor
 		}
 	}
@@ -245,6 +248,7 @@ class WptPt : GpxExtensions, Linkable {
 			RouteColorize.ColorizationType.SPEED -> speedColor = color
 			RouteColorize.ColorizationType.ELEVATION -> altitudeColor = color
 			RouteColorize.ColorizationType.SLOPE -> slopeColor = color
+			RouteColorize.ColorizationType.CONSUMPTION -> consumptionColor = color
 			else -> {}
 		}
 	}

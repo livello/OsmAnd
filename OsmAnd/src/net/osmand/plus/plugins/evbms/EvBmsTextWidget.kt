@@ -14,6 +14,7 @@ import net.osmand.plus.utils.OsmAndFormatter
 import net.osmand.plus.views.layers.base.OsmandMapLayer.DrawSettings
 import net.osmand.plus.views.mapwidgets.WidgetType
 import net.osmand.plus.views.mapwidgets.WidgetsPanel
+import net.osmand.plus.views.mapwidgets.appearance.ResolvedPanelAppearance
 import net.osmand.plus.views.mapwidgets.widgets.MapWidget
 import net.osmand.plus.views.mapwidgets.widgets.SimpleWidget
 import net.osmand.plus.widgets.popup.PopUpMenuItem
@@ -136,7 +137,12 @@ class EvBmsTextWidget(
 			field.controllerLink() -> plugin.isControllerConnected()
 			else -> plugin.isBmsConnected()
 		}
-		EvWidgetLinkFrame.apply(view, linked, panel)
+		EvWidgetLinkFrame.apply(view, linked, textView, smallTextView, widgetName)
+	}
+
+	override fun applySimpleWidgetAppearance(appearance: ResolvedPanelAppearance) {
+		super.applySimpleWidgetAppearance(appearance)
+		applyLinkFrame()
 	}
 
 	override fun shouldShowIcon(): Boolean {

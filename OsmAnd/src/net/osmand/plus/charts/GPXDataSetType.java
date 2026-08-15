@@ -46,6 +46,12 @@ public enum GPXDataSetType {
 	VEHICLE_SPEED(R.string.obd_widget_vehicle_speed, R.drawable.ic_action_obd_speed, OBDCommand.OBD_SPEED_COMMAND.getGpxTag(), R.color.gpx_chart_vehicle_speed, R.color.gpx_chart_vehicle_speed, GpxDataSetTypeGroup.VEHICLE_METRICS),
 	THROTTLE_POSITION(R.string.obd_throttle_position, R.drawable.ic_action_obd_throttle_position, OBDCommand.OBD_THROTTLE_POSITION_COMMAND.getGpxTag(), R.color.gpx_chart_throttle_position, R.color.gpx_chart_throttle_position, GpxDataSetTypeGroup.VEHICLE_METRICS),
 
+	EV_CONSUMPTION(R.string.ev_bms_widget_consumption, R.drawable.ic_action_obd_fuel_consumption, PointAttributes.EV_TAG_CONSUMPTION, R.color.gpx_chart_orange_label, R.color.gpx_chart_orange, GpxDataSetTypeGroup.EV_TELEMETRY),
+	EV_VOLTAGE(R.string.ev_bms_widget_voltage, R.drawable.ic_action_obd_battery_voltage, PointAttributes.EV_TAG_VOLTAGE, R.color.gpx_chart_teal_label, R.color.gpx_chart_teal, GpxDataSetTypeGroup.EV_TELEMETRY),
+	EV_CURRENT(R.string.ev_bms_widget_current, R.drawable.ic_action_battery, PointAttributes.EV_TAG_CURRENT, R.color.gpx_chart_green_label, R.color.gpx_chart_green, GpxDataSetTypeGroup.EV_TELEMETRY),
+	EV_SOC(R.string.ev_bms_widget_soc, R.drawable.ic_action_battery, PointAttributes.EV_TAG_SOC, R.color.gpx_chart_blue_label, R.color.gpx_chart_blue, GpxDataSetTypeGroup.EV_TELEMETRY),
+	EV_CHARGE_TRIP(R.string.ev_bms_widget_charge_trip, R.drawable.ic_action_distance, PointAttributes.EV_TAG_CHARGE_TRIP, R.color.gpx_chart_indigo_label, R.color.gpx_chart_indigo, GpxDataSetTypeGroup.EV_TELEMETRY),
+
 	ZOOM_ANIMATED(R.string.zoom_animated, R.drawable.ic_action_map_zoom, PointAttributes.DEV_ANIMATED_ZOOM, R.color.gpx_chart_teal_label, R.color.gpx_chart_teal, GpxDataSetTypeGroup.GENERAL),
 	ZOOM_NON_ANIMATED(R.string.zoom_non_animated, R.drawable.ic_action_map_zoom, PointAttributes.DEV_RAW_ZOOM, R.color.gpx_chart_indigo_label, R.color.gpx_chart_indigo, GpxDataSetTypeGroup.GENERAL);
 

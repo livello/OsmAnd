@@ -71,7 +71,9 @@ public class ColoringStyleDetailsCardController implements IColoringStyleDetails
 	@Override
 	public boolean shouldShowSpeedAltitudeLegend() {
 		ColoringType coloringType = coloringStyle.getType();
-		return coloringType == ColoringType.ALTITUDE || coloringType == ColoringType.SPEED;
+		return coloringType == ColoringType.ALTITUDE
+				|| coloringType == ColoringType.SPEED
+				|| coloringType == ColoringType.CONSUMPTION;
 	}
 
 	@Override
@@ -100,6 +102,11 @@ public class ColoringStyleDetailsCardController implements IColoringStyleDetails
 					app.getString(R.string.shared_string_min_speed),
 					app.getString(R.string.shared_string_max_speed)
 			};
+		} else if (coloringType == ColoringType.CONSUMPTION) {
+			return new CharSequence[] {
+					app.getString(R.string.ev_bms_coloring_consumption),
+					"Wh/km"
+			};
 		} else if (coloringType == ColoringType.ALTITUDE) {
 			return new CharSequence[] {
 					app.getString(R.string.shared_string_min_height),
@@ -114,7 +121,9 @@ public class ColoringStyleDetailsCardController implements IColoringStyleDetails
 		if (analysis != null) {
 			boolean useElevationData = coloringType == ColoringType.ALTITUDE && analysis.isElevationSpecified();
 			boolean useSpeedData = coloringType == ColoringType.SPEED && analysis.isSpeedSpecified();
-			return useElevationData || useSpeedData;
+			boolean useConsumptionData = coloringType == ColoringType.CONSUMPTION
+					&& analysis.hasData(net.osmand.shared.gpx.PointAttributes.EV_TAG_CONSUMPTION);
+			return useElevationData || useSpeedData || useConsumptionData;
 		}
 		return false;
 	}
@@ -127,6 +136,9 @@ public class ColoringStyleDetailsCardController implements IColoringStyleDetails
 		} else if (coloringType == ColoringType.SLOPE) {
 			value *= 100; // slope value in the range 0..1
 			return app.getString(R.string.ltr_or_rtl_combine_via_space, String.valueOf((int) value), "%");
+		} else if (coloringType == ColoringType.CONSUMPTION) {
+			return app.getString(R.string.ltr_or_rtl_combine_via_space,
+					String.valueOf((int) (value + 0.5)), "Wh/km");
 		}
 		String speed = OsmAndFormatter.getFormattedSpeed((float) value, app);
 		String speedUnit = app.getSettings().SPEED_SYSTEM.get().toShortString();

@@ -27,6 +27,12 @@ enum class GradientScaleType(
 		"gradient_slope_color",
 		"shared_string_slope",
 		"ic_action_altitude_ascent"
+	),
+	CONSUMPTION(
+		"ev_wh_km",
+		"gradient_speed_color",
+		"ev_bms_coloring_consumption",
+		"ic_action_obd_fuel_consumption"
 	);
 
 	fun getHumanString(): String = Localization.getString(resId)
@@ -34,6 +40,7 @@ enum class GradientScaleType(
 	fun toColorizationType(): RouteColorize.ColorizationType {
 		return when (this) {
 			SPEED -> RouteColorize.ColorizationType.SPEED
+			CONSUMPTION -> RouteColorize.ColorizationType.CONSUMPTION
 			ALTITUDE -> RouteColorize.ColorizationType.ELEVATION
 			SLOPE -> RouteColorize.ColorizationType.SLOPE
 			else -> RouteColorize.ColorizationType.NONE
@@ -42,7 +49,7 @@ enum class GradientScaleType(
 
 	fun toPaletteCategory(): GradientPaletteCategory {
 		return when (this) {
-			SPEED -> GradientPaletteCategory.SPEED
+			SPEED, CONSUMPTION -> GradientPaletteCategory.SPEED
 			ALTITUDE -> GradientPaletteCategory.ALTITUDE
 			SLOPE -> GradientPaletteCategory.SLOPE
 		}
