@@ -53,7 +53,7 @@ object JbdBmsProtocol {
 		val payload = ByteArray(7)
 		payload[0] = 0x06
 		for (i in 0 until 6) {
-			payload[i + 1] = (digits[i] - '0').code.toByte()
+			payload[i + 1] = (digits[i] - '0').toByte()
 		}
 		return writeCommand(REG_USE_PASSWORD, payload)
 	}
