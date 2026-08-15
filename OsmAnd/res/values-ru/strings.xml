@@ -4498,6 +4498,7 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
 <b>🥾 Режим «Поход»</b><br/>
 Оставляет запас хода, GPS и телеметрию раз в 5 с, замедляет опрос BLE не реже 5 с, отключает тяжёлые слои карты, 3D, погоду, онлайн-тайлы и лишние Bluetooth-плагины.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Список изменений</b> · %1$s<br/>
+• Вкладка журнала: переключатель подробного DEBUG-лога действий плагина, экспорт и очистка<br/>
 • Вкладка истории: зарядки и пробеги на заряде, удаление строки кнопкой 🗑️<br/>
 • Новая зарядка не начинается, пока не будет пробега и расхода батареи выше порогов в настройках; обрыв BLE больше не режет одну зарядку на несколько<br/>
 • Модалка EV-Телеметрии на всю высоту: ⚙️ настройки, ☑️ поля, 📊 живые графики, ℹ️ о плагине; последняя вкладка запоминается<br/>
@@ -4537,7 +4538,14 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
     <string name="ev_bms_widget_group">EV-Телеметрия</string>
     <string name="ev_bms_tab_charts">Графики</string>
     <string name="ev_bms_tab_history">История зарядок и пробегов</string>
+    <string name="ev_bms_tab_journal">Журнал</string>
     <string name="ev_bms_tab_about">О плагине</string>
+    <string name="ev_bms_journal_enable">Писать DEBUG-журнал</string>
+    <string name="ev_bms_journal_status_off">Выкл · %1$s</string>
+    <string name="ev_bms_journal_status_on">Пишется · %1$s</string>
+    <string name="ev_bms_journal_empty">Журнал пуст</string>
+    <string name="ev_bms_journal_cleared">Журнал очищен</string>
+    <string name="ev_bms_journal_clear_q">Удалить файл DEBUG-журнала?</string>
     <string name="ev_bms_charts_empty">Ждём телеметрию…</string>
     <string name="ev_bms_charts_no_fields">Выберите поля телеметрии для графиков</string>
     <string name="ev_bms_devices">Устройства Bluetooth</string>

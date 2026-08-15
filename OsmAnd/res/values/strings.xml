@@ -998,6 +998,7 @@ Tables in plugin settings: charge sessions (time, start/end battery temperature,
 <b>🥾 Hike mode</b><br/>
 Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+• Journal tab: switch on a DEBUG log of plugin and BLE actions, then export or clear it<br/>
 • History tab lists charge sessions and distance-on-charge rides, with 🗑️ to delete a row<br/>
 • A new charge cannot start until you have ridden and used battery past the thresholds in settings; BLE drop-outs no longer split one charge into many<br/>
 • EV-Telemetry sheet is a full-height hub: ⚙️ settings, ☑️ fields, 📊 live charts, ℹ️ about; last tab is restored<br/>
@@ -1037,7 +1038,14 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_widget_group">EV-Telemetry</string>
     <string name="ev_bms_tab_charts">Charts</string>
     <string name="ev_bms_tab_history">Charge and ride history</string>
+    <string name="ev_bms_tab_journal">Debug journal</string>
     <string name="ev_bms_tab_about">About</string>
+    <string name="ev_bms_journal_enable">Write DEBUG journal</string>
+    <string name="ev_bms_journal_status_off">Off · %1$s</string>
+    <string name="ev_bms_journal_status_on">Recording · %1$s</string>
+    <string name="ev_bms_journal_empty">Journal is empty</string>
+    <string name="ev_bms_journal_cleared">Journal cleared</string>
+    <string name="ev_bms_journal_clear_q">Delete the DEBUG journal file?</string>
     <string name="ev_bms_charts_empty">Waiting for telemetry…</string>
     <string name="ev_bms_charts_no_fields">Select telemetry fields to plot</string>
     <string name="ev_bms_devices">Bluetooth devices</string>

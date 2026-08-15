@@ -90,6 +90,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerStringPreference("ev_bms_telemetry_fields", TelemetryField.DEFAULT_IDS).makeGlobal().makeShared()
 	val SHEET_TAB: CommonPreference<Int> =
 		registerIntPreference("ev_bms_sheet_tab", 0).makeGlobal().makeShared()
+	val DEBUG_JOURNAL: CommonPreference<Boolean> =
+		registerBooleanPreference("ev_bms_debug_journal", false).makeGlobal().makeShared()
 	val SOC_CAL_STORE: CommonPreference<String> =
 		registerStringPreference("ev_bms_soc_cal_store", "").makeGlobal().makeShared()
 	val CHARGE_STILL_SEC: CommonPreference<Int> =
@@ -186,6 +188,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private val handler = Handler(Looper.getMainLooper())
 	private val rangeEstimator = RangeEstimator()
 	private val recorder = TelemetryRecorder(app)
+	private val journal = EvDebugJournal(app)
 	private val voice = EvVoiceAnnouncer(app)
 	private val historyStore = EvHistoryStore(app)
 	private val hikeMode = HikeModeController(app, this)
@@ -336,8 +339,12 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	}
 
 	override fun init(app: OsmandApplication, activity: Activity?): Boolean {
-		bmsClient = EvBleUartClient(app, EvBleUartClient.Role.BMS, this)
-		controllerClient = EvBleUartClient(app, EvBleUartClient.Role.CONTROLLER, this)
+		bmsClient = EvBleUartClient(app, EvBleUartClient.Role.BMS, this, journal)
+		controllerClient = EvBleUartClient(app, EvBleUartClient.Role.CONTROLLER, this, journal)
+		journal.enabled = DEBUG_JOURNAL.get()
+		if (journal.enabled) {
+			journal.i("plugin", "init hash=${EvBmsRevision.GIT_HASH}")
+		}
 		voice.init()
 		socCalibrator.decode(SOC_CAL_STORE.get())
 		restoreSessions()
@@ -358,6 +365,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 
 	override fun mapActivityResume(activity: MapActivity) {
 		mapActivity = activity
+		journal.i("plugin", "map resume, reconnect saved devices")
 		connectSavedDevices(activity)
 		startPolling()
 		applyHikeTelemetryState()
@@ -529,6 +537,13 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 						"ah=$remainingAh lastAh=$lastChargeAh rising=$ahRising like=$chargeLike " +
 						"charging=$charging hold=$chargeHold fresh=$bmsFresh"
 			)
+			journal.d(
+				"charge",
+				"detect moving=$moving still=${stillSinceMs?.let { now - it }}ms " +
+						"bmsI=$currentA ctrlI=${ctrlCurrentA()} absI=$absI minA=$minA " +
+						"ah=$remainingAh lastAh=$lastChargeAh rising=$ahRising like=$chargeLike " +
+						"charging=$charging hold=$chargeHold fresh=$bmsFresh rearm=$rearmReady"
+			)
 		}
 		if (chargeLike) {
 			chargeHold++
@@ -601,6 +616,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		if (CHARGE_CYCLE_ACTIVE.get() || tripStartMs > 0L) {
 			finishTrip(now, loc)
 		}
+		journal.i("charge", "begin ah=$remainingAh full=$fullAh I=$currentA temp=$tempC")
 		charging = true
 		CHARGE_CYCLE_ACTIVE.set(false)
 		chargeStartMs = now
@@ -650,6 +666,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				if (chargeStartMs > 0L) now - chargeStartMs else null
 			)
 		)
+		journal.i("charge", "finish chargedAh=$chargedAh remaining=$remainingAh temp=$tempC")
 		charging = false
 		chargeExitHold = 0
 		CHARGE_CYCLE_ACTIVE.set(true)
@@ -1134,6 +1151,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	}
 
 	fun connectBms(activity: Activity, name: String, address: String) {
+		journal.i("link", "connect BMS name=$name addr=$address proto=${BMS_PROTOCOL.get()}")
 		BMS_NAME.set(name)
 		BMS_ADDRESS.set(address)
 		bmsClient?.preferredBmsKind = preferredBmsKind()
@@ -1141,6 +1159,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	}
 
 	fun connectController(activity: Activity, name: String, address: String) {
+		journal.i("link", "connect CTRL name=$name addr=$address proto=${CONTROLLER_PROTOCOL.get()}")
 		CONTROLLER_NAME.set(name)
 		CONTROLLER_ADDRESS.set(address)
 		controllerClient?.preferredControllerKind = preferredControllerKind()
@@ -1198,6 +1217,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 
 	override fun onConnectionChanged(role: EvBleUartClient.Role, connected: Boolean, name: String?) {
 		val label = name ?: role.name
+		journal.i("link", "$role connected=$connected name=$label")
 		if (connected) {
 			app.showToastMessage(app.getString(R.string.ev_bms_connected, label))
 			if (role == EvBleUartClient.Role.CONTROLLER) {
@@ -1260,6 +1280,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				now - lastRxMs > LINK_DEAD_MS
 			}
 			if (dead) {
+				journal.w("link", "${client.role} stale ${now - lastRxMs}ms, forceReconnect")
 				clearRx()
 				client.forceReconnect("stale")
 			}
@@ -1578,6 +1599,14 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		val bmsFreshAfter = isBmsFresh()
 		val ctrlFreshAfter = isControllerFresh()
 		latestTelemetry = sample
+		if (journal.enabled) {
+			journal.d(
+				"telem",
+				"bmsFresh=$bmsFreshAfter ctrlFresh=$ctrlFreshAfter soc=${sample.socPercent} " +
+						"V=${sample.voltageV} I=${sample.currentA} rpm=${sample.rpm} " +
+						"motC=${sample.motorTempC} charge=$charging"
+			)
+		}
 		synchronized(chartLock) {
 			chartHistory.addLast(sample)
 			while (chartHistory.size > CHART_HISTORY_MAX) {
@@ -1850,6 +1879,34 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	fun setSheetTab(tab: EvBmsSheetTab) {
 		SHEET_TAB.set(tab.index)
 	}
+
+	fun isDebugJournalEnabled(): Boolean = DEBUG_JOURNAL.get()
+
+	fun setDebugJournalEnabled(enabled: Boolean) {
+		DEBUG_JOURNAL.set(enabled)
+		if (enabled) {
+			journal.enabled = true
+			journal.i(
+				"journal",
+				"on hash=${EvBmsRevision.GIT_HASH} bms=${BMS_ADDRESS.get()} " +
+						"ctrl=${CONTROLLER_ADDRESS.get()} protoBms=${BMS_PROTOCOL.get()} " +
+						"protoCtrl=${CONTROLLER_PROTOCOL.get()}"
+			)
+		} else {
+			journal.log("I", "journal", "off", force = true)
+			journal.enabled = false
+		}
+	}
+
+	fun debugJournalSize(): Long = journal.sizeBytes()
+
+	fun debugJournalTail(): String = journal.tail()
+
+	fun clearDebugJournal() {
+		journal.clear()
+	}
+
+	fun shareDebugJournal(activity: Activity): Boolean = journal.share(activity)
 
 	fun setTelemetryFields(selected: List<TelemetryField>) {
 		if (selected.isEmpty()) {

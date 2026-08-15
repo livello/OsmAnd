@@ -20,6 +20,7 @@ import android.os.Handler
 import android.os.Looper
 import net.osmand.PlatformUtil
 import net.osmand.plus.OsmandApplication
+import net.osmand.plus.plugins.evbms.EvDebugJournal
 import net.osmand.plus.plugins.externalsensors.GattAttributes
 import net.osmand.plus.utils.AndroidUtils
 import net.osmand.plus.utils.BLEUtils
@@ -31,8 +32,9 @@ import kotlin.math.min
 
 class EvBleUartClient(
 	private val app: OsmandApplication,
-	private val role: Role,
-	private val listener: Listener
+	val role: Role,
+	private val listener: Listener,
+	private val journal: EvDebugJournal
 ) {
 
 	enum class Role {
@@ -174,7 +176,7 @@ class EvBleUartClient(
 		if (!wantConnected || connected) {
 			return@Runnable
 		}
-		LOG.warn("$role connect timeout (auto=$usingAutoConnect attempt=$reconnectAttempt)")
+		jw("connect timeout auto=$usingAutoConnect attempt=$reconnectAttempt")
 		connecting = false
 		closeGatt()
 		scheduleReconnect()
@@ -184,7 +186,7 @@ class EvBleUartClient(
 		if (!reconnectScanning) {
 			return@Runnable
 		}
-		LOG.warn("$role reconnect scan timed out, falling back to connectGatt")
+		jw("reconnect scan timed out, falling back to connectGatt")
 		stopReconnectScan()
 		if (wantConnected && !connected && !connecting) {
 			openGatt(autoConnect = usingAutoConnect)
@@ -203,7 +205,7 @@ class EvBleUartClient(
 		}
 
 		override fun onScanFailed(errorCode: Int) {
-			LOG.error("BLE scan failed $errorCode")
+			je("scan failed $errorCode")
 			stopScan()
 		}
 	}
@@ -214,13 +216,13 @@ class EvBleUartClient(
 			if (!wantConnected || device.address != deviceAddress) {
 				return
 			}
-			LOG.debug("$role found advertising device, connecting")
+			jd("found advertising device, connecting")
 			stopReconnectScan()
 			openGatt(device, autoConnect = false)
 		}
 
 		override fun onScanFailed(errorCode: Int) {
-			LOG.warn("$role reconnect scan failed $errorCode")
+			jw("reconnect scan failed $errorCode")
 			stopReconnectScan()
 			if (wantConnected && !connected) {
 				openGatt(autoConnect = false)
@@ -253,7 +255,7 @@ class EvBleUartClient(
 				} catch (_: Exception) {
 				}
 				if (!gatt.discoverServices()) {
-					LOG.warn("$role discoverServices failed, retrying connect")
+					jw("discoverServices failed, retrying connect")
 					connecting = false
 					connected = false
 					closeGatt()
@@ -262,7 +264,7 @@ class EvBleUartClient(
 				}
 				mainHandler.post { listener.onConnectionChanged(role, true, deviceName) }
 			} else if (newState == BluetoothProfile.STATE_CONNECTED) {
-				LOG.warn("$role connected with status $status, retrying")
+				jw("connected with status $status, retrying")
 				connecting = false
 				connected = false
 				try {
@@ -293,7 +295,7 @@ class EvBleUartClient(
 					mainHandler.post { listener.onConnectionChanged(role, false, deviceName) }
 				}
 				if (wantConnected) {
-					LOG.warn("$role disconnected status=$status, scheduling reconnect")
+					jw("disconnected status=$status, scheduling reconnect")
 					scheduleReconnect()
 				}
 			}
@@ -305,7 +307,7 @@ class EvBleUartClient(
 				return
 			}
 			if (status != BluetoothGatt.GATT_SUCCESS) {
-				LOG.warn("$role service discovery status $status")
+				jw("service discovery status $status")
 				connecting = false
 				connected = false
 				closeGatt()
@@ -396,6 +398,7 @@ class EvBleUartClient(
 				}
 			}
 			writeCharacteristic = write
+			jd("services notify=${notify?.uuid} write=${write?.uuid} bms=$detectedBmsKind ctrl=$detectedControllerKind")
 			if (notify != null) {
 				gatt.setCharacteristicNotification(notify, true)
 				val cccd = notify.getDescriptor(GattAttributes.UUID_CHARACTERISTIC_CLIENT_CONFIG)
@@ -413,6 +416,7 @@ class EvBleUartClient(
 		override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
 			val value = characteristic.value ?: return
 			if (value.isNotEmpty()) {
+				jd("RX ${value.size}B ${EvDebugJournal.hex(value)}")
 				listener.onBytes(role, value)
 			}
 		}
@@ -548,7 +552,7 @@ class EvBleUartClient(
 		if (!wantConnected) {
 			return
 		}
-		LOG.warn("$role forceReconnect $reason")
+		jw("forceReconnect $reason")
 		connecting = false
 		connected = false
 		connectedAtMs = 0L
@@ -592,7 +596,7 @@ class EvBleUartClient(
 		}
 		val bt = bluetoothAdapter()
 		if (bt == null || !bt.isEnabled) {
-			LOG.warn("$role bluetooth off, retrying later")
+			jw("bluetooth off, retrying later")
 			scheduleReconnect()
 			return
 		}
@@ -617,7 +621,7 @@ class EvBleUartClient(
 		stopReconnectScan()
 		reconnectScanning = true
 		connecting = false
-		LOG.debug("$role scanning to reconnect $address attempt=$reconnectAttempt")
+		jd("scanning to reconnect $address attempt=$reconnectAttempt")
 		try {
 			val filter = ScanFilter.Builder().setDeviceAddress(address).build()
 			val settings = ScanSettings.Builder()
@@ -629,7 +633,7 @@ class EvBleUartClient(
 			scanner.startScan(listOf(filter), settings, reconnectScanCallback)
 			mainHandler.postDelayed(reconnectScanTimeout, RECONNECT_SCAN_MS)
 		} catch (e: Exception) {
-			LOG.warn("$role reconnect scan start failed", e)
+			jw("reconnect scan start failed ${e.message}")
 			reconnectScanning = false
 			openGatt(autoConnect = false)
 		}
@@ -654,7 +658,7 @@ class EvBleUartClient(
 		val device = try {
 			bluetoothAdapter()?.getRemoteDevice(address)
 		} catch (e: Exception) {
-			LOG.error("Invalid BLE address $address", e)
+			je("invalid address $address ${e.message}")
 			return
 		}
 		if (device == null) {
@@ -673,11 +677,11 @@ class EvBleUartClient(
 		connecting = true
 		usingAutoConnect = autoConnect
 		deviceAddress = device.address
-		LOG.debug("$role connectGatt ${device.address} auto=$autoConnect attempt=$reconnectAttempt")
+		jd("connectGatt ${device.address} auto=$autoConnect attempt=$reconnectAttempt")
 		gatt = try {
 			device.connectGatt(app, autoConnect, gattCallback, BluetoothDevice.TRANSPORT_LE)
 		} catch (e: Exception) {
-			LOG.error("$role connectGatt failed", e)
+			je("connectGatt failed ${e.message}")
 			null
 		}
 		if (gatt == null) {
@@ -697,7 +701,7 @@ class EvBleUartClient(
 		val shift = min(reconnectAttempt, 5)
 		val delay = min(RECONNECT_MAX_MS, RECONNECT_MIN_MS shl shift)
 		reconnectPosted = true
-		LOG.debug("$role reconnect in ${delay}ms (attempt $reconnectAttempt)")
+		jd("reconnect in ${delay}ms attempt=$reconnectAttempt")
 		mainHandler.postDelayed(reconnectRunnable, delay)
 	}
 
@@ -750,9 +754,15 @@ class EvBleUartClient(
 
 	@SuppressLint("MissingPermission")
 	fun write(bytes: ByteArray): Boolean {
-		val g = gatt ?: return false
-		val ch = writeCharacteristic ?: return false
-		return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+		val g = gatt ?: run {
+			jd("TX skipped, gatt=null ${bytes.size}B")
+			return false
+		}
+		val ch = writeCharacteristic ?: run {
+			jd("TX skipped, no write char ${bytes.size}B")
+			return false
+		}
+		val ok = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
 			g.writeCharacteristic(ch, bytes, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE) ==
 					android.bluetooth.BluetoothStatusCodes.SUCCESS
 		} else {
@@ -760,5 +770,22 @@ class EvBleUartClient(
 			ch.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
 			g.writeCharacteristic(ch)
 		}
+		jd("TX ${bytes.size}B ${EvDebugJournal.hex(bytes)} ok=$ok")
+		return ok
+	}
+
+	private fun jd(msg: String) {
+		LOG.debug("$role $msg")
+		journal.d("BLE", "$role $msg")
+	}
+
+	private fun jw(msg: String) {
+		LOG.warn("$role $msg")
+		journal.w("BLE", "$role $msg")
+	}
+
+	private fun je(msg: String) {
+		LOG.error("$role $msg")
+		journal.e("BLE", "$role $msg")
 	}
 }

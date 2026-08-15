@@ -9,6 +9,8 @@ import android.view.ViewGroup
 import android.widget.CheckBox
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.widget.SwitchCompat
 import androidx.cardview.widget.CardView
 import androidx.core.graphics.Insets
 import androidx.core.text.HtmlCompat
@@ -61,6 +63,7 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	private var chartsKey = ""
 	private var fieldsBound = false
 	private var aboutBound = false
+	private var journalBound = false
 
 	private data class ChartRow(
 		val field: TelemetryField,
@@ -76,9 +79,12 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			when (currentTab) {
 				EvBmsSheetTab.FIELDS -> refreshFieldValues()
 				EvBmsSheetTab.CHARTS -> refreshCharts()
+				EvBmsSheetTab.JOURNAL -> refreshJournalTail()
 				else -> {}
 			}
-			if (currentTab == EvBmsSheetTab.FIELDS || currentTab == EvBmsSheetTab.CHARTS) {
+			if (currentTab == EvBmsSheetTab.FIELDS || currentTab == EvBmsSheetTab.CHARTS ||
+				currentTab == EvBmsSheetTab.JOURNAL
+			) {
 				uiHandler.postDelayed(this, 1000)
 			}
 		}
@@ -157,6 +163,8 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			visibleIf(tab == EvBmsSheetTab.CHARTS)
 		root.findViewById<View>(R.id.ev_bms_history_scroll).visibility =
 			visibleIf(tab == EvBmsSheetTab.HISTORY)
+		root.findViewById<View>(R.id.ev_bms_journal_container).visibility =
+			visibleIf(tab == EvBmsSheetTab.JOURNAL)
 		root.findViewById<View>(R.id.ev_bms_about_scroll).visibility =
 			visibleIf(tab == EvBmsSheetTab.ABOUT)
 		for ((key, button) in tabButtons) {
@@ -166,12 +174,13 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			EvBmsSheetTab.FIELDS -> bindFields()
 			EvBmsSheetTab.CHARTS -> bindCharts(force = true)
 			EvBmsSheetTab.HISTORY -> bindHistory()
+			EvBmsSheetTab.JOURNAL -> bindJournal()
 			EvBmsSheetTab.ABOUT -> bindAbout()
 			EvBmsSheetTab.SETTINGS -> {}
 		}
 		val showActions = tab == EvBmsSheetTab.SETTINGS
 		buttonsParent?.visibility = if (showActions && actionButtonsVisible) View.VISIBLE else View.GONE
-		if (tab == EvBmsSheetTab.FIELDS || tab == EvBmsSheetTab.CHARTS) {
+		if (tab == EvBmsSheetTab.FIELDS || tab == EvBmsSheetTab.CHARTS || tab == EvBmsSheetTab.JOURNAL) {
 			uiHandler.removeCallbacks(liveTick)
 			uiHandler.post(liveTick)
 		} else {
@@ -224,11 +233,13 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		tabButtons[EvBmsSheetTab.FIELDS] = root.findViewById(R.id.tab_fields)
 		tabButtons[EvBmsSheetTab.CHARTS] = root.findViewById(R.id.tab_charts)
 		tabButtons[EvBmsSheetTab.HISTORY] = root.findViewById(R.id.tab_history)
+		tabButtons[EvBmsSheetTab.JOURNAL] = root.findViewById(R.id.tab_journal)
 		tabButtons[EvBmsSheetTab.ABOUT] = root.findViewById(R.id.tab_about)
 		tabButtons[EvBmsSheetTab.SETTINGS]?.contentDescription = getString(R.string.shared_string_settings)
 		tabButtons[EvBmsSheetTab.FIELDS]?.contentDescription = getString(R.string.ev_bms_telemetry_fields)
 		tabButtons[EvBmsSheetTab.CHARTS]?.contentDescription = getString(R.string.ev_bms_tab_charts)
 		tabButtons[EvBmsSheetTab.HISTORY]?.contentDescription = getString(R.string.ev_bms_tab_history)
+		tabButtons[EvBmsSheetTab.JOURNAL]?.contentDescription = getString(R.string.ev_bms_tab_journal)
 		tabButtons[EvBmsSheetTab.ABOUT]?.contentDescription = getString(R.string.ev_bms_tab_about)
 		for ((tab, button) in tabButtons) {
 			button.setOnClickListener { showTab(tab) }
@@ -505,6 +516,74 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			return getString(R.string.ev_bms_value_none)
 		}
 		return String.format(Locale.getDefault(), "%.2f", v)
+	}
+
+	private fun bindJournal() {
+		val container = view?.findViewById<ViewGroup>(R.id.ev_bms_journal_container) ?: return
+		if (!journalBound || container.childCount == 0) {
+			container.removeAllViews()
+			layoutInflater.inflate(R.layout.ev_bms_journal, container, true)
+			journalBound = true
+			val enableRow = container.findViewById<View>(R.id.journal_enable_row)
+			val sw = container.findViewById<SwitchCompat>(R.id.journal_enable_switch)
+			sw.isChecked = plugin.isDebugJournalEnabled()
+			sw.setOnCheckedChangeListener { _, on ->
+				if (plugin.isDebugJournalEnabled() != on) {
+					plugin.setDebugJournalEnabled(on)
+					refreshJournalTail()
+				}
+			}
+			enableRow.setOnClickListener { sw.isChecked = !sw.isChecked }
+			container.findViewById<View>(R.id.journal_export).setOnClickListener {
+				val act = activity ?: return@setOnClickListener
+				if (!plugin.shareDebugJournal(act)) {
+					app.showToastMessage(R.string.ev_bms_journal_empty)
+				}
+			}
+			container.findViewById<View>(R.id.journal_clear).setOnClickListener {
+				val themed = UiUtilities.getThemedContext(requireContext(), nightMode)
+				AlertDialog.Builder(themed)
+					.setTitle(R.string.shared_string_clear)
+					.setMessage(R.string.ev_bms_journal_clear_q)
+					.setNegativeButton(R.string.shared_string_cancel, null)
+					.setPositiveButton(R.string.shared_string_clear) { _, _ ->
+						plugin.clearDebugJournal()
+						app.showToastMessage(R.string.ev_bms_journal_cleared)
+						refreshJournalTail()
+					}
+					.show()
+			}
+			val color = ColorUtilities.getPrimaryTextColor(requireContext(), nightMode)
+			container.findViewById<TextView>(R.id.journal_export).setTextColor(color)
+			container.findViewById<TextView>(R.id.journal_clear).setTextColor(color)
+			container.findViewById<TextView>(R.id.journal_tail)
+				.setTextColor(ColorUtilities.getSecondaryTextColor(requireContext(), nightMode))
+		}
+		refreshJournalTail()
+	}
+
+	private fun refreshJournalTail() {
+		val container = view?.findViewById<View>(R.id.ev_bms_journal_container) ?: return
+		val status = container.findViewById<TextView>(R.id.journal_status) ?: return
+		val tail = container.findViewById<TextView>(R.id.journal_tail) ?: return
+		val sw = container.findViewById<SwitchCompat>(R.id.journal_enable_switch)
+		val enabled = plugin.isDebugJournalEnabled()
+		sw?.isChecked = enabled
+		val size = formatJournalSize(plugin.debugJournalSize())
+		status.text = getString(
+			if (enabled) R.string.ev_bms_journal_status_on else R.string.ev_bms_journal_status_off,
+			size
+		)
+		val text = plugin.debugJournalTail()
+		tail.text = text.ifBlank { getString(R.string.ev_bms_journal_empty) }
+	}
+
+	private fun formatJournalSize(bytes: Long): String {
+		return when {
+			bytes < 1024L -> "$bytes B"
+			bytes < 1024L * 1024L -> "${bytes / 1024L} KB"
+			else -> String.format(Locale.getDefault(), "%.1f MB", bytes / (1024.0 * 1024.0))
+		}
 	}
 
 	private fun bindAbout() {

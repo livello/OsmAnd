@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+	xmlns:tools="http://schemas.android.com/tools"
+	android:layout_width="match_parent"
+	android:layout_height="match_parent"
+	android:orientation="vertical"
+	android:paddingTop="8dp">
+
+	<LinearLayout
+		android:id="@+id/journal_enable_row"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:background="?attr/selectableItemBackground"
+		android:gravity="center_vertical"
+		android:minHeight="48dp"
+		android:orientation="horizontal"
+		android:paddingStart="@dimen/content_padding"
+		android:paddingEnd="@dimen/content_padding">
+
+		<LinearLayout
+			android:layout_width="0dp"
+			android:layout_height="wrap_content"
+			android:layout_weight="1"
+			android:orientation="vertical"
+			android:paddingEnd="8dp">
+
+			<net.osmand.plus.widgets.TextViewEx
+				android:id="@+id/journal_enable_title"
+				style="@style/TitleStyle"
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				android:text="@string/ev_bms_journal_enable" />
+
+			<net.osmand.plus.widgets.TextViewEx
+				android:id="@+id/journal_status"
+				style="@style/DescStyle"
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				tools:text="12 KB" />
+		</LinearLayout>
+
+		<androidx.appcompat.widget.SwitchCompat
+			android:id="@+id/journal_enable_switch"
+			android:layout_width="wrap_content"
+			android:layout_height="wrap_content" />
+	</LinearLayout>
+
+	<LinearLayout
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:orientation="horizontal"
+		android:paddingStart="@dimen/content_padding"
+		android:paddingEnd="@dimen/content_padding"
+		android:paddingTop="4dp"
+		android:paddingBottom="8dp">
+
+		<TextView
+			android:id="@+id/journal_export"
+			android:layout_width="0dp"
+			android:layout_height="40dp"
+			android:layout_marginEnd="8dp"
+			android:layout_weight="1"
+			android:background="?attr/selectableItemBackground"
+			android:gravity="center"
+			android:text="@string/shared_string_export"
+			android:textAllCaps="false"
+			android:textSize="15sp" />
+
+		<TextView
+			android:id="@+id/journal_clear"
+			android:layout_width="0dp"
+			android:layout_height="40dp"
+			android:layout_weight="1"
+			android:background="?attr/selectableItemBackground"
+			android:gravity="center"
+			android:text="@string/shared_string_clear"
+			android:textAllCaps="false"
+			android:textSize="15sp" />
+	</LinearLayout>
+
+	<View
+		android:layout_width="match_parent"
+		android:layout_height="1dp"
+		android:background="?attr/divider_color_basic" />
+
+	<ScrollView
+		android:id="@+id/journal_tail_scroll"
+		android:layout_width="match_parent"
+		android:layout_height="0dp"
+		android:layout_weight="1"
+		android:fillViewport="true">
+
+		<TextView
+			android:id="@+id/journal_tail"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:fontFamily="monospace"
+			android:padding="@dimen/content_padding"
+			android:textIsSelectable="true"
+			android:textSize="11sp"
+			android:typeface="monospace"
+			tools:text="20:09:03.020 D [BLE] BMS connectGatt …" />
+	</ScrollView>
+</LinearLayout>

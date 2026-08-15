@@ -58,6 +58,12 @@
 				android:paddingBottom="16dp" />
 		</ScrollView>
 
+		<FrameLayout
+			android:id="@+id/ev_bms_journal_container"
+			android:layout_width="match_parent"
+			android:layout_height="match_parent"
+			android:visibility="gone" />
+
 		<ScrollView
 			android:id="@+id/ev_bms_about_scroll"
 			android:layout_width="match_parent"
