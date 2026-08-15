@@ -31,7 +31,6 @@ public class BaseRecordingWidget extends SimpleWidget {
 	public BaseRecordingWidget(@NonNull MapActivity mapActivity, @NonNull WidgetType widgetType, @Nullable String customId, @Nullable WidgetsPanel panel) {
 		super(mapActivity, widgetType, customId, panel);
 		this.savingTrackHelper = app.getSavingTrackHelper();
-		EvWidgetChrome.applySideLayout(getView(), this.panel);
 	}
 
 	@Override

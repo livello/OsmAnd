@@ -1486,6 +1486,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			WidgetType.EV_CHARGE_TRIP -> EvBmsTextWidget.Field.CHARGE_TRIP
 			WidgetType.EV_CHARGE_ETA -> EvBmsTextWidget.Field.CHARGE_ETA
 			WidgetType.EV_BMS_VOLTAGE -> EvBmsTextWidget.Field.VOLTAGE
+			WidgetType.EV_BMS_MIN_CELL -> EvBmsTextWidget.Field.MIN_CELL
 			WidgetType.EV_BMS_CURRENT -> EvBmsTextWidget.Field.CURRENT
 			WidgetType.EV_BMS_POWER -> EvBmsTextWidget.Field.POWER
 			WidgetType.EV_BATTERY_TEMP -> EvBmsTextWidget.Field.BATTERY_TEMP

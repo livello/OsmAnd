@@ -30,7 +30,7 @@ class EvBmsTextWidget(
 ) : SimpleWidget(mapActivity, widgetType, customId, widgetsPanel) {
 
 	enum class Field {
-		SOC, RANGE, CONSUMPTION, FAR_TRIP, CHARGE_TRIP, CHARGE_ETA, VOLTAGE, CURRENT, POWER, BATTERY_TEMP, MOTOR_TEMP, CONTROLLER_TEMP;
+		SOC, RANGE, CONSUMPTION, FAR_TRIP, CHARGE_TRIP, CHARGE_ETA, VOLTAGE, MIN_CELL, CURRENT, POWER, BATTERY_TEMP, MOTOR_TEMP, CONTROLLER_TEMP;
 
 		fun controllerLink(): Boolean {
 			return this == FAR_TRIP || this == POWER || this == MOTOR_TEMP || this == CONTROLLER_TEMP
@@ -96,6 +96,7 @@ class EvBmsTextWidget(
 				}
 			}
 			Field.VOLTAGE -> sample?.voltageV?.let { String.format(Locale.US, "%.1f", it) } ?: NO_VALUE
+			Field.MIN_CELL -> sample?.minCellVoltageV?.let { String.format(Locale.US, "%.3f", it) } ?: NO_VALUE
 			Field.CURRENT -> sample?.currentA?.let { String.format(Locale.US, "%.1f", it) } ?: NO_VALUE
 			Field.POWER -> {
 				val w = sample?.controllerPowerW ?: sample?.let { s ->

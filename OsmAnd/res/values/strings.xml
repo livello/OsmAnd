@@ -967,7 +967,7 @@ You will be able to pair this scanner again at any time.</string>
 • Controller: FarDriver (FFE0 / FFEC) or VESC over Nordic UART. Protocol Auto / FarDriver / VESC.<br/>
 • Controller type is shown live from firmware / hardware name.<br/><br/>
 <b>📊 Widgets</b><br/>
-• 🔋 SOC, pack voltage, pack current, battery temperature — from the BMS.<br/>
+• 🔋 SOC, pack voltage, pack current, min cell voltage, battery temperature — from the BMS.<br/>
 • 📏 Remaining range and ⚡ consumption (Wh/km, 5-minute window).<br/>
 • 🔌 Distance on charge — starts with motion while telemetry recording is on, resets when charging begins.<br/>
 • 🛵 Controller trip, motor power, motor temperature, controller / MOSFET temperature.<br/>
@@ -998,6 +998,8 @@ Tables in plugin settings: charge sessions (time, start/end battery temperature,
 <b>🥾 Hike mode</b><br/>
 Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+• Min cell voltage widget on the right panel<br/>
+• Right widget panel no longer draws an outer border<br/>
 • EV-Telemetry widgets have no outer frame or filled box<br/>
 • Trip recording widgets align to the panel edge; right panel is right-aligned<br/>
 • Vehicle and driver mass settings feed climb energy and descent regen<br/>
@@ -1133,6 +1135,8 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_full_mode">Show labels</string>
     <string name="ev_bms_widget_voltage">Pack voltage</string>
     <string name="ev_bms_widget_voltage_desc">Battery pack voltage from the BMS</string>
+    <string name="ev_bms_widget_min_cell">Min cell voltage</string>
+    <string name="ev_bms_widget_min_cell_desc">Lowest cell voltage from the BMS</string>
     <string name="ev_bms_widget_current">Pack current</string>
     <string name="ev_bms_widget_current_desc">Battery pack current from the BMS</string>
     <string name="ev_bms_widget_power">Motor power</string>

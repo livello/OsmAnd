@@ -276,7 +276,7 @@ public class SideWidgetsPanel extends FrameLayoutEx implements WidgetsContainer 
 	protected void dispatchDraw(@NonNull Canvas canvas) {
 		super.dispatchDraw(canvas);
 
-		if (hasVisibleContent()) {
+		if (hasVisibleContent() && !rightSide) {
 			drawBorder(canvas);
 		}
 	}

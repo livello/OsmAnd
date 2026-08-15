@@ -133,6 +133,7 @@ public enum WidgetType {
 	EV_CHARGE_TRIP("ev_charge_trip", R.string.ev_bms_widget_charge_trip, R.string.ev_bms_widget_charge_trip_desc, R.drawable.widget_trip_recording_day, R.drawable.widget_trip_recording_night, 0, EV_BMS, RIGHT),
 	EV_CHARGE_ETA("ev_charge_eta", R.string.ev_bms_widget_charge_eta, R.string.ev_bms_widget_charge_eta_desc, R.drawable.widget_time_to_distance_day, R.drawable.widget_time_to_distance_night, 0, EV_BMS, RIGHT),
 	EV_BMS_VOLTAGE("ev_bms_voltage", R.string.ev_bms_widget_voltage, R.string.ev_bms_widget_voltage_desc, R.drawable.widget_obd_battery_voltage_day, R.drawable.widget_obd_battery_voltage_night, 0, EV_BMS, RIGHT),
+	EV_BMS_MIN_CELL("ev_bms_min_cell", R.string.ev_bms_widget_min_cell, R.string.ev_bms_widget_min_cell_desc, R.drawable.widget_obd_battery_voltage_day, R.drawable.widget_obd_battery_voltage_night, 0, EV_BMS, RIGHT),
 	EV_BMS_CURRENT("ev_bms_current", R.string.ev_bms_widget_current, R.string.ev_bms_widget_current_desc, R.drawable.widget_obd_engine_calculated_load_day, R.drawable.widget_obd_engine_calculated_load_night, 0, EV_BMS, RIGHT),
 	EV_BMS_POWER("ev_bms_power", R.string.ev_bms_widget_power, R.string.ev_bms_widget_power_desc, R.drawable.widget_obd_fuel_consumption_day, R.drawable.widget_obd_fuel_consumption_night, 0, EV_BMS, RIGHT),
 	EV_BATTERY_TEMP("ev_battery_temp", R.string.ev_bms_widget_battery_temp, R.string.ev_bms_widget_battery_temp_desc, R.drawable.widget_obd_temperature_intake_day, R.drawable.widget_obd_temperature_intake_night, 0, EV_BMS, RIGHT),
