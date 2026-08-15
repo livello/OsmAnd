@@ -5,263 +5,270 @@
 
 	<PreferenceCategory
 		android:key="ev_bms_devices"
-		android:layout="@layout/preference_category_with_descr"
+		android:layout="@layout/ev_bms_preference_category_divider"
 		android:title="@string/ev_bms_devices" />
 
 	<Preference
 		android:key="ev_bms_address"
-		android:layout="@layout/preference_with_descr"
+		android:layout="@layout/ev_bms_preference_with_descr"
 		android:persistent="false"
 		android:title="@string/ev_bms_jbd_title"
 		tools:summary="@string/ev_bms_status_not_selected" />
 
 	<net.osmand.plus.settings.preferences.ListPreferenceEx
 		android:key="ev_bms_protocol"
-		android:layout="@layout/preference_with_descr"
+		android:layout="@layout/ev_bms_preference_with_descr"
 		android:title="@string/ev_bms_protocol" />
+
+	<net.osmand.plus.settings.preferences.EditTextPreferenceEx
+		android:key="ev_bms_jbd_password"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:persistent="false"
+		android:inputType="numberPassword"
+		android:title="@string/ev_bms_jbd_password" />
 
 	<Preference
 		android:key="ev_controller_address"
-		android:layout="@layout/preference_with_descr"
+		android:layout="@layout/ev_bms_preference_with_descr"
 		android:persistent="false"
 		android:title="@string/ev_bms_controller_title"
 		tools:summary="@string/ev_bms_status_not_selected" />
 
 	<net.osmand.plus.settings.preferences.ListPreferenceEx
 		android:key="ev_controller_protocol"
-		android:layout="@layout/preference_with_descr"
+		android:layout="@layout/ev_bms_preference_with_descr"
 		android:title="@string/ev_bms_controller_protocol" />
 
 	<PreferenceCategory
 		android:key="ev_bms_modes"
-		android:layout="@layout/preference_category_with_descr"
+		android:layout="@layout/ev_bms_preference_category_divider"
 		android:title="@string/ev_bms_widget_hike" />
 
 	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
 		android:key="ev_bms_hike_mode"
-		android:layout="@layout/preference_with_descr_dialog_and_switch"
+		android:layout="@layout/ev_bms_preference_switch"
 		android:summaryOff="@string/shared_string_disabled"
 		android:summaryOn="@string/shared_string_enabled"
 		android:title="@string/ev_bms_widget_hike" />
 
 	<PreferenceCategory
 		android:key="ev_bms_calibration"
-		android:layout="@layout/preference_category_with_descr"
+		android:layout="@layout/ev_bms_preference_category_divider"
 		android:title="@string/ev_bms_calibration" />
 
 	<net.osmand.plus.settings.preferences.ListPreferenceEx
 		android:key="ev_bms_speed_cal_distance_m"
-		android:layout="@layout/preference_with_descr"
+		android:layout="@layout/ev_bms_preference_with_descr"
 		android:title="@string/ev_bms_cal_distance" />
 
 	<net.osmand.plus.settings.preferences.EditTextPreferenceEx
 		android:key="ev_bms_speed_cal_factor"
-		android:layout="@layout/preference_with_descr"
+		android:layout="@layout/ev_bms_preference_with_descr"
 		android:persistent="false"
 		android:title="@string/ev_bms_cal_factor" />
 
 	<Preference
 		android:key="ev_bms_cal_start"
-		android:layout="@layout/preference_with_descr"
+		android:layout="@layout/ev_bms_preference_with_descr"
 		android:persistent="false"
 		android:title="@string/ev_bms_cal_start" />
 
 	<PreferenceCategory
 		android:key="ev_bms_recording"
-		android:layout="@layout/preference_category_with_descr"
+		android:layout="@layout/ev_bms_preference_category_divider"
 		android:title="@string/ev_bms_recording" />
 
 	<net.osmand.plus.settings.preferences.ListPreferenceEx
 		android:key="ev_bms_poll_interval_ms"
-		android:layout="@layout/preference_with_descr"
+		android:layout="@layout/ev_bms_preference_with_descr"
 		android:title="@string/ev_bms_poll_interval" />
 
 	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
 		android:key="ev_bms_record_telemetry"
-		android:layout="@layout/preference_with_descr_dialog_and_switch"
+		android:layout="@layout/ev_bms_preference_switch"
 		android:summaryOff="@string/shared_string_disabled"
 		android:summaryOn="@string/shared_string_enabled"
 		android:title="@string/ev_bms_record_telemetry" />
 
 	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
 		android:key="ev_bms_record_gpx"
-		android:layout="@layout/preference_with_descr_dialog_and_switch"
+		android:layout="@layout/ev_bms_preference_switch"
 		android:summaryOff="@string/shared_string_disabled"
 		android:summaryOn="@string/shared_string_enabled"
 		android:title="@string/ev_bms_record_gpx" />
 
 	<Preference
 		android:key="ev_bms_telemetry_fields"
-		android:layout="@layout/preference_with_descr"
+		android:layout="@layout/ev_bms_preference_with_descr"
 		android:persistent="false"
 		android:title="@string/ev_bms_telemetry_fields" />
 
 	<Preference
 		android:key="ev_bms_csv_folder"
-		android:layout="@layout/preference_with_descr"
+		android:layout="@layout/ev_bms_preference_with_descr"
 		android:persistent="false"
 		android:title="@string/ev_bms_csv_folder" />
 
 	<Preference
 		android:key="ev_bms_export_csv"
-		android:layout="@layout/preference_with_descr"
+		android:layout="@layout/ev_bms_preference_with_descr"
 		android:persistent="false"
 		android:title="@string/ev_bms_export_csv"
 		android:summary="@string/ev_bms_export_csv_desc" />
 
 	<PreferenceCategory
 		android:key="ev_bms_voice"
-		android:layout="@layout/preference_category_with_descr"
+		android:layout="@layout/ev_bms_preference_category_divider"
 		android:title="@string/ev_bms_voice" />
 
 	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
 		android:key="ev_bms_announce_soc"
-		android:layout="@layout/preference_with_descr_dialog_and_switch"
+		android:layout="@layout/ev_bms_preference_switch"
 		android:summaryOff="@string/shared_string_disabled"
 		android:summaryOn="@string/shared_string_enabled"
 		android:title="@string/ev_bms_announce_soc" />
 
 	<net.osmand.plus.settings.preferences.ListPreferenceEx
 		android:key="ev_bms_charge_volt_step_mv"
-		android:layout="@layout/preference_with_descr"
+		android:layout="@layout/ev_bms_preference_with_descr"
 		android:title="@string/ev_bms_soc_step" />
 
 	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
 		android:key="ev_bms_announce_range_on_stop"
-		android:layout="@layout/preference_with_descr_dialog_and_switch"
+		android:layout="@layout/ev_bms_preference_switch"
 		android:summaryOff="@string/shared_string_disabled"
 		android:summaryOn="@string/shared_string_enabled"
 		android:title="@string/ev_bms_announce_range_on_stop" />
 
 	<net.osmand.plus.settings.preferences.ListPreferenceEx
 		android:key="ev_bms_stop_announce_repeats"
-		android:layout="@layout/preference_with_descr"
+		android:layout="@layout/ev_bms_preference_with_descr"
 		android:title="@string/ev_bms_stop_repeats" />
 
 	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
 		android:key="ev_bms_announce_range_vs_route"
-		android:layout="@layout/preference_with_descr_dialog_and_switch"
+		android:layout="@layout/ev_bms_preference_switch"
 		android:summaryOff="@string/shared_string_disabled"
 		android:summaryOn="@string/shared_string_enabled"
 		android:title="@string/ev_bms_announce_range_vs_route" />
 
 	<net.osmand.plus.settings.preferences.ListPreferenceEx
 		android:key="ev_bms_stop_speed_kmh"
-		android:layout="@layout/preference_with_descr"
+		android:layout="@layout/ev_bms_preference_with_descr"
 		android:title="@string/ev_bms_stop_speed" />
 
 	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
 		android:key="ev_bms_announce_cell_voltage"
-		android:layout="@layout/preference_with_descr_dialog_and_switch"
+		android:layout="@layout/ev_bms_preference_switch"
 		android:summaryOff="@string/shared_string_disabled"
 		android:summaryOn="@string/shared_string_enabled"
 		android:title="@string/ev_bms_announce_cell_voltage" />
 
 	<net.osmand.plus.settings.preferences.ListPreferenceEx
 		android:key="ev_bms_low_cell_mv"
-		android:layout="@layout/preference_with_descr"
+		android:layout="@layout/ev_bms_preference_with_descr"
 		android:title="@string/ev_bms_low_cell" />
 
 	<net.osmand.plus.settings.preferences.ListPreferenceEx
 		android:key="ev_bms_critical_cell_mv"
-		android:layout="@layout/preference_with_descr"
+		android:layout="@layout/ev_bms_preference_with_descr"
 		android:title="@string/ev_bms_critical_cell" />
 
 	<net.osmand.plus.settings.preferences.ListPreferenceEx
 		android:key="ev_bms_cell_alert_interval_sec"
-		android:layout="@layout/preference_with_descr"
+		android:layout="@layout/ev_bms_preference_with_descr"
 		android:title="@string/ev_bms_cell_alert_interval" />
 
 	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
 		android:key="ev_bms_announce_motor_heat"
-		android:layout="@layout/preference_with_descr_dialog_and_switch"
+		android:layout="@layout/ev_bms_preference_switch"
 		android:summaryOff="@string/shared_string_disabled"
 		android:summaryOn="@string/shared_string_enabled"
 		android:title="@string/ev_bms_announce_motor_heat" />
 
 	<net.osmand.plus.settings.preferences.ListPreferenceEx
 		android:key="ev_bms_motor_heat_c"
-		android:layout="@layout/preference_with_descr"
+		android:layout="@layout/ev_bms_preference_with_descr"
 		android:title="@string/ev_bms_motor_heat_c" />
 
 	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
 		android:key="ev_bms_announce_battery_overheat"
-		android:layout="@layout/preference_with_descr_dialog_and_switch"
+		android:layout="@layout/ev_bms_preference_switch"
 		android:summaryOff="@string/shared_string_disabled"
 		android:summaryOn="@string/shared_string_enabled"
 		android:title="@string/ev_bms_announce_battery_overheat" />
 
 	<net.osmand.plus.settings.preferences.ListPreferenceEx
 		android:key="ev_bms_battery_overheat_c"
-		android:layout="@layout/preference_with_descr"
+		android:layout="@layout/ev_bms_preference_with_descr"
 		android:title="@string/ev_bms_battery_overheat_c" />
 
 	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
 		android:key="ev_bms_announce_battery_freeze"
-		android:layout="@layout/preference_with_descr_dialog_and_switch"
+		android:layout="@layout/ev_bms_preference_switch"
 		android:summaryOff="@string/shared_string_disabled"
 		android:summaryOn="@string/shared_string_enabled"
 		android:title="@string/ev_bms_announce_battery_freeze" />
 
 	<net.osmand.plus.settings.preferences.ListPreferenceEx
 		android:key="ev_bms_battery_freeze_c"
-		android:layout="@layout/preference_with_descr"
+		android:layout="@layout/ev_bms_preference_with_descr"
 		android:title="@string/ev_bms_battery_freeze_c" />
 
 	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
 		android:key="ev_bms_announce_link"
-		android:layout="@layout/preference_with_descr_dialog_and_switch"
+		android:layout="@layout/ev_bms_preference_switch"
 		android:summaryOff="@string/shared_string_disabled"
 		android:summaryOn="@string/shared_string_enabled"
 		android:title="@string/ev_bms_announce_link" />
 
 	<PreferenceCategory
 		android:key="ev_bms_charge"
-		android:layout="@layout/preference_category_with_descr"
+		android:layout="@layout/ev_bms_preference_category_divider"
 		android:title="@string/ev_bms_charge_settings" />
 
 	<net.osmand.plus.settings.preferences.ListPreferenceEx
 		android:key="ev_bms_charge_still_sec"
-		android:layout="@layout/preference_with_descr"
+		android:layout="@layout/ev_bms_preference_with_descr"
 		android:title="@string/ev_bms_charge_still_sec" />
 
 	<net.osmand.plus.settings.preferences.ListPreferenceEx
 		android:key="ev_bms_charge_still_kmh"
-		android:layout="@layout/preference_with_descr"
+		android:layout="@layout/ev_bms_preference_with_descr"
 		android:title="@string/ev_bms_charge_still_kmh" />
 
 	<net.osmand.plus.settings.preferences.ListPreferenceEx
 		android:key="ev_bms_charge_current_a"
-		android:layout="@layout/preference_with_descr"
+		android:layout="@layout/ev_bms_preference_with_descr"
 		android:title="@string/ev_bms_charge_current_a" />
 
 	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
 		android:key="ev_bms_announce_charge_eta"
-		android:layout="@layout/preference_with_descr_dialog_and_switch"
+		android:layout="@layout/ev_bms_preference_switch"
 		android:summaryOff="@string/shared_string_disabled"
 		android:summaryOn="@string/shared_string_enabled"
 		android:title="@string/ev_bms_announce_charge_eta" />
 
 	<Preference
 		android:key="ev_bms_charge_history"
-		android:layout="@layout/preference_with_descr"
+		android:layout="@layout/ev_bms_preference_with_descr"
 		android:persistent="false"
 		android:title="@string/ev_bms_charge_history" />
 
 	<Preference
 		android:key="ev_bms_trip_history"
-		android:layout="@layout/preference_with_descr"
+		android:layout="@layout/ev_bms_preference_with_descr"
 		android:persistent="false"
 		android:title="@string/ev_bms_trip_history" />
 
 	<PreferenceCategory
 		android:key="ev_bms_range"
-		android:layout="@layout/preference_category_with_descr"
+		android:layout="@layout/ev_bms_preference_category_divider"
 		android:title="@string/ev_bms_range_settings" />
 
 	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
 		android:key="ev_bms_use_route_profile"
-		android:layout="@layout/preference_with_descr_dialog_and_switch"
+		android:layout="@layout/ev_bms_preference_switch"
 		android:summaryOff="@string/shared_string_disabled"
 		android:summaryOn="@string/shared_string_enabled"
 		android:title="@string/ev_bms_use_route_profile" />

@@ -50,6 +50,10 @@ public class EditTextPreferenceBottomSheet extends BasePreferenceBottomSheet {
 
 		View view = inflate(R.layout.preference_edit_text_box);
 		editText = view.findViewById(R.id.edit_text);
+		int inputType = editTextPreference.getInputType();
+		if (inputType != 0) {
+			editText.setInputType(inputType);
+		}
 		editText.setText(text);
 		editText.requestFocus();
 

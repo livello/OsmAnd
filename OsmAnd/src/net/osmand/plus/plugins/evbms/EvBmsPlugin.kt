@@ -92,6 +92,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerBooleanPreference("ev_bms_use_route_profile", false).makeGlobal().makeShared()
 	val BMS_PROTOCOL: CommonPreference<String> =
 		registerStringPreference("ev_bms_protocol", "auto").makeGlobal().makeShared()
+	val BMS_PASSWORD: CommonPreference<String> =
+		registerStringPreference("ev_bms_jbd_password", "").makeGlobal().makeShared()
 	val CSV_FOLDER_URI: CommonPreference<String> =
 		registerStringPreference("ev_bms_csv_folder_uri", "").makeGlobal().makeShared()
 	val ANNOUNCE_RANGE_VS_ROUTE: CommonPreference<Boolean> =
@@ -210,6 +212,9 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private var lastBmsRxMs = 0L
 	private var lastCtrlRxMs = 0L
 	private var pollCellsNext = false
+	private var jbdPasswordSentMs = 0L
+	private var jbdPasswordToastMs = 0L
+	private var jbdPasswordRejected = false
 	@Volatile
 	var latestTelemetry: EvTelemetry? = null
 		private set
@@ -225,12 +230,15 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			if (bmsClient?.connected == true) {
 				if (preferAntProtocol()) {
 					bmsClient?.write(AntBmsProtocol.statusRequest())
+				} else if (sendJbdPasswordIfNeeded()) {
+					// Wait for the BMS to accept the password before the next read.
 				} else if (pollCellsNext) {
 					bmsClient?.write(JbdBmsProtocol.readCellVoltages())
+					pollCellsNext = false
 				} else {
 					bmsClient?.write(JbdBmsProtocol.readBasicInfo())
+					pollCellsNext = true
 				}
-				pollCellsNext = !pollCellsNext
 			}
 			if (controllerClient?.connected == true) {
 				val unknown = controllerClient?.detectedControllerKind ==
@@ -947,6 +955,11 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				vescPollSetup = false
 				vescSnapshot.reset()
 			}
+			if (role == EvBleUartClient.Role.BMS) {
+				jbdPasswordSentMs = 0L
+				jbdPasswordToastMs = 0L
+				jbdPasswordRejected = false
+			}
 			startPolling()
 			applyHikeTelemetryState()
 		} else {
@@ -1036,6 +1049,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				val (frames, rest) = JbdBmsProtocol.extractFrames(bmsBuffer)
 				bmsBuffer = rest
 				for (frame in frames) {
+					handleJbdAuthStatus(frame)
 					val info = JbdBmsProtocol.parseBasicInfo(frame)
 					if (info != null) {
 						lastBms = info.toSnapshot()
@@ -1094,6 +1108,70 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private fun preferJbdProtocol(): Boolean {
 		return BMS_PROTOCOL.get() == "jbd" ||
 				(BMS_PROTOCOL.get() != "ant" && bmsClient?.detectedBmsKind == EvBleUartClient.BmsKind.JBD)
+	}
+
+	fun parseJbdPassword(raw: String?): String? {
+		val text = raw?.trim().orEmpty()
+		if (text.isEmpty()) {
+			return ""
+		}
+		return JbdBmsProtocol.normalizePassword(text)
+	}
+
+	fun onJbdPasswordChanged() {
+		jbdPasswordSentMs = 0L
+		jbdPasswordToastMs = 0L
+		jbdPasswordRejected = false
+		if (isBmsConnected() && !preferAntProtocol()) {
+			sendJbdPasswordIfNeeded()
+		}
+	}
+
+	private fun sendJbdPasswordIfNeeded(): Boolean {
+		if (preferAntProtocol() || jbdPasswordRejected) {
+			return false
+		}
+		val command = JbdBmsProtocol.usePassword(BMS_PASSWORD.get()) ?: return false
+		val now = System.currentTimeMillis()
+		if (jbdPasswordSentMs == 0L) {
+			bmsClient?.write(command)
+			jbdPasswordSentMs = now
+			return true
+		}
+		if (now - jbdPasswordSentMs < 1_500L) {
+			return true
+		}
+		if (isBmsFresh() || now - jbdPasswordSentMs < 10_000L) {
+			return false
+		}
+		bmsClient?.write(command)
+		jbdPasswordSentMs = now
+		return true
+	}
+
+	private fun handleJbdAuthStatus(frame: ByteArray) {
+		val status = JbdBmsProtocol.frameStatus(frame) ?: return
+		if (status == JbdBmsProtocol.STATUS_OK) {
+			return
+		}
+		val passwordSet = JbdBmsProtocol.normalizePassword(BMS_PASSWORD.get()) != null
+		if (status == JbdBmsProtocol.STATUS_PASSWORD) {
+			jbdPasswordRejected = true
+			toastJbdPassword(R.string.ev_bms_jbd_password_wrong)
+			return
+		}
+		if (status == JbdBmsProtocol.STATUS_DENIED && !passwordSet) {
+			toastJbdPassword(R.string.ev_bms_jbd_password_required)
+		}
+	}
+
+	private fun toastJbdPassword(resId: Int) {
+		val now = System.currentTimeMillis()
+		if (now - jbdPasswordToastMs < 15_000L) {
+			return
+		}
+		jbdPasswordToastMs = now
+		app.showToastMessage(resId)
 	}
 
 	interface DeviceScanListener {

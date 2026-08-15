@@ -4498,6 +4498,9 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
 <b>🥾 Режим «Поход»</b><br/>
 Оставляет запас хода, GPS и телеметрию раз в 5 с, замедляет опрос BLE не реже 5 с, отключает тяжёлые слои карты, 3D, погоду, онлайн-тайлы и лишние Bluetooth-плагины.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Список изменений</b> · %1$s<br/>
+• В настройках вместо заголовков категорий — линии-разделители, строки плотнее<br/>
+• Экспорт логов и выбор полей телеметрии на весь экран; удаление — компактный 🗑️ справа<br/>
+• Пароль JBD / Xiaoxiang BMS: 6 цифр, чтобы запароленный пакет отдавал телеметрию<br/>
 • Автокалибровка скорости и пробега контроллера по GPS, коэффициент можно править вручную<br/>
 • Запись: Пауза / Стоп+Продолжить; Стоп сохраняет трек; автовосстановление после вылета или перезапуска; старт и сохранение только вручную<br/>
 • В экспорте логов — размер, длительность, расстояние и удаление<br/>
@@ -4629,6 +4632,12 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
     <string name="ev_bms_protocol_auto">Авто</string>
     <string name="ev_bms_protocol_jbd">JBD / Xiaoxiang</string>
     <string name="ev_bms_protocol_ant">ANT BMS</string>
+    <string name="ev_bms_jbd_password">Пароль BMS</string>
+    <string name="ev_bms_jbd_password_desc">Шестизначный пароль Xiaoxiang / JBD. Оставьте пустым, если BMS не запаролена.</string>
+    <string name="ev_bms_jbd_password_not_set">Не задан</string>
+    <string name="ev_bms_jbd_password_invalid">Введите ровно 6 цифр или оставьте пустым</string>
+    <string name="ev_bms_jbd_password_wrong">Неверный пароль JBD BMS</string>
+    <string name="ev_bms_jbd_password_required">Эта JBD BMS требует пароль</string>
     <string name="ev_bms_csv_folder">Папка логов</string>
     <string name="ev_bms_export_csv">Экспорт логов</string>
     <string name="ev_bms_export_csv_desc">Отправить записанные CSV и GPX</string>

@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -15,6 +16,7 @@ import android.widget.ArrayAdapter
 import android.widget.CheckBox
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ListView
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
@@ -119,6 +121,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 	}
 
 	override fun setupPreferences() {
+		findPreference<Preference>("ev_bms_devices")?.isVisible = false
 		setupDevicePref(
 			plugin.BMS_ADDRESS.id,
 			plugin.BMS_NAME.get(),
@@ -133,6 +136,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		)
 		setupControllerTitle()
 		setupBmsProtocol()
+		setupJbdPassword()
 		setupControllerProtocol()
 		setupSwitch(plugin.HIKE_MODE.id)
 		setupCalDistance()
@@ -182,25 +186,21 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 	}
 
 	private fun setupIcons() {
-		decorate("ev_bms_devices", "📡", R.drawable.ic_action_bluetooth)
 		decorate(plugin.BMS_ADDRESS.id, "🔋", R.drawable.ic_action_battery)
 		decorate(plugin.BMS_PROTOCOL.id, "🔗", R.drawable.ic_action_settings)
+		decorate(plugin.BMS_PASSWORD.id, "🔐", R.drawable.ic_action_lock)
 		decorate(plugin.CONTROLLER_ADDRESS.id, "🛵", R.drawable.ic_action_car_info)
 		decorate(plugin.CONTROLLER_PROTOCOL.id, "⚙️", R.drawable.ic_action_settings)
-		decorate("ev_bms_modes", "🥾", R.drawable.ic_action_trekking_dark)
 		decorate(plugin.HIKE_MODE.id, "🥾", R.drawable.ic_action_trekking_dark)
-		decorate("ev_bms_calibration", "🎯", R.drawable.ic_action_distance)
 		decorate(plugin.SPEED_CAL_DISTANCE_M.id, "📏", R.drawable.ic_action_distance)
 		decorate(plugin.SPEED_CAL_FACTOR.id, "✖️", R.drawable.ic_action_speed)
 		decorate("ev_bms_cal_start", "▶️", R.drawable.ic_action_play_dark)
-		decorate("ev_bms_recording", "💾", R.drawable.ic_action_track_recordable)
 		decorate(plugin.POLL_INTERVAL_MS.id, "⏱️", R.drawable.ic_action_time)
 		decorate(plugin.RECORD_TELEMETRY.id, "📝", R.drawable.ic_action_save_to_file)
 		decorate(plugin.RECORD_GPX.id, "🗺️", R.drawable.ic_action_polygom_dark)
 		decorate(plugin.TELEMETRY_FIELDS.id, "☑️", R.drawable.ic_action_list_flat)
 		decorate("ev_bms_csv_folder", "📁", R.drawable.ic_action_folder)
 		decorate("ev_bms_export_csv", "📤", R.drawable.ic_action_gshare_dark)
-		decorate("ev_bms_voice", "🗣️", R.drawable.ic_action_volume_up)
 		decorate(plugin.ANNOUNCE_SOC.id, "🔋", R.drawable.ic_action_battery)
 		decorate(plugin.CHARGE_VOLT_STEP_MV.id, "⚡", R.drawable.ic_action_obd_battery_voltage)
 		decorate(plugin.ANNOUNCE_RANGE_ON_STOP.id, "📏", R.drawable.ic_action_distance)
@@ -218,14 +218,12 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		decorate(plugin.ANNOUNCE_BATTERY_FREEZE.id, "❄️", R.drawable.ic_action_thermometer)
 		decorate(plugin.BATTERY_FREEZE_C.id, "❄️", R.drawable.ic_action_thermometer)
 		decorate(plugin.ANNOUNCE_LINK.id, "📡", R.drawable.ic_action_offline)
-		decorate("ev_bms_charge", "🔌", R.drawable.ic_action_power_button)
 		decorate(plugin.CHARGE_STILL_SEC.id, "⏸️", R.drawable.ic_action_time)
 		decorate(plugin.CHARGE_STILL_KMH.id, "🚶", R.drawable.ic_action_speed)
 		decorate(plugin.CHARGE_CURRENT_A.id, "⚡", R.drawable.ic_action_battery)
 		decorate(plugin.ANNOUNCE_CHARGE_ETA.id, "⏳", R.drawable.ic_action_time_to_distance)
 		decorate("ev_bms_charge_history", "📋", R.drawable.ic_action_history)
 		decorate("ev_bms_trip_history", "🛵", R.drawable.ic_action_track_recordable)
-		decorate("ev_bms_range", "📏", R.drawable.ic_action_distance)
 		decorate(plugin.USE_ROUTE_PROFILE.id, "⛰️", R.drawable.ic_action_altitude)
 	}
 
@@ -299,6 +297,19 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		)
 		pref.setEntryValues(arrayOf<Any>("auto", "jbd", "ant"))
 		pref.setValue(plugin.BMS_PROTOCOL.get())
+	}
+
+	private fun setupJbdPassword() {
+		val pref = findPreference<EditTextPreferenceEx>(plugin.BMS_PASSWORD.id) ?: return
+		val value = plugin.BMS_PASSWORD.get()
+		pref.isVisible = plugin.BMS_PROTOCOL.get() != "ant"
+		pref.text = value
+		pref.summary = if (value.isEmpty()) {
+			getString(R.string.ev_bms_jbd_password_not_set)
+		} else {
+			"••••••"
+		}
+		pref.setDescription(R.string.ev_bms_jbd_password_desc)
 	}
 
 	private fun setupPollInterval() {
@@ -500,6 +511,17 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			setupCalFactor()
 			return true
 		}
+		if (preference.key == plugin.BMS_PASSWORD.id) {
+			val parsed = plugin.parseJbdPassword(newValue as? String)
+			if (parsed == null) {
+				app.showToastMessage(R.string.ev_bms_jbd_password_invalid)
+				return false
+			}
+			plugin.BMS_PASSWORD.set(parsed)
+			plugin.onJbdPasswordChanged()
+			setupJbdPassword()
+			return true
+		}
 		return super.onPreferenceChange(preference, newValue)
 	}
 
@@ -570,6 +592,9 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		if (prefId == plugin.SPEED_CAL_FACTOR.id) {
 			setupCalFactor()
 		}
+		if (prefId == plugin.BMS_PASSWORD.id) {
+			setupJbdPassword()
+		}
 		if (prefId == plugin.RECORD_TELEMETRY.id) {
 			plugin.applyHikeTelemetryState()
 		}
@@ -577,6 +602,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			plugin.restartTelemetryIfRecording()
 		}
 		if (prefId == plugin.BMS_PROTOCOL.id) {
+			setupJbdPassword()
 			val act = activity ?: return
 			val name = plugin.BMS_NAME.get()
 			val address = plugin.BMS_ADDRESS.get()
@@ -602,11 +628,11 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		val pad = AndroidUtils.dpToPx(themed, 16f)
 		val root = LinearLayout(themed).apply {
 			orientation = LinearLayout.VERTICAL
-			setPadding(0, pad / 2, 0, pad / 2)
+			setPadding(0, pad / 4, 0, pad / 4)
 		}
 		val actions = LinearLayout(themed).apply {
 			orientation = LinearLayout.HORIZONTAL
-			setPadding(pad, 0, pad, pad / 2)
+			setPadding(pad, 0, pad, pad / 4)
 		}
 		fun actionButton(label: String, onClick: () -> Unit): TextView {
 			return TextView(themed).apply {
@@ -635,18 +661,13 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		})
 		root.addView(actions)
 		for ((groupRes, fields) in TelemetryField.grouped()) {
-			val header = TextView(themed).apply {
-				text = getString(groupRes)
-				setTextColor(ColorUtilities.getSecondaryTextColor(themed, isNightMode()))
-				setPadding(pad, pad / 2, pad, pad / 4)
-			}
-			root.addView(header)
+			root.addView(telemetryGroupHeader(themed, groupRes))
 			for (field in fields) {
 				val row = inflater.inflate(R.layout.ev_bms_telemetry_field_row, root, false)
 				val box = row.findViewById<CheckBox>(R.id.compound_button)
 				val title = row.findViewById<TextView>(R.id.title)
 				val value = row.findViewById<TextView>(R.id.value)
-				title.text = getString(field.titleRes)
+				title.text = "${field.emoji} ${getString(field.titleRes)}"
 				value.text = field.liveValue(themed, plugin.latestTelemetry)
 				box.isChecked = field in selected
 				UiUtilities.setupCompoundButton(box, isNightMode(), UiUtilities.CompoundButtonType.GLOBAL)
@@ -659,7 +680,14 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 				root.addView(row)
 			}
 		}
-		val scroll = ScrollView(themed).apply { addView(root) }
+		val scroll = ScrollView(themed).apply {
+			layoutParams = ViewGroup.LayoutParams(
+				ViewGroup.LayoutParams.MATCH_PARENT,
+				ViewGroup.LayoutParams.MATCH_PARENT
+			)
+			isFillViewport = true
+			addView(root)
+		}
 		uiHandler.removeCallbacks(refreshFieldValues)
 		uiHandler.post(refreshFieldValues)
 		AlertDialog.Builder(themed)
@@ -679,7 +707,30 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 				uiHandler.removeCallbacks(refreshFieldValues)
 				fieldValueViews.clear()
 			}
-			.show()
+			.create()
+			.showFullScreen()
+	}
+
+	private fun telemetryGroupHeader(themed: android.content.Context, groupRes: Int): View {
+		val hPad = AndroidUtils.dpToPx(themed, 16f)
+		val line = View(themed).apply {
+			layoutParams = LinearLayout.LayoutParams(0, AndroidUtils.dpToPx(themed, 1f), 1f)
+			setBackgroundColor(ColorUtilities.getDividerColor(themed, isNightMode()))
+		}
+		val label = TextView(themed).apply {
+			text = "${TelemetryField.groupEmoji(groupRes)} ${getString(groupRes)}"
+			setTextColor(ColorUtilities.getSecondaryTextColor(themed, isNightMode()))
+			textSize = 12f
+			maxLines = 1
+			setPadding(AndroidUtils.dpToPx(themed, 8f), 0, 0, 0)
+		}
+		return LinearLayout(themed).apply {
+			orientation = LinearLayout.HORIZONTAL
+			gravity = Gravity.CENTER_VERTICAL
+			setPadding(hPad, AndroidUtils.dpToPx(themed, 8f), hPad, AndroidUtils.dpToPx(themed, 4f))
+			addView(line)
+			addView(label)
+		}
 	}
 
 	private fun showChargeHistoryDialog(activity: Activity) {
@@ -772,24 +823,18 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		lateinit var dialog: AlertDialog
 		val adapter = object : ArrayAdapter<TelemetryRecorder.LogSession>(themed, 0, items) {
 			override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
-				val view = convertView ?: inflater.inflate(R.layout.list_item_icon_and_right_btn, parent, false)
+				val view = convertView ?: inflater.inflate(R.layout.ev_bms_export_log_row, parent, false)
 				val session = getItem(position) ?: return view
-				view.findViewById<View>(R.id.toggle_item).visibility = View.GONE
-				view.findViewById<View>(R.id.secondary_icon).visibility = View.GONE
 				view.findViewById<ImageView>(R.id.icon).setImageDrawable(
 					app.uiUtilities.getThemedIcon(R.drawable.ic_action_save_to_file)
 				)
 				view.findViewById<TextView>(R.id.title).text = session.stamp
-				val desc = view.findViewById<TextView>(R.id.description)
-				desc.maxLines = 2
-				desc.isSingleLine = false
-				desc.text = formatLogMeta(session)
-				desc.visibility = View.VISIBLE
-				val delete = view.findViewById<TextView>(R.id.right_btn)
+				view.findViewById<TextView>(R.id.description).text = formatLogMeta(session)
+				val delete = view.findViewById<TextView>(R.id.delete_btn)
 				val active = plugin.isActiveTelemetrySession(session)
-				delete.text = getString(R.string.shared_string_delete)
+				delete.text = getString(R.string.ev_bms_delete_emoji)
 				delete.isEnabled = !active
-				delete.alpha = if (active) 0.4f else 1f
+				delete.alpha = if (active) 0.35f else 1f
 				delete.setOnClickListener {
 					if (active) {
 						app.showToastMessage(R.string.ev_bms_log_in_use)
@@ -816,7 +861,8 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 				plugin.shareCsv(activity, items.flatMap { session -> session.files.map { it.uri } })
 			}
 			.setNegativeButton(R.string.shared_string_cancel, null)
-			.show()
+			.create()
+		dialog.showFullScreen()
 	}
 
 	private fun formatLogMeta(session: TelemetryRecorder.LogSession): String {
@@ -930,5 +976,38 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			return
 		}
 		picker?.setTitle(R.string.ev_bms_select_device)
+	}
+
+	private fun AlertDialog.showFullScreen() {
+		setOnShowListener {
+			window?.setLayout(
+				ViewGroup.LayoutParams.MATCH_PARENT,
+				ViewGroup.LayoutParams.MATCH_PARENT
+			)
+			val match = ViewGroup.LayoutParams.MATCH_PARENT
+			fun stretch(id: Int, fill: Boolean) {
+				val view = findViewById<View>(id) ?: return
+				val lp = view.layoutParams
+				lp.width = match
+				if (lp is LinearLayout.LayoutParams) {
+					if (fill) {
+						lp.height = 0
+						lp.weight = 1f
+					} else {
+						lp.height = match
+					}
+				} else {
+					lp.height = match
+				}
+				view.layoutParams = lp
+			}
+			stretch(androidx.appcompat.R.id.parentPanel, false)
+			stretch(androidx.appcompat.R.id.contentPanel, true)
+			stretch(androidx.appcompat.R.id.customPanel, true)
+			findViewById<ListView>(android.R.id.list)?.let { list ->
+				list.layoutParams = list.layoutParams.apply { height = match }
+			}
+		}
+		show()
 	}
 }

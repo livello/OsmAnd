@@ -11,8 +11,13 @@ object JbdBmsProtocol {
 	const val START: Byte = 0xDD.toByte()
 	const val END: Byte = 0x77
 	const val READ: Byte = 0xA5.toByte()
+	const val WRITE: Byte = 0x5A.toByte()
 	const val REG_BASIC: Byte = 0x03
 	const val REG_CELLS: Byte = 0x04
+	const val REG_USE_PASSWORD: Byte = 0x06
+	const val STATUS_OK: Int = 0x00
+	const val STATUS_DENIED: Int = 0x80
+	const val STATUS_PASSWORD: Int = 0x83
 
 	fun readCommand(register: Byte): ByteArray {
 		val checksum = checksum(byteArrayOf(register, 0x00))
@@ -27,6 +32,44 @@ object JbdBmsProtocol {
 	fun readBasicInfo(): ByteArray = readCommand(REG_BASIC)
 
 	fun readCellVoltages(): ByteArray = readCommand(REG_CELLS)
+
+	fun writeCommand(register: Byte, data: ByteArray): ByteArray {
+		val body = ByteArray(2 + data.size)
+		body[0] = register
+		body[1] = data.size.toByte()
+		if (data.isNotEmpty()) {
+			data.copyInto(body, 2)
+		}
+		val checksum = checksum(body)
+		return byteArrayOf(START, WRITE) + body + byteArrayOf(
+			((checksum shr 8) and 0xFF).toByte(),
+			(checksum and 0xFF).toByte(),
+			END
+		)
+	}
+
+	fun usePassword(password: String?): ByteArray? {
+		val digits = normalizePassword(password) ?: return null
+		val payload = ByteArray(7)
+		payload[0] = 0x06
+		for (i in 0 until 6) {
+			payload[i + 1] = (digits[i] - '0').code.toByte()
+		}
+		return writeCommand(REG_USE_PASSWORD, payload)
+	}
+
+	fun normalizePassword(raw: String?): String? {
+		val digits = raw?.filter { it.isDigit() }.orEmpty()
+		return if (digits.length == 6) digits else null
+	}
+
+	fun frameRegister(frame: ByteArray): Byte? {
+		return if (frame.size >= 3 && frame[0] == START) frame[1] else null
+	}
+
+	fun frameStatus(frame: ByteArray): Int? {
+		return if (frame.size >= 3 && frame[0] == START) frame[2].toInt() and 0xFF else null
+	}
 
 	fun checksum(payload: ByteArray): Int {
 		var sum = 0

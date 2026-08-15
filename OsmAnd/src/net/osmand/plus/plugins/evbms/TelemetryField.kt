@@ -6,33 +6,33 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int) {
-	TIME_MS("time_ms", R.string.ev_bms_field_time, R.string.ev_bms_field_group_gps),
-	LAT("lat", R.string.ev_bms_field_lat, R.string.ev_bms_field_group_gps),
-	LON("lon", R.string.ev_bms_field_lon, R.string.ev_bms_field_group_gps),
-	GPS_SPEED("gps_speed_kmh", R.string.ev_bms_field_gps_speed, R.string.ev_bms_field_group_gps),
-	SOC("soc_percent", R.string.ev_bms_widget_soc, R.string.ev_bms_field_group_battery),
-	VOLTAGE("voltage_v", R.string.ev_bms_widget_voltage, R.string.ev_bms_field_group_battery),
-	CURRENT("current_a", R.string.ev_bms_widget_current, R.string.ev_bms_field_group_battery),
-	REMAINING_AH("remaining_ah", R.string.ev_bms_field_remaining_ah, R.string.ev_bms_field_group_battery),
-	FULL_AH("full_ah", R.string.ev_bms_field_full_ah, R.string.ev_bms_field_group_battery),
-	BMS_TEMP("bms_temp_c", R.string.ev_bms_widget_battery_temp, R.string.ev_bms_field_group_battery),
-	CYCLES("cycles", R.string.ev_bms_field_cycles, R.string.ev_bms_field_group_battery),
-	MIN_CELL("min_cell_v", R.string.ev_bms_field_min_cell, R.string.ev_bms_field_group_battery),
-	RANGE("range_km", R.string.ev_bms_field_range, R.string.ev_bms_field_group_battery),
-	CTRL_VOLTAGE("controller_voltage_v", R.string.ev_bms_field_ctrl_voltage, R.string.ev_bms_field_group_controller),
-	CTRL_CURRENT("controller_current_a", R.string.ev_bms_field_ctrl_current, R.string.ev_bms_field_group_controller),
-	POWER("power_w", R.string.ev_bms_widget_power, R.string.ev_bms_field_group_controller),
-	RPM("rpm", R.string.ev_bms_field_rpm, R.string.ev_bms_field_group_controller),
-	GEAR("gear", R.string.ev_bms_field_gear, R.string.ev_bms_field_group_controller),
-	MOTOR_TEMP("motor_temp_c", R.string.ev_bms_widget_motor_temp, R.string.ev_bms_field_group_controller),
-	CTRL_TEMP("controller_temp_c", R.string.ev_bms_widget_controller_temp, R.string.ev_bms_field_group_controller),
-	ODOMETER("odometer_km", R.string.ev_bms_field_odometer, R.string.ev_bms_field_group_controller),
-	FAR_TRIP("controller_trip_km", R.string.ev_bms_widget_far_trip, R.string.ev_bms_field_group_controller),
-	CTRL_SPEED("controller_speed_kmh", R.string.ev_bms_field_ctrl_speed, R.string.ev_bms_field_group_controller),
-	CONSUMPTION("consumption_wh_km", R.string.ev_bms_widget_consumption, R.string.ev_bms_field_group_ride),
-	COVERAGE("coverage_wh_km", R.string.ev_bms_field_coverage, R.string.ev_bms_field_group_ride),
-	CHARGE_TRIP("charge_trip_km", R.string.ev_bms_widget_charge_trip, R.string.ev_bms_field_group_ride);
+enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, val emoji: String) {
+	TIME_MS("time_ms", R.string.ev_bms_field_time, R.string.ev_bms_field_group_gps, "🕒"),
+	LAT("lat", R.string.ev_bms_field_lat, R.string.ev_bms_field_group_gps, "🌐"),
+	LON("lon", R.string.ev_bms_field_lon, R.string.ev_bms_field_group_gps, "🌐"),
+	GPS_SPEED("gps_speed_kmh", R.string.ev_bms_field_gps_speed, R.string.ev_bms_field_group_gps, "🛰️"),
+	SOC("soc_percent", R.string.ev_bms_widget_soc, R.string.ev_bms_field_group_battery, "🔋"),
+	VOLTAGE("voltage_v", R.string.ev_bms_widget_voltage, R.string.ev_bms_field_group_battery, "⚡"),
+	CURRENT("current_a", R.string.ev_bms_widget_current, R.string.ev_bms_field_group_battery, "🔌"),
+	REMAINING_AH("remaining_ah", R.string.ev_bms_field_remaining_ah, R.string.ev_bms_field_group_battery, "📉"),
+	FULL_AH("full_ah", R.string.ev_bms_field_full_ah, R.string.ev_bms_field_group_battery, "📦"),
+	BMS_TEMP("bms_temp_c", R.string.ev_bms_widget_battery_temp, R.string.ev_bms_field_group_battery, "🌡️"),
+	CYCLES("cycles", R.string.ev_bms_field_cycles, R.string.ev_bms_field_group_battery, "🔁"),
+	MIN_CELL("min_cell_v", R.string.ev_bms_field_min_cell, R.string.ev_bms_field_group_battery, "🔻"),
+	RANGE("range_km", R.string.ev_bms_field_range, R.string.ev_bms_field_group_battery, "📏"),
+	CTRL_VOLTAGE("controller_voltage_v", R.string.ev_bms_field_ctrl_voltage, R.string.ev_bms_field_group_controller, "⚡"),
+	CTRL_CURRENT("controller_current_a", R.string.ev_bms_field_ctrl_current, R.string.ev_bms_field_group_controller, "🔌"),
+	POWER("power_w", R.string.ev_bms_widget_power, R.string.ev_bms_field_group_controller, "⚙️"),
+	RPM("rpm", R.string.ev_bms_field_rpm, R.string.ev_bms_field_group_controller, "🌀"),
+	GEAR("gear", R.string.ev_bms_field_gear, R.string.ev_bms_field_group_controller, "⚙️"),
+	MOTOR_TEMP("motor_temp_c", R.string.ev_bms_widget_motor_temp, R.string.ev_bms_field_group_controller, "🔥"),
+	CTRL_TEMP("controller_temp_c", R.string.ev_bms_widget_controller_temp, R.string.ev_bms_field_group_controller, "🌡️"),
+	ODOMETER("odometer_km", R.string.ev_bms_field_odometer, R.string.ev_bms_field_group_controller, "🛣️"),
+	FAR_TRIP("controller_trip_km", R.string.ev_bms_widget_far_trip, R.string.ev_bms_field_group_controller, "🛵"),
+	CTRL_SPEED("controller_speed_kmh", R.string.ev_bms_field_ctrl_speed, R.string.ev_bms_field_group_controller, "🚀"),
+	CONSUMPTION("consumption_wh_km", R.string.ev_bms_widget_consumption, R.string.ev_bms_field_group_ride, "📊"),
+	COVERAGE("coverage_wh_km", R.string.ev_bms_field_coverage, R.string.ev_bms_field_group_ride, "📊"),
+	CHARGE_TRIP("charge_trip_km", R.string.ev_bms_widget_charge_trip, R.string.ev_bms_field_group_ride, "🔌");
 
 	fun csvValue(sample: EvTelemetry): String {
 		return when (this) {
@@ -130,6 +130,16 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int) 
 
 		fun grouped(): List<Pair<Int, List<TelemetryField>>> {
 			return entries.groupBy { it.groupRes }.toList()
+		}
+
+		fun groupEmoji(groupRes: Int): String {
+			return when (groupRes) {
+				R.string.ev_bms_field_group_gps -> "📍"
+				R.string.ev_bms_field_group_battery -> "🔋"
+				R.string.ev_bms_field_group_controller -> "🛵"
+				R.string.ev_bms_field_group_ride -> "🛣️"
+				else -> "•"
+			}
 		}
 
 		private fun n(v: Double?, fmt: String): String {
