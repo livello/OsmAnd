@@ -998,8 +998,9 @@ Tables in plugin settings: charge sessions (time, start/end battery temperature,
 <b>🥾 Hike mode</b><br/>
 Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+• Link indicator is a 25 px edge strip; battery charge is announced as pack voltage<br/>
+• Settings sheet has Cancel / Start telemetry recording and icons for every item<br/>
 • Plugin renamed to EV-Telemetry; widgets right-align on the right panel with independent width<br/>
-• Link indicator is a 5 px edge strip; widgets show metric values without units<br/>
 • Tap a widget to open plugin settings (dismiss by tapping outside)<br/>
 • Live telemetry field picker with current values; remaining range in the log; coverage labeled as consumption<br/>
 • Skip unchanged telemetry samples; named GPX points for charge and charge-trip<br/>
@@ -1084,7 +1085,7 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_select_device">Select device</string>
     <string name="ev_bms_connected">Connected to %1$s</string>
     <string name="ev_bms_disconnected">Disconnected from %1$s</string>
-    <string name="ev_bms_voice_soc">Battery %1$d percent</string>
+    <string name="ev_bms_voice_soc">Battery charge %1$s volts</string>
     <string name="ev_bms_voice_range">Remaining range %1$d km</string>
     <string name="ev_bms_voice_to_charge">Distance to charging %1$d km</string>
     <string name="ev_bms_voice_voltage">Voltage %1$s</string>

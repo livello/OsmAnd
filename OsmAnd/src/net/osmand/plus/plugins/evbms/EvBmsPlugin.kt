@@ -1001,7 +1001,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 					} else {
 						updateRestMetrics(info.currentA, info.voltageV, lastCells)
 					}
-					voice.onSoc(info.socPercent, SOC_STEP_PERCENT.get(), ANNOUNCE_SOC.get())
+					voice.onSoc(info.socPercent, info.voltageV, SOC_STEP_PERCENT.get(), ANNOUNCE_SOC.get())
 				}
 			} else {
 				val (frames, rest) = JbdBmsProtocol.extractFrames(bmsBuffer)
@@ -1012,7 +1012,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 						lastBms = info.toSnapshot()
 						lastBmsRxMs = System.currentTimeMillis()
 						updateRestMetrics(info.currentA, info.voltageV, lastCells)
-						voice.onSoc(info.socPercent, SOC_STEP_PERCENT.get(), ANNOUNCE_SOC.get())
+						voice.onSoc(info.socPercent, info.voltageV, SOC_STEP_PERCENT.get(), ANNOUNCE_SOC.get())
 						continue
 					}
 					val cells = JbdBmsProtocol.parseCellVoltages(frame) ?: continue
@@ -1390,6 +1390,19 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 
 	fun askShowSettingsDialog(activity: FragmentActivity) {
 		EvBmsSettingsBottomSheet.showInstance(activity.supportFragmentManager)
+	}
+
+	fun isTelemetryRecording(): Boolean = recorder.isRecording
+
+	fun startTelemetryRecording(): Boolean {
+		RECORD_TELEMETRY.set(true)
+		applyHikeTelemetryState()
+		return recorder.isRecording
+	}
+
+	fun stopTelemetryRecording() {
+		RECORD_TELEMETRY.set(false)
+		recorder.stop()
 	}
 
 	private fun activePollIntervalMs(): Long {

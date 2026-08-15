@@ -150,6 +150,64 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		setupSwitch(plugin.ANNOUNCE_CHARGE_ETA.id)
 		setupHistoryPrefs()
 		setupRouteProfile()
+		setupIcons()
+	}
+
+	fun refreshRecordingPref() {
+		val pref = findPreference<SwitchPreferenceEx>(plugin.RECORD_TELEMETRY.id) ?: return
+		pref.isChecked = plugin.RECORD_TELEMETRY.get()
+	}
+
+	private fun setupIcons() {
+		decorate("ev_bms_devices", "📡", R.drawable.ic_action_bluetooth)
+		decorate(plugin.BMS_ADDRESS.id, "🔋", R.drawable.ic_action_battery)
+		decorate(plugin.BMS_PROTOCOL.id, "🔗", R.drawable.ic_action_settings)
+		decorate(plugin.CONTROLLER_ADDRESS.id, "🛵", R.drawable.ic_action_car_info)
+		decorate(plugin.CONTROLLER_PROTOCOL.id, "⚙️", R.drawable.ic_action_settings)
+		decorate("ev_bms_modes", "🥾", R.drawable.ic_action_trekking_dark)
+		decorate(plugin.HIKE_MODE.id, "🥾", R.drawable.ic_action_trekking_dark)
+		decorate("ev_bms_recording", "💾", R.drawable.ic_action_track_recordable)
+		decorate(plugin.POLL_INTERVAL_MS.id, "⏱️", R.drawable.ic_action_time)
+		decorate(plugin.RECORD_TELEMETRY.id, "📝", R.drawable.ic_action_save_to_file)
+		decorate(plugin.RECORD_GPX.id, "🗺️", R.drawable.ic_action_polygom_dark)
+		decorate(plugin.TELEMETRY_FIELDS.id, "☑️", R.drawable.ic_action_list_flat)
+		decorate("ev_bms_csv_folder", "📁", R.drawable.ic_action_folder)
+		decorate("ev_bms_export_csv", "📤", R.drawable.ic_action_gshare_dark)
+		decorate("ev_bms_voice", "🗣️", R.drawable.ic_action_volume_up)
+		decorate(plugin.ANNOUNCE_SOC.id, "🔋", R.drawable.ic_action_battery)
+		decorate(plugin.SOC_STEP_PERCENT.id, "📶", R.drawable.ic_action_percent)
+		decorate(plugin.ANNOUNCE_RANGE_ON_STOP.id, "📏", R.drawable.ic_action_distance)
+		decorate(plugin.ANNOUNCE_RANGE_VS_ROUTE.id, "🧭", R.drawable.ic_action_gdirections_dark)
+		decorate(plugin.STOP_SPEED_KMH.id, "🐢", R.drawable.ic_action_speed)
+		decorate(plugin.ANNOUNCE_CELL_VOLTAGE.id, "⚠️", R.drawable.ic_action_alert)
+		decorate(plugin.LOW_CELL_MV.id, "🔻", R.drawable.ic_action_arrow_down)
+		decorate(plugin.CRITICAL_CELL_MV.id, "⛔", R.drawable.ic_action_alert)
+		decorate(plugin.CELL_ALERT_INTERVAL_SEC.id, "⏰", R.drawable.ic_action_time_span)
+		decorate(plugin.ANNOUNCE_MOTOR_HEAT.id, "🔥", R.drawable.ic_action_thermometer)
+		decorate(plugin.MOTOR_HEAT_C.id, "🌡️", R.drawable.ic_action_thermometer)
+		decorate(plugin.ANNOUNCE_BATTERY_OVERHEAT.id, "🥵", R.drawable.ic_action_thermometer)
+		decorate(plugin.BATTERY_OVERHEAT_C.id, "🌡️", R.drawable.ic_action_thermometer)
+		decorate(plugin.ANNOUNCE_BATTERY_FREEZE.id, "❄️", R.drawable.ic_action_thermometer)
+		decorate(plugin.BATTERY_FREEZE_C.id, "❄️", R.drawable.ic_action_thermometer)
+		decorate(plugin.ANNOUNCE_LINK.id, "📡", R.drawable.ic_action_offline)
+		decorate("ev_bms_charge", "🔌", R.drawable.ic_action_power_button)
+		decorate(plugin.CHARGE_STILL_SEC.id, "⏸️", R.drawable.ic_action_time)
+		decorate(plugin.CHARGE_STILL_KMH.id, "🚶", R.drawable.ic_action_speed)
+		decorate(plugin.CHARGE_CURRENT_A.id, "⚡", R.drawable.ic_action_battery)
+		decorate(plugin.ANNOUNCE_CHARGE_ETA.id, "⏳", R.drawable.ic_action_time_to_distance)
+		decorate("ev_bms_charge_history", "📋", R.drawable.ic_action_history)
+		decorate("ev_bms_trip_history", "🛵", R.drawable.ic_action_track_recordable)
+		decorate("ev_bms_range", "📏", R.drawable.ic_action_distance)
+		decorate(plugin.USE_ROUTE_PROFILE.id, "⛰️", R.drawable.ic_action_altitude)
+	}
+
+	private fun decorate(key: String, emoji: String, iconRes: Int) {
+		val pref = findPreference<Preference>(key) ?: return
+		val title = pref.title?.toString().orEmpty()
+		if (title.isNotEmpty() && !title.startsWith(emoji)) {
+			pref.title = "$emoji $title"
+		}
+		pref.icon = getContentIcon(iconRes)
 	}
 
 	override fun onResume() {

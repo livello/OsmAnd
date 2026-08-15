@@ -171,14 +171,15 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 		}
 	}
 
-	fun onSoc(soc: Int?, stepPercent: Int, enabled: Boolean) {
+	fun onSoc(soc: Int?, voltageV: Double?, stepPercent: Int, enabled: Boolean) {
 		if (!enabled || soc == null || stepPercent <= 0) {
 			return
 		}
 		val last = lastSpokenSoc
 		if (last == null || kotlin.math.abs(soc - last) >= stepPercent) {
+			val volts = voltageV?.let { String.format(Locale.US, "%.1f", it) } ?: return
 			lastSpokenSoc = soc
-			speak(app.getString(R.string.ev_bms_voice_soc, soc))
+			speak(app.getString(R.string.ev_bms_voice_soc, volts))
 		}
 	}
 

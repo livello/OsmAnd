@@ -13,7 +13,7 @@ object EvWidgetLinkFrame {
 
 	private const val GREEN = 0xFF22C55E.toInt()
 	private const val RED = 0xFFEF4444.toInt()
-	private const val STRIP_PX = 5
+	private const val STRIP_PX = 25
 
 	fun apply(root: View?, connected: Boolean, panel: WidgetsPanel?) {
 		val target = root?.findViewById<View>(R.id.widget_bg) ?: root ?: return
