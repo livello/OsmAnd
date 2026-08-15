@@ -30,7 +30,7 @@ class EvBmsTextWidget(
 ) : SimpleWidget(mapActivity, widgetType, customId, widgetsPanel) {
 
 	enum class Field {
-		SOC, RANGE, CONSUMPTION, FAR_TRIP, CHARGE_TRIP, CHARGE_ETA, VOLTAGE, MIN_CELL, CURRENT, POWER, BATTERY_TEMP, MOTOR_TEMP, CONTROLLER_TEMP;
+		SOC, RANGE, CONSUMPTION, FAR_TRIP, CHARGE_TRIP, CHARGE_ETA, CHARGE_TIME, CHARGE_ENERGY, VOLTAGE, MIN_CELL, CURRENT, POWER, BATTERY_TEMP, MOTOR_TEMP, CONTROLLER_TEMP;
 
 		fun controllerLink(): Boolean {
 			return this == FAR_TRIP || this == POWER || this == MOTOR_TEMP || this == CONTROLLER_TEMP
@@ -95,6 +95,21 @@ class EvBmsTextWidget(
 					OsmAndFormatter.getFormattedDurationShort((ms / 1000L).toInt().coerceAtLeast(0))
 				}
 			}
+			Field.CHARGE_TIME -> {
+				val ms = plugin.chargeElapsedMs()
+				if (!plugin.isCharging() || ms == null) {
+					NO_VALUE
+				} else {
+					OsmAndFormatter.getFormattedDurationShort((ms / 1000L).toInt().coerceAtLeast(0))
+				}
+			}
+			Field.CHARGE_ENERGY -> {
+				if (!plugin.isCharging()) {
+					NO_VALUE
+				} else {
+					plugin.chargeEnergyWh()?.let { String.format(Locale.US, "%.0f", it) } ?: NO_VALUE
+				}
+			}
 			Field.VOLTAGE -> sample?.voltageV?.let { String.format(Locale.US, "%.1f", it) } ?: NO_VALUE
 			Field.MIN_CELL -> sample?.minCellVoltageV?.let { String.format(Locale.US, "%.3f", it) } ?: NO_VALUE
 			Field.CURRENT -> sample?.currentA?.let { String.format(Locale.US, "%.1f", it) } ?: NO_VALUE
@@ -134,7 +149,8 @@ class EvBmsTextWidget(
 
 	private fun applyLinkFrame() {
 		val linked = when {
-			field == Field.CHARGE_ETA -> plugin.isCharging() || plugin.isBmsConnected()
+			field == Field.CHARGE_ETA || field == Field.CHARGE_TIME || field == Field.CHARGE_ENERGY ->
+				plugin.isCharging() || plugin.isBmsConnected()
 			field.controllerLink() -> plugin.isControllerConnected()
 			else -> plugin.isBmsConnected()
 		}

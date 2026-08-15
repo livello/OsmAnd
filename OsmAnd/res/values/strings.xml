@@ -998,6 +998,10 @@ Tables in plugin settings: charge sessions (time, start/end battery temperature,
 <b>🥾 Hike mode</b><br/>
 Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+• SOC is auto-calibrated from min cell voltage per BMS MAC: rest OCV while coasting, I·R compensation while charging<br/>
+• Charge temperature voice uses 1.5 °C hysteresis so chatter around a whole degree is ignored<br/>
+• Settings sheet hides Cancel / Calibrate / Start while you scroll<br/>
+• Widgets for charge elapsed time and watt-hours into the pack<br/>
 • Charge detection ignores GPS jitter when the controller reports standstill, uses BMS or controller current, and treats rising remaining Ah as charging<br/>
 • While charging, voice announces SOC percent steps and battery temperature changes; time-to-full uses SOC if pack capacity is missing<br/>
 • Min cell voltage widget on the right panel<br/>
@@ -1071,6 +1075,10 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_value_none">—</string>
     <string name="ev_bms_widget_charge_eta">Time to full</string>
     <string name="ev_bms_widget_charge_eta_desc">Estimated time left on the current charge. Continues after BMS link loss, assuming charge current stays the same</string>
+    <string name="ev_bms_widget_charge_time">Charge elapsed</string>
+    <string name="ev_bms_widget_charge_time_desc">Time since the current charge session started</string>
+    <string name="ev_bms_widget_charge_energy">Charge energy</string>
+    <string name="ev_bms_widget_charge_energy_desc">Watt-hours delivered into the pack on the current charge</string>
     <string name="ev_bms_announce_charge_eta">Announce time to full</string>
     <string name="ev_bms_voice_charge_eta">Until charge complete %1$d hours %2$d minutes</string>
     <string name="ev_bms_voice_charge_eta_min">Until charge complete %1$d minutes</string>
@@ -1125,7 +1133,7 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_voice_controller">Controller %1$d</string>
     <string name="ev_bms_voice_batt_ctrl">Battery %1$d, controller %2$d</string>
     <string name="ev_bms_widget_soc">Battery SOC</string>
-    <string name="ev_bms_widget_soc_desc">State of charge from the BMS</string>
+    <string name="ev_bms_widget_soc_desc">Calibrated state of charge from min cell voltage, per BMS MAC</string>
     <string name="ev_bms_widget_range">Remaining range</string>
     <string name="ev_bms_widget_range_desc">Estimated remaining range from GPS or controller distance and 5-minute average Wh/km</string>
     <string name="ev_bms_widget_consumption">Consumption</string>

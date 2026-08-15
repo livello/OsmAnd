@@ -83,6 +83,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerBooleanPreference("ev_bms_record_gpx", true).makeGlobal().makeShared()
 	val TELEMETRY_FIELDS: CommonPreference<String> =
 		registerStringPreference("ev_bms_telemetry_fields", TelemetryField.DEFAULT_IDS).makeGlobal().makeShared()
+	val SOC_CAL_STORE: CommonPreference<String> =
+		registerStringPreference("ev_bms_soc_cal_store", "").makeGlobal().makeShared()
 	val CHARGE_STILL_SEC: CommonPreference<Int> =
 		registerIntPreference("ev_bms_charge_still_sec", DEFAULT_CHARGE_STILL_SEC).makeGlobal().makeShared()
 	val CHARGE_STILL_KMH: CommonPreference<Int> =
@@ -213,6 +215,10 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private var chargeFullAh: Double? = null
 	private var chargeLastAh: Double? = null
 	private var chargeLastAhMs = 0L
+	private var chargeEnergyWhAcc = 0.0
+	private var chargeEnergyLastMs = 0L
+	private val socCalibrator = SocCalibrator()
+	private var calibratedSocPercent: Int? = null
 	private var tripStartMs = 0L
 	private var tripStartVoltageV: Double? = null
 	private var tripStartTempC: Double? = null
@@ -311,6 +317,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		bmsClient = EvBleUartClient(app, EvBleUartClient.Role.BMS, this)
 		controllerClient = EvBleUartClient(app, EvBleUartClient.Role.CONTROLLER, this)
 		voice.init()
+		socCalibrator.decode(SOC_CAL_STORE.get())
 		restoreSessions()
 		restoreTelemetrySession()
 		return true
@@ -321,6 +328,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		stopPolling()
 		recorder.detach()
 		stopSpeedCalibration(notify = false)
+		persistSocCal()
 		voice.shutdown()
 		bmsClient?.disconnect()
 		controllerClient?.disconnect()
@@ -389,7 +397,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		}
 		val current = chargeFrozenCurrentA ?: return null
 		val lastAh = chargeLastAh
-		val soc = lastBms?.socPercent
+		val soc = calibratedSocPercent ?: lastBms?.socPercent
 		val full = chargeFullAh?.takeIf { it > 0.1 } ?: lastAh?.let { ah ->
 			soc?.takeIf { it in 1..99 }?.let { ah / (it / 100.0) }
 		}
@@ -404,6 +412,20 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		val estimatedAh = lastAh + current * elapsedH
 		val leftAh = (full - estimatedAh).coerceAtLeast(0.0)
 		return (leftAh / current * 3_600_000.0).toLong()
+	}
+
+	fun chargeElapsedMs(): Long? {
+		if (!charging || chargeStartMs <= 0L) {
+			return null
+		}
+		return (System.currentTimeMillis() - chargeStartMs).coerceAtLeast(0L)
+	}
+
+	fun chargeEnergyWh(): Double? {
+		if (!charging) {
+			return null
+		}
+		return chargeEnergyWhAcc.takeIf { it >= 0.0 }
 	}
 
 	fun chargeHistory(): List<EvHistoryStore.ChargeRecord> = historyStore.parseCharges(CHARGE_HISTORY.get())
@@ -531,6 +553,12 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 					chargeFullAh = fullAh
 				}
 			}
+			val energyA = if (absI >= 0.15) absI else chargeFrozenCurrentA ?: 0.0
+			if (voltageV != null && voltageV > 0 && energyA >= 0.15 && chargeEnergyLastMs > 0L) {
+				val hours = (now - chargeEnergyLastMs).coerceAtLeast(0L) / 3_600_000.0
+				chargeEnergyWhAcc += voltageV * energyA * hours
+			}
+			chargeEnergyLastMs = now
 			persistChargeSession()
 		} else {
 			if (isTelemetryRecording() && moving && tripStartMs <= 0L) {
@@ -565,6 +593,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		chargeFullAh = fullAh
 		chargeLastAh = remainingAh
 		chargeLastAhMs = now
+		chargeEnergyWhAcc = 0.0
+		chargeEnergyLastMs = now
 		persistChargeSession()
 		markGpxEvent(
 			app.getString(R.string.ev_bms_gpx_charge_start),
@@ -733,6 +763,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		chargeFullAh = null
 		chargeLastAh = null
 		chargeLastAhMs = 0L
+		chargeEnergyWhAcc = 0.0
+		chargeEnergyLastMs = 0L
 	}
 
 	private fun persistChargeSession() {
@@ -749,6 +781,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		json.putD("fullAh", chargeFullAh)
 		json.putD("lastAh", chargeLastAh)
 		json.put("lastAhMs", chargeLastAhMs)
+		json.put("energyWh", chargeEnergyWhAcc)
+		json.put("energyLastMs", chargeEnergyLastMs)
 		CHARGE_SESSION.set(json.toString())
 	}
 
@@ -785,6 +819,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				chargeFullAh = json.optNullableDouble("fullAh")
 				chargeLastAh = json.optNullableDouble("lastAh")
 				chargeLastAhMs = json.optLong("lastAhMs")
+				chargeEnergyWhAcc = json.optDouble("energyWh", 0.0).coerceAtLeast(0.0)
+				chargeEnergyLastMs = json.optLong("energyLastMs")
 				if (chargeStartMs > 0L) {
 					charging = true
 					CHARGE_CYCLE_ACTIVE.set(false)
@@ -810,6 +846,10 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			} catch (_: Exception) {
 			}
 		}
+	}
+
+	private fun persistSocCal() {
+		SOC_CAL_STORE.set(socCalibrator.encode())
 	}
 
 	private fun JSONObject.putD(key: String, value: Double?): JSONObject {
@@ -1286,6 +1326,10 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		val bmsFresh = isBmsFresh()
 		val ctrlFresh = isControllerFresh()
 		updateRestMetrics(bms?.currentA ?: ctrlCurrentA(), bms?.voltageV ?: ctrlVoltageV(), lastCells)
+		val liveMinCell = lastCells?.minOrNull()
+		if (liveMinCell != null && liveMinCell > 0) {
+			minCellVoltageV = liveMinCell
+		}
 		val packCurrentA = when {
 			bmsFresh && bms?.currentA != null && kotlin.math.abs(bms.currentA) >= 0.2 -> bms.currentA
 			ctrlFresh -> ctrlCurrentA()
@@ -1301,6 +1345,16 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			loc = loc,
 			bmsFresh = bmsFresh || (ctrlFresh && packCurrentA != null)
 		)
+		calibratedSocPercent = socCalibrator.tick(
+			BMS_ADDRESS.get(),
+			minCellVoltageV,
+			packCurrentA ?: bms?.currentA,
+			charging,
+			System.currentTimeMillis()
+		)
+		if (socCalibrator.flushDue(System.currentTimeMillis())) {
+			persistSocCal()
+		}
 		rangeEstimator.add(
 			System.currentTimeMillis(),
 			remainingAh,
@@ -1321,7 +1375,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			lat = loc?.latitude,
 			lon = loc?.longitude,
 			gpsSpeedKmh = speed,
-			socPercent = bms?.socPercent,
+			socPercent = calibratedSocPercent ?: bms?.socPercent,
 			voltageV = bms?.voltageV ?: ctrlVoltageV(),
 			currentA = bms?.currentA ?: ctrlCurrentA(),
 			remainingAh = remainingAh,
@@ -1525,6 +1579,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			WidgetType.EV_FAR_TRIP -> EvBmsTextWidget.Field.FAR_TRIP
 			WidgetType.EV_CHARGE_TRIP -> EvBmsTextWidget.Field.CHARGE_TRIP
 			WidgetType.EV_CHARGE_ETA -> EvBmsTextWidget.Field.CHARGE_ETA
+			WidgetType.EV_CHARGE_TIME -> EvBmsTextWidget.Field.CHARGE_TIME
+			WidgetType.EV_CHARGE_ENERGY -> EvBmsTextWidget.Field.CHARGE_ENERGY
 			WidgetType.EV_BMS_VOLTAGE -> EvBmsTextWidget.Field.VOLTAGE
 			WidgetType.EV_BMS_MIN_CELL -> EvBmsTextWidget.Field.MIN_CELL
 			WidgetType.EV_BMS_CURRENT -> EvBmsTextWidget.Field.CURRENT

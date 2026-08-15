@@ -4498,6 +4498,10 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
 <b>🥾 Режим «Поход»</b><br/>
 Оставляет запас хода, GPS и телеметрию раз в 5 с, замедляет опрос BLE не реже 5 с, отключает тяжёлые слои карты, 3D, погоду, онлайн-тайлы и лишние Bluetooth-плагины.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Список изменений</b> · %1$s<br/>
+• SOC калибруется по минимуму ячейки отдельно для каждого MAC BMS: на разряде — ОХХ при сбросе газа, на заряде — компенсация I·R<br/>
+• Озвучка температуры зарядки с гистерезисом 1,5 °C, без дребезга около целого градуса<br/>
+• В модалке настроек кнопки Отмена / Калибровка / Старт скрываются при прокрутке<br/>
+• Виджеты прошедшего времени зарядки и энергии Вт·ч в пакет<br/>
 • Зарядка определяется по стоянке контроллера (без GPS-шума), току BMS или контроллера и росту остатка А·ч<br/>
 • Во время зарядки озвучиваются рост SOC и температура батареи; время до конца заряда считается и по SOC, если ёмкость пакета неизвестна<br/>
 • Виджет минимального напряжения ячейки на правой панели<br/>
@@ -4571,6 +4575,10 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
     <string name="ev_bms_value_none">—</string>
     <string name="ev_bms_widget_charge_eta">Время до конца заряда</string>
     <string name="ev_bms_widget_charge_eta_desc">Оценка оставшегося времени текущей зарядки. Продолжает идти после потери связи с BMS, считая ток неизменным</string>
+    <string name="ev_bms_widget_charge_time">Время на зарядке</string>
+    <string name="ev_bms_widget_charge_time_desc">Сколько уже идёт текущая зарядка</string>
+    <string name="ev_bms_widget_charge_energy">Энергия зарядки</string>
+    <string name="ev_bms_widget_charge_energy_desc">Ватт-часы, закачанные в батарею на текущей зарядке</string>
     <string name="ev_bms_announce_charge_eta">Озвучивать время до конца заряда</string>
     <string name="ev_bms_voice_charge_eta">До конца зарядки %1$d часов %2$d минут</string>
     <string name="ev_bms_voice_charge_eta_min">До конца зарядки %1$d минут</string>
@@ -4625,7 +4633,7 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
     <string name="ev_bms_voice_controller">Контроллер %1$d</string>
     <string name="ev_bms_voice_batt_ctrl">Батарея %1$d, контроллер %2$d</string>
     <string name="ev_bms_widget_soc">Заряд АКБ</string>
-    <string name="ev_bms_widget_soc_desc">Уровень заряда по BMS</string>
+    <string name="ev_bms_widget_soc_desc">Калиброванный уровень заряда по минимуму ячейки, отдельно для каждого MAC BMS</string>
     <string name="ev_bms_widget_range">Остаток пробега</string>
     <string name="ev_bms_widget_range_desc">Оценка пробега по GPS или одометру контроллера и среднему расходу Вт·ч/км за 5 минут</string>
     <string name="ev_bms_widget_consumption">Расход</string>

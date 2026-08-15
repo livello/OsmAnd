@@ -27,6 +27,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.FragmentManager
 import androidx.preference.Preference
+import androidx.recyclerview.widget.RecyclerView
 import net.osmand.plus.R
 import net.osmand.plus.plugins.PluginsHelper
 import net.osmand.plus.plugins.evbms.ble.EvBleUartClient
@@ -114,6 +115,12 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		if (isEmbedded()) {
 			view.findViewById<View>(R.id.appbar)?.visibility = View.GONE
 			view.setPadding(view.paddingLeft, 0, view.paddingRight, view.paddingBottom)
+			listView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+				override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+					val atTop = !recyclerView.canScrollVertically(-1)
+					(parentFragment as? EvBmsSettingsBottomSheet)?.setActionButtonsVisible(atTop)
+				}
+			})
 		}
 		return view
 	}

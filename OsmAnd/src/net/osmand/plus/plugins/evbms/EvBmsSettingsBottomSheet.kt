@@ -35,6 +35,7 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	private var buttonsParent: ViewGroup? = null
 	private var buttonsBar: View? = null
 	private var lastCalRunning = false
+	private var actionButtonsVisible = true
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
@@ -68,6 +69,25 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		rebuildBottomButtons()
 	}
 
+	fun setActionButtonsVisible(visible: Boolean) {
+		if (actionButtonsVisible == visible) {
+			return
+		}
+		actionButtonsVisible = visible
+		val bar = buttonsBar ?: return
+		bar.animate().cancel()
+		if (visible) {
+			bar.visibility = View.VISIBLE
+			bar.animate().alpha(1f).setDuration(160).start()
+		} else {
+			bar.animate().alpha(0f).setDuration(160).withEndAction {
+				if (!actionButtonsVisible) {
+					bar.visibility = View.GONE
+				}
+			}.start()
+		}
+	}
+
 	fun onCalibrationTick() {
 		val running = plugin.isSpeedCalibrating()
 		if (running != lastCalRunning) {
@@ -86,6 +106,8 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		bar.setPadding(contentPadding, topPadding, contentPadding, contentPadding)
 		parent.addView(bar)
 		buttonsBar = bar
+		bar.alpha = if (actionButtonsVisible) 1f else 0f
+		bar.visibility = if (actionButtonsVisible) View.VISIBLE else View.GONE
 
 		val cancelButton = bar.findViewById<CardView>(R.id.button_left)
 		TripRecordingBottomSheet.createItem(app, nightMode, cancelButton, ItemType.CANCEL, true, null)
