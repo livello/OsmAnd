@@ -14,6 +14,7 @@ import net.osmand.plus.plugins.PluginsHelper
 import net.osmand.plus.plugins.monitoring.TripRecordingBottomSheet
 import net.osmand.plus.plugins.monitoring.TripRecordingBottomSheet.ItemType
 import net.osmand.plus.utils.AndroidUtils
+import net.osmand.plus.utils.ColorUtilities
 import net.osmand.plus.utils.InsetTarget
 import net.osmand.plus.utils.InsetTarget.Type
 import net.osmand.plus.utils.InsetTargetsCollection
@@ -45,7 +46,8 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	override fun createMenuItems(savedInstanceState: Bundle?) {
 		items.add(TitleItem(getString(R.string.ev_bms_plugin_name)))
 		val host = inflate(R.layout.ev_bms_settings_bottom_sheet)
-		val height = (AndroidUtils.getScreenHeight(requireActivity()) * 0.62f).toInt()
+		val screen = AndroidUtils.getScreenHeight(requireActivity())
+		val height = (screen * 0.72f).toInt()
 		host.layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, height)
 		items.add(BaseBottomSheetItem.Builder().setCustomView(host).create())
 	}
@@ -64,27 +66,39 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	}
 
 	override fun setupBottomButtons(view: ViewGroup) {
-		buttonsParent = view
+		buttonsParent = view.findViewById(R.id.ev_bms_buttons_overlay) ?: view
 		lastCalRunning = plugin.isSpeedCalibrating()
 		rebuildBottomButtons()
 	}
+
+	override fun hideButtonsContainer(): Boolean = true
 
 	fun setActionButtonsVisible(visible: Boolean) {
 		if (actionButtonsVisible == visible) {
 			return
 		}
 		actionButtonsVisible = visible
-		val bar = buttonsBar ?: return
+		val overlay = buttonsParent
+		val bar = buttonsBar
+		if (overlay == null || bar == null) {
+			return
+		}
 		bar.animate().cancel()
+		overlay.animate().cancel()
+		settingsFragment()?.setActionFooterInset(visible)
 		if (visible) {
+			overlay.visibility = View.VISIBLE
 			bar.visibility = View.VISIBLE
+			overlay.animate().alpha(1f).setDuration(160).start()
 			bar.animate().alpha(1f).setDuration(160).start()
 		} else {
-			bar.animate().alpha(0f).setDuration(160).withEndAction {
+			overlay.animate().alpha(0f).setDuration(160).withEndAction {
 				if (!actionButtonsVisible) {
+					overlay.visibility = View.GONE
 					bar.visibility = View.GONE
 				}
 			}.start()
+			bar.animate().alpha(0f).setDuration(160).start()
 		}
 	}
 
@@ -104,10 +118,15 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		val paused = plugin.isTelemetryPaused()
 		val bar = inflate(R.layout.preference_button_with_icon_triple)
 		bar.setPadding(contentPadding, topPadding, contentPadding, contentPadding)
+		parent.setBackgroundColor(ColorUtilities.getListBgColor(app, nightMode))
 		parent.addView(bar)
 		buttonsBar = bar
 		bar.alpha = if (actionButtonsVisible) 1f else 0f
-		bar.visibility = if (actionButtonsVisible) View.VISIBLE else View.GONE
+		parent.alpha = if (actionButtonsVisible) 1f else 0f
+		val overlayState = if (actionButtonsVisible) View.VISIBLE else View.GONE
+		bar.visibility = overlayState
+		parent.visibility = overlayState
+		settingsFragment()?.setActionFooterInset(actionButtonsVisible)
 
 		val cancelButton = bar.findViewById<CardView>(R.id.button_left)
 		TripRecordingBottomSheet.createItem(app, nightMode, cancelButton, ItemType.CANCEL, true, null)
@@ -168,20 +187,22 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		}
 	}
 
+	private fun settingsFragment(): EvBmsSettingsFragment? {
+		return childFragmentManager.findFragmentByTag(SETTINGS_TAG) as? EvBmsSettingsFragment
+	}
+
 	private fun refreshRecordingPref() {
-		(childFragmentManager.findFragmentByTag(SETTINGS_TAG) as? EvBmsSettingsFragment)
-			?.refreshRecordingPref()
+		settingsFragment()?.refreshRecordingPref()
 	}
 
 	private fun refreshCalibrationPref() {
-		(childFragmentManager.findFragmentByTag(SETTINGS_TAG) as? EvBmsSettingsFragment)
-			?.refreshCalibrationPref()
+		settingsFragment()?.refreshCalibrationPref()
 	}
 
 	override fun getInsetTargets(): InsetTargetsCollection {
 		val collection = super.getInsetTargets()
 		collection.removeType(Type.SCROLLABLE)
-		collection.replace(InsetTarget.createBottomContainer(R.id.triple_bottom_buttons))
+		collection.replace(InsetTarget.createBottomContainer(R.id.ev_bms_buttons_overlay))
 		return collection
 	}
 

@@ -998,9 +998,10 @@ Tables in plugin settings: charge sessions (time, start/end battery temperature,
 <b>🥾 Hike mode</b><br/>
 Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+• Settings sheet keeps its height while Cancel / Calibrate / Start hide on scroll; the list uses the full sheet<br/>
+• BMS and controller BLE links retry after a drop (backoff, scan-then-connect, stale-link watchdog) instead of waiting for an app restart<br/>
 • SOC is auto-calibrated from min cell voltage per BMS MAC: rest OCV while coasting, I·R compensation while charging<br/>
 • Charge temperature voice uses 1.5 °C hysteresis so chatter around a whole degree is ignored<br/>
-• Settings sheet hides Cancel / Calibrate / Start while you scroll<br/>
 • Widgets for charge elapsed time and watt-hours into the pack<br/>
 • Charge detection ignores GPS jitter when the controller reports standstill, uses BMS or controller current, and treats rising remaining Ah as charging<br/>
 • While charging, voice announces SOC percent steps and battery temperature changes; time-to-full uses SOC if pack capacity is missing<br/>

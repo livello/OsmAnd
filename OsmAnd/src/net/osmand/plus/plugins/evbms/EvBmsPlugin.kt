@@ -52,6 +52,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		const val REST_CURRENT_A = 5.0
 		const val CHARGE_HOLD_SAMPLES = 3
 		const val DATA_STALE_MS = 5000L
+		private const val LINK_DEAD_MS = 12_000L
 		const val DEFAULT_CHARGE_STILL_SEC = 20
 		const val DEFAULT_CHARGE_STILL_KMH = 5
 		const val DEFAULT_CHARGE_CURRENT_A = 2
@@ -251,6 +252,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			if (!pollRunning) {
 				return
 			}
+			ensureBleLinks()
 			if (bmsClient?.connected == true) {
 				if (preferAntProtocol()) {
 					bmsClient?.write(AntBmsProtocol.statusRequest())
@@ -1092,7 +1094,57 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			startPolling()
 			applyHikeTelemetryState()
 		} else {
-			app.showToastMessage(app.getString(R.string.ev_bms_disconnected, label))
+			if (role == EvBleUartClient.Role.BMS) {
+				lastBmsRxMs = 0L
+			} else {
+				lastCtrlRxMs = 0L
+			}
+			val auto = if (role == EvBleUartClient.Role.BMS) {
+				bmsClient?.isAutoReconnectEnabled() == true
+			} else {
+				controllerClient?.isAutoReconnectEnabled() == true
+			}
+			if (!auto) {
+				app.showToastMessage(app.getString(R.string.ev_bms_disconnected, label))
+			}
+		}
+	}
+
+	private fun ensureBleLinks() {
+		val bms = BMS_ADDRESS.get()
+		if (!bms.isNullOrEmpty()) {
+			bmsClient?.preferredBmsKind = preferredBmsKind()
+			ensureBleLink(bms, bmsClient, lastBmsRxMs) { lastBmsRxMs = 0L }
+		}
+		val ctrl = CONTROLLER_ADDRESS.get()
+		if (!ctrl.isNullOrEmpty()) {
+			controllerClient?.preferredControllerKind = preferredControllerKind()
+			ensureBleLink(ctrl, controllerClient, lastCtrlRxMs) { lastCtrlRxMs = 0L }
+		}
+	}
+
+	private fun ensureBleLink(
+		address: String?,
+		client: EvBleUartClient?,
+		lastRxMs: Long,
+		clearRx: () -> Unit
+	) {
+		if (address.isNullOrEmpty() || client == null) {
+			return
+		}
+		if (client.connected) {
+			val now = System.currentTimeMillis()
+			val dead = if (lastRxMs == 0L) {
+				client.millisSinceConnected() > LINK_DEAD_MS
+			} else {
+				now - lastRxMs > LINK_DEAD_MS
+			}
+			if (dead) {
+				clearRx()
+				client.forceReconnect("stale")
+			}
+		} else {
+			client.ensureConnected(address)
 		}
 	}
 

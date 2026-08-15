@@ -121,8 +121,17 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 					(parentFragment as? EvBmsSettingsBottomSheet)?.setActionButtonsVisible(atTop)
 				}
 			})
+			setActionFooterInset(true)
 		}
 		return view
+	}
+
+	fun setActionFooterInset(buttonsVisible: Boolean) {
+		if (!isEmbedded()) {
+			return
+		}
+		val bottom = AndroidUtils.dpToPx(app, if (buttonsVisible) 88 else 12)
+		listView.setPadding(listView.paddingLeft, listView.paddingTop, listView.paddingRight, bottom)
 	}
 
 	override fun updateStatusBar() {

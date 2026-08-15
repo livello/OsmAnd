@@ -8,10 +8,13 @@ import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCallback
 import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothGattDescriptor
+import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
+import android.content.Context
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -24,6 +27,7 @@ import net.osmand.plus.utils.BLEUtils.getAliasName
 import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.min
 
 class EvBleUartClient(
 	private val app: OsmandApplication,
@@ -82,6 +86,12 @@ class EvBleUartClient(
 		val NUS_SERVICE: UUID = UUID.fromString("6e400001-b5a3-f393-e0a9-e50e24dcca9e")
 		val NUS_RX: UUID = UUID.fromString("6e400002-b5a3-f393-e0a9-e50e24dcca9e")
 		val NUS_TX: UUID = UUID.fromString("6e400003-b5a3-f393-e0a9-e50e24dcca9e")
+
+		private const val RECONNECT_MIN_MS = 400L
+		private const val RECONNECT_MAX_MS = 15_000L
+		private const val CONNECT_TIMEOUT_MS = 8_000L
+		private const val AUTOCONNECT_TIMEOUT_MS = 25_000L
+		private const val RECONNECT_SCAN_MS = 5_000L
 
 		fun matchesAntName(name: String?): Boolean {
 			if (name.isNullOrBlank()) {
@@ -142,8 +152,44 @@ class EvBleUartClient(
 	var deviceAddress: String? = null
 		private set
 
+	@Volatile
+	private var wantConnected = false
+	@Volatile
+	private var connecting = false
+	private var reconnectAttempt = 0
+	private var reconnectPosted = false
+	private var reconnectScanning = false
+	private var usingAutoConnect = false
+	private var connectedAtMs = 0L
+
 	private val found = ConcurrentHashMap<String, String>()
 	private var scanning = false
+
+	private val reconnectRunnable = Runnable {
+		reconnectPosted = false
+		connectInternal()
+	}
+
+	private val connectTimeoutRunnable = Runnable {
+		if (!wantConnected || connected) {
+			return@Runnable
+		}
+		LOG.warn("$role connect timeout (auto=$usingAutoConnect attempt=$reconnectAttempt)")
+		connecting = false
+		closeGatt()
+		scheduleReconnect()
+	}
+
+	private val reconnectScanTimeout = Runnable {
+		if (!reconnectScanning) {
+			return@Runnable
+		}
+		LOG.warn("$role reconnect scan timed out, falling back to connectGatt")
+		stopReconnectScan()
+		if (wantConnected && !connected && !connecting) {
+			openGatt(autoConnect = usingAutoConnect)
+		}
+	}
 
 	private val scanCallback = object : ScanCallback() {
 		override fun onScanResult(callbackType: Int, result: ScanResult) {
@@ -162,32 +208,108 @@ class EvBleUartClient(
 		}
 	}
 
+	private val reconnectScanCallback = object : ScanCallback() {
+		override fun onScanResult(callbackType: Int, result: ScanResult) {
+			val device = result.device ?: return
+			if (!wantConnected || device.address != deviceAddress) {
+				return
+			}
+			LOG.debug("$role found advertising device, connecting")
+			stopReconnectScan()
+			openGatt(device, autoConnect = false)
+		}
+
+		override fun onScanFailed(errorCode: Int) {
+			LOG.warn("$role reconnect scan failed $errorCode")
+			stopReconnectScan()
+			if (wantConnected && !connected) {
+				openGatt(autoConnect = false)
+			}
+		}
+	}
+
 	private val gattCallback = object : BluetoothGattCallback() {
 		@SuppressLint("MissingPermission")
 		override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
+			if (gatt != this@EvBleUartClient.gatt) {
+				if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+					try {
+						gatt.close()
+					} catch (_: Exception) {
+					}
+				}
+				return
+			}
 			if (newState == BluetoothProfile.STATE_CONNECTED && status == BluetoothGatt.GATT_SUCCESS) {
+				connecting = false
+				reconnectAttempt = 0
 				connected = true
+				connectedAtMs = System.currentTimeMillis()
 				deviceName = gatt.device?.name
 				deviceAddress = gatt.device?.address
-				gatt.discoverServices()
+				mainHandler.removeCallbacks(connectTimeoutRunnable)
+				try {
+					gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
+				} catch (_: Exception) {
+				}
+				if (!gatt.discoverServices()) {
+					LOG.warn("$role discoverServices failed, retrying connect")
+					connecting = false
+					connected = false
+					closeGatt()
+					scheduleReconnect()
+					return
+				}
 				mainHandler.post { listener.onConnectionChanged(role, true, deviceName) }
-			} else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+			} else if (newState == BluetoothProfile.STATE_CONNECTED) {
+				LOG.warn("$role connected with status $status, retrying")
+				connecting = false
 				connected = false
-				detectedBmsKind = BmsKind.UNKNOWN
-				detectedControllerKind = ControllerKind.UNKNOWN
-				writeCharacteristic = null
-				mainHandler.post { listener.onConnectionChanged(role, false, deviceName) }
 				try {
 					gatt.close()
 				} catch (_: Exception) {
 				}
-				this@EvBleUartClient.gatt = null
+				if (this@EvBleUartClient.gatt === gatt) {
+					this@EvBleUartClient.gatt = null
+				}
+				scheduleReconnect()
+			} else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+				val wasConnected = connected
+				connecting = false
+				connected = false
+				connectedAtMs = 0L
+				detectedBmsKind = BmsKind.UNKNOWN
+				detectedControllerKind = ControllerKind.UNKNOWN
+				writeCharacteristic = null
+				mainHandler.removeCallbacks(connectTimeoutRunnable)
+				try {
+					gatt.close()
+				} catch (_: Exception) {
+				}
+				if (this@EvBleUartClient.gatt === gatt) {
+					this@EvBleUartClient.gatt = null
+				}
+				if (wasConnected) {
+					mainHandler.post { listener.onConnectionChanged(role, false, deviceName) }
+				}
+				if (wantConnected) {
+					LOG.warn("$role disconnected status=$status, scheduling reconnect")
+					scheduleReconnect()
+				}
 			}
 		}
 
 		@SuppressLint("MissingPermission")
 		override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+			if (gatt != this@EvBleUartClient.gatt) {
+				return
+			}
 			if (status != BluetoothGatt.GATT_SUCCESS) {
+				LOG.warn("$role service discovery status $status")
+				connecting = false
+				connected = false
+				closeGatt()
+				scheduleReconnect()
 				return
 			}
 			var jbdNotify: BluetoothGattCharacteristic? = null
@@ -338,7 +460,9 @@ class EvBleUartClient(
 			listener.onScanFinished(role)
 			return
 		}
-		stopScan()
+		cancelReconnect()
+		stopReconnectScan()
+		stopScanInternal(notify = false)
 		found.clear()
 		adapter = BLEUtils.getBluetoothAdapter(activity)
 		offerBondedDevices()
@@ -367,17 +491,24 @@ class EvBleUartClient(
 		}
 	}
 
-	@SuppressLint("MissingPermission")
 	fun stopScan() {
+		stopScanInternal(notify = true)
+		resumeReconnectIfNeeded()
+	}
+
+	@SuppressLint("MissingPermission")
+	private fun stopScanInternal(notify: Boolean) {
 		if (!scanning) {
 			return
 		}
 		scanning = false
 		try {
-			adapter?.bluetoothLeScanner?.stopScan(scanCallback)
+			bluetoothAdapter()?.bluetoothLeScanner?.stopScan(scanCallback)
 		} catch (_: Exception) {
 		}
-		listener.onScanFinished(role)
+		if (notify) {
+			listener.onScanFinished(role)
+		}
 	}
 
 	@SuppressLint("MissingPermission")
@@ -385,31 +516,236 @@ class EvBleUartClient(
 		if (!AndroidUtils.hasBLEPermission(activity) && !AndroidUtils.requestBLEPermissions(activity)) {
 			return
 		}
-		disconnect()
-		adapter = BLEUtils.getBluetoothAdapter(activity) ?: return
-		val device: BluetoothDevice = try {
-			adapter!!.getRemoteDevice(address)
+		adapter = BLEUtils.getBluetoothAdapter(activity) ?: bluetoothAdapter()
+		deviceName = try {
+			adapter?.getRemoteDevice(address)?.getAliasName(activity)
+		} catch (_: Exception) {
+			null
+		}
+		beginConnect(address)
+	}
+
+	fun ensureConnected(address: String) {
+		if (address.isBlank()) {
+			return
+		}
+		if (connected || connecting) {
+			return
+		}
+		if (!AndroidUtils.hasBLEPermission(app)) {
+			return
+		}
+		if (wantConnected && deviceAddress == address) {
+			if (!reconnectPosted && !reconnectScanning) {
+				scheduleReconnect()
+			}
+			return
+		}
+		beginConnect(address)
+	}
+
+	fun forceReconnect(reason: String) {
+		if (!wantConnected) {
+			return
+		}
+		LOG.warn("$role forceReconnect $reason")
+		connecting = false
+		connected = false
+		connectedAtMs = 0L
+		writeCharacteristic = null
+		cancelReconnect()
+		closeGatt()
+		reconnectAttempt = 0
+		scheduleReconnect()
+	}
+
+	fun isAutoReconnectEnabled(): Boolean = wantConnected
+
+	fun millisSinceConnected(): Long {
+		val started = connectedAtMs
+		return if (!connected || started == 0L) 0L else System.currentTimeMillis() - started
+	}
+
+	private fun beginConnect(address: String) {
+		wantConnected = true
+		deviceAddress = address
+		reconnectAttempt = 0
+		connecting = false
+		cancelReconnect()
+		stopReconnectScan()
+		stopScanInternal(notify = false)
+		closeGatt()
+		connectInternal()
+	}
+
+	private fun connectInternal() {
+		if (!wantConnected || connected || connecting) {
+			return
+		}
+		val address = deviceAddress
+		if (address.isNullOrBlank()) {
+			return
+		}
+		if (!AndroidUtils.hasBLEPermission(app)) {
+			scheduleReconnect()
+			return
+		}
+		val bt = bluetoothAdapter()
+		if (bt == null || !bt.isEnabled) {
+			LOG.warn("$role bluetooth off, retrying later")
+			scheduleReconnect()
+			return
+		}
+		val attempt = reconnectAttempt
+		reconnectAttempt++
+		usingAutoConnect = attempt > 0 && attempt % 3 == 2
+		if (attempt == 0 || usingAutoConnect) {
+			openGatt(autoConnect = usingAutoConnect)
+		} else {
+			startReconnectScan()
+		}
+	}
+
+	@SuppressLint("MissingPermission")
+	private fun startReconnectScan() {
+		val address = deviceAddress ?: return
+		val scanner = bluetoothAdapter()?.bluetoothLeScanner
+		if (scanner == null) {
+			openGatt(autoConnect = false)
+			return
+		}
+		stopReconnectScan()
+		reconnectScanning = true
+		connecting = false
+		LOG.debug("$role scanning to reconnect $address attempt=$reconnectAttempt")
+		try {
+			val filter = ScanFilter.Builder().setDeviceAddress(address).build()
+			val settings = ScanSettings.Builder()
+				.setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+				.setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE)
+				.setNumOfMatches(ScanSettings.MATCH_NUM_ONE_ADVERTISEMENT)
+				.setReportDelay(0)
+				.build()
+			scanner.startScan(listOf(filter), settings, reconnectScanCallback)
+			mainHandler.postDelayed(reconnectScanTimeout, RECONNECT_SCAN_MS)
+		} catch (e: Exception) {
+			LOG.warn("$role reconnect scan start failed", e)
+			reconnectScanning = false
+			openGatt(autoConnect = false)
+		}
+	}
+
+	@SuppressLint("MissingPermission")
+	private fun stopReconnectScan() {
+		mainHandler.removeCallbacks(reconnectScanTimeout)
+		if (!reconnectScanning) {
+			return
+		}
+		reconnectScanning = false
+		try {
+			bluetoothAdapter()?.bluetoothLeScanner?.stopScan(reconnectScanCallback)
+		} catch (_: Exception) {
+		}
+	}
+
+	@SuppressLint("MissingPermission")
+	private fun openGatt(autoConnect: Boolean) {
+		val address = deviceAddress ?: return
+		val device = try {
+			bluetoothAdapter()?.getRemoteDevice(address)
 		} catch (e: Exception) {
 			LOG.error("Invalid BLE address $address", e)
 			return
 		}
-		deviceName = device.getAliasName(activity)
-		deviceAddress = address
-		gatt = device.connectGatt(app, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
+		if (device == null) {
+			scheduleReconnect()
+			return
+		}
+		openGatt(device, autoConnect)
+	}
+
+	@SuppressLint("MissingPermission")
+	private fun openGatt(device: BluetoothDevice, autoConnect: Boolean) {
+		if (!wantConnected) {
+			return
+		}
+		closeGatt()
+		connecting = true
+		usingAutoConnect = autoConnect
+		deviceAddress = device.address
+		LOG.debug("$role connectGatt ${device.address} auto=$autoConnect attempt=$reconnectAttempt")
+		gatt = try {
+			device.connectGatt(app, autoConnect, gattCallback, BluetoothDevice.TRANSPORT_LE)
+		} catch (e: Exception) {
+			LOG.error("$role connectGatt failed", e)
+			null
+		}
+		if (gatt == null) {
+			connecting = false
+			scheduleReconnect()
+			return
+		}
+		mainHandler.removeCallbacks(connectTimeoutRunnable)
+		val timeout = if (autoConnect) AUTOCONNECT_TIMEOUT_MS else CONNECT_TIMEOUT_MS
+		mainHandler.postDelayed(connectTimeoutRunnable, timeout)
+	}
+
+	private fun scheduleReconnect() {
+		if (!wantConnected || connected || connecting || reconnectPosted || scanning || reconnectScanning) {
+			return
+		}
+		val shift = min(reconnectAttempt, 5)
+		val delay = min(RECONNECT_MAX_MS, RECONNECT_MIN_MS shl shift)
+		reconnectPosted = true
+		LOG.debug("$role reconnect in ${delay}ms (attempt $reconnectAttempt)")
+		mainHandler.postDelayed(reconnectRunnable, delay)
+	}
+
+	private fun cancelReconnect() {
+		reconnectPosted = false
+		mainHandler.removeCallbacks(reconnectRunnable)
+		mainHandler.removeCallbacks(connectTimeoutRunnable)
+		stopReconnectScan()
+	}
+
+	private fun resumeReconnectIfNeeded() {
+		if (wantConnected && !connected && !connecting && !scanning && !reconnectScanning) {
+			scheduleReconnect()
+		}
+	}
+
+	private fun bluetoothAdapter(): BluetoothAdapter? {
+		if (adapter == null) {
+			val manager = app.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+			adapter = manager?.adapter
+		}
+		return adapter
+	}
+
+	@SuppressLint("MissingPermission")
+	private fun closeGatt() {
+		val current = gatt
+		gatt = null
+		writeCharacteristic = null
+		try {
+			current?.disconnect()
+			current?.close()
+		} catch (_: Exception) {
+		}
 	}
 
 	@SuppressLint("MissingPermission")
 	fun disconnect() {
+		wantConnected = false
+		cancelReconnect()
+		stopScanInternal(notify = false)
 		connected = false
+		connectedAtMs = 0L
+		connecting = false
 		detectedBmsKind = BmsKind.UNKNOWN
 		detectedControllerKind = ControllerKind.UNKNOWN
 		writeCharacteristic = null
-		try {
-			gatt?.disconnect()
-			gatt?.close()
-		} catch (_: Exception) {
-		}
-		gatt = null
+		closeGatt()
 	}
 
 	@SuppressLint("MissingPermission")
