@@ -57,6 +57,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		const val DEFAULT_CHARGE_STILL_SEC = 20
 		const val DEFAULT_CHARGE_STILL_KMH = 5
 		const val DEFAULT_CHARGE_CURRENT_A = 2
+		const val DEFAULT_CHARGE_REARM_M = 200
+		const val DEFAULT_CHARGE_REARM_MAH = 300
 		private const val TAG = "EvBms"
 		private const val CHART_HISTORY_MAX = 240
 		const val CHARGE_ETA_REPEAT_MS = 300_000L
@@ -96,6 +98,10 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerIntPreference("ev_bms_charge_still_kmh", DEFAULT_CHARGE_STILL_KMH).makeGlobal().makeShared()
 	val CHARGE_CURRENT_A: CommonPreference<Int> =
 		registerIntPreference("ev_bms_charge_current_a", DEFAULT_CHARGE_CURRENT_A).makeGlobal().makeShared()
+	val CHARGE_REARM_M: CommonPreference<Int> =
+		registerIntPreference("ev_bms_charge_rearm_m", DEFAULT_CHARGE_REARM_M).makeGlobal().makeShared()
+	val CHARGE_REARM_MAH: CommonPreference<Int> =
+		registerIntPreference("ev_bms_charge_rearm_mah", DEFAULT_CHARGE_REARM_MAH).makeGlobal().makeShared()
 	val ANNOUNCE_SOC: CommonPreference<Boolean> =
 		registerBooleanPreference("ev_bms_announce_soc", true).makeGlobal().makeShared()
 	val CHARGE_VOLT_STEP_MV: CommonPreference<Int> =
@@ -166,6 +172,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerStringPreference("ev_bms_charge_history", "").makeGlobal().makeShared()
 	private val TRIP_HISTORY: CommonPreference<String> =
 		registerStringPreference("ev_bms_trip_history", "").makeGlobal().makeShared()
+	private val CHARGE_REARM: CommonPreference<String> =
+		registerStringPreference("ev_bms_charge_rearm", "").makeGlobal()
 	private val TELEMETRY_SESSION_STATE: CommonPreference<String> =
 		registerStringPreference("ev_bms_telemetry_session_state", SESSION_IDLE).makeGlobal()
 	private val TELEMETRY_SESSION_CSV: CommonPreference<String> =
@@ -237,6 +245,12 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private var chargeTripGpsKm = 0.0
 	private var chargeTripStartOdoKm: Double? = null
 	private var chargeTripLastLoc: Location? = null
+	private var rearmReady = true
+	private var rearmGpsKm = 0.0
+	private var rearmStartOdoKm: Double? = null
+	private var rearmStartAh: Double? = null
+	private var rearmStartSoc: Int? = null
+	private var rearmLastLoc: Location? = null
 	private val pendingGpxEvents = ArrayList<Pair<String, String>>()
 	private var lastBmsRxMs = 0L
 	private var lastCtrlRxMs = 0L
@@ -519,7 +533,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		if (chargeLike) {
 			chargeHold++
 			chargeExitHold = 0
-			if (!charging && chargeHold >= CHARGE_HOLD_SAMPLES) {
+			if (!charging && chargeHold >= CHARGE_HOLD_SAMPLES && canStartNextCharge()) {
 				beginCharge(now, remainingAh, fullAh, absI, tempC, loc)
 			}
 		} else if (charging) {
@@ -539,10 +553,6 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				}
 			} else {
 				chargeExitHold = 0
-				val eta = chargeRemainingMs()
-				if (eta != null && eta <= 0L) {
-					finishCharge(now, estimatedRemainingAh(), tempC, loc)
-				}
 			}
 		} else {
 			chargeHold = 0
@@ -573,6 +583,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				startTripSession(now, loc)
 			}
 			updateTripSession(now, moving, voltageV, tempC, minCellV)
+			tickChargeRearm(remainingAh, loc)
 		}
 		if (remainingAh != null) {
 			lastChargeAh = remainingAh
@@ -644,6 +655,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		CHARGE_CYCLE_ACTIVE.set(true)
 		CHARGE_SESSION.set("")
 		clearChargeRuntime()
+		armChargeRearm(remainingAh, loc)
 		startTripSession(now, loc)
 		if (ANNOUNCE_CHARGE_ETA.get()) {
 			voice.onChargeFinished()
@@ -678,10 +690,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		if (tripStartMs <= 0L) {
 			return
 		}
+		accumulateChargeTripDistance(moving)
 		if (moving) {
-			if (isTelemetryRecording()) {
-				accumulateChargeTripDistance()
-			}
 			if (tripLastMoveMs > 0L) {
 				tripMovingMs += (now - tripLastMoveMs).coerceAtLeast(0L)
 			}
@@ -737,10 +747,10 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		chargeTripLastLoc = null
 	}
 
-	private fun accumulateChargeTripDistance() {
+	private fun accumulateChargeTripDistance(moving: Boolean) {
 		val loc = lastLocation
 		val prev = chargeTripLastLoc
-		if (loc != null && prev != null) {
+		if (moving && loc != null && prev != null) {
 			val dKm = RangeEstimator.haversineKm(prev.latitude, prev.longitude, loc.latitude, loc.longitude)
 			if (dKm in 0.001..0.15) {
 				chargeTripGpsKm += dKm
@@ -854,6 +864,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			} catch (_: Exception) {
 			}
 		}
+		restoreChargeRearm()
 	}
 
 	private fun persistSocCal() {
@@ -875,6 +886,109 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		}
 		val value = optDouble(key, Double.NaN)
 		return if (value.isNaN()) null else value
+	}
+
+	fun deleteChargeRecord(startMs: Long, endMs: Long) {
+		val rows = chargeHistory().filterNot { it.startMs == startMs && it.endMs == endMs }
+		CHARGE_HISTORY.set(historyStore.encodeCharges(rows))
+	}
+
+	fun deleteTripRecord(startMs: Long, endMs: Long) {
+		val rows = tripHistory().filterNot { it.startMs == startMs && it.endMs == endMs }
+		TRIP_HISTORY.set(historyStore.encodeTrips(rows))
+	}
+
+	private fun canStartNextCharge(): Boolean = rearmReady
+
+	private fun armChargeRearm(remainingAh: Double?, loc: Location?) {
+		rearmReady = false
+		rearmGpsKm = 0.0
+		rearmStartOdoKm = ctrlOdometerKm()
+		rearmStartAh = remainingAh
+		rearmStartSoc = calibratedSocPercent ?: lastBms?.socPercent
+		rearmLastLoc = loc?.let { Location(it) }
+		persistChargeRearm()
+	}
+
+	private fun tickChargeRearm(remainingAh: Double?, loc: Location?) {
+		if (rearmReady) {
+			return
+		}
+		if (rearmStartOdoKm == null) {
+			rearmStartOdoKm = ctrlOdometerKm()
+		}
+		val odoKm = rearmStartOdoKm?.let { start ->
+			ctrlOdometerKm()?.let { now -> (now - start).coerceAtLeast(0.0) }
+		} ?: 0.0
+		if (loc != null && rearmLastLoc != null) {
+			val dKm = RangeEstimator.haversineKm(
+				rearmLastLoc!!.latitude, rearmLastLoc!!.longitude, loc.latitude, loc.longitude
+			)
+			if (dKm in 0.001..0.15) {
+				rearmGpsKm += dKm
+			}
+		}
+		if (loc != null) {
+			rearmLastLoc = Location(loc)
+		}
+		val distKm = maxOf(rearmGpsKm, odoKm)
+		val needKm = CHARGE_REARM_M.get().coerceAtLeast(0) / 1000.0
+		val needAh = CHARGE_REARM_MAH.get().coerceAtLeast(0) / 1000.0
+		val usedAh = if (rearmStartAh != null && remainingAh != null) {
+			(rearmStartAh!! - remainingAh).coerceAtLeast(0.0)
+		} else {
+			null
+		}
+		val soc = calibratedSocPercent ?: lastBms?.socPercent
+		val usedSoc = if (rearmStartSoc != null && soc != null) {
+			(rearmStartSoc!! - soc).coerceAtLeast(0)
+		} else {
+			null
+		}
+		val moved = distKm + 1e-6 >= needKm
+		val consumed = when {
+			usedAh != null -> usedAh + 1e-6 >= needAh
+			usedSoc != null -> usedSoc >= 2
+			else -> false
+		}
+		if (moved && consumed) {
+			rearmReady = true
+		}
+		persistChargeRearm()
+	}
+
+	private fun persistChargeRearm() {
+		if (rearmReady) {
+			CHARGE_REARM.set("")
+			return
+		}
+		val json = JSONObject()
+		json.put("ready", false)
+		json.put("gpsKm", rearmGpsKm)
+		json.putD("startOdoKm", rearmStartOdoKm)
+		json.putD("startAh", rearmStartAh)
+		if (rearmStartSoc != null) {
+			json.put("startSoc", rearmStartSoc)
+		}
+		CHARGE_REARM.set(json.toString())
+	}
+
+	private fun restoreChargeRearm() {
+		val raw = CHARGE_REARM.get()
+		if (raw.isNullOrBlank()) {
+			rearmReady = charging || !CHARGE_CYCLE_ACTIVE.get()
+			return
+		}
+		try {
+			val json = JSONObject(raw)
+			rearmReady = json.optBoolean("ready", true)
+			rearmGpsKm = json.optDouble("gpsKm", 0.0).coerceAtLeast(0.0)
+			rearmStartOdoKm = json.optNullableDouble("startOdoKm")
+			rearmStartAh = json.optNullableDouble("startAh")
+			rearmStartSoc = if (json.has("startSoc")) json.optInt("startSoc") else null
+		} catch (_: Exception) {
+			rearmReady = true
+		}
 	}
 
 	private fun saveChargeRecord(row: EvHistoryStore.ChargeRecord) {

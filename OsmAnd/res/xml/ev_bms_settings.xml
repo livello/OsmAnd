@@ -242,6 +242,16 @@
 		android:layout="@layout/ev_bms_preference_with_descr"
 		android:title="@string/ev_bms_charge_current_a" />
 
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="ev_bms_charge_rearm_m"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:title="@string/ev_bms_charge_rearm_m" />
+
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="ev_bms_charge_rearm_mah"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:title="@string/ev_bms_charge_rearm_ah" />
+
 	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
 		android:key="ev_bms_announce_charge_eta"
 		android:layout="@layout/ev_bms_preference_switch"

@@ -998,6 +998,8 @@ Tables in plugin settings: charge sessions (time, start/end battery temperature,
 <b>🥾 Hike mode</b><br/>
 Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+• History tab lists charge sessions and distance-on-charge rides, with 🗑️ to delete a row<br/>
+• A new charge cannot start until you have ridden and used battery past the thresholds in settings; BLE drop-outs no longer split one charge into many<br/>
 • EV-Telemetry sheet is a full-height hub: ⚙️ settings, ☑️ fields, 📊 live charts, ℹ️ about; last tab is restored<br/>
 • Charts tab draws a line graph for every selected numeric telemetry field<br/>
 • Settings sheet keeps its height while Cancel / Calibrate / Start hide on scroll; the list uses the full sheet<br/>
@@ -1034,6 +1036,7 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
 • Charge and distance-on-charge history tables]]></string>
     <string name="ev_bms_widget_group">EV-Telemetry</string>
     <string name="ev_bms_tab_charts">Charts</string>
+    <string name="ev_bms_tab_history">Charge and ride history</string>
     <string name="ev_bms_tab_about">About</string>
     <string name="ev_bms_charts_empty">Waiting for telemetry…</string>
     <string name="ev_bms_charts_no_fields">Select telemetry fields to plot</string>
@@ -1061,6 +1064,8 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_charge_still_sec">Standstill before charge</string>
     <string name="ev_bms_charge_still_kmh">Motion threshold</string>
     <string name="ev_bms_charge_current_a">Charge current</string>
+    <string name="ev_bms_charge_rearm_m">Min ride before next charge</string>
+    <string name="ev_bms_charge_rearm_ah">Min battery use before next charge</string>
     <string name="ev_bms_field_time">Time</string>
     <string name="ev_bms_field_lat">Latitude</string>
     <string name="ev_bms_field_lon">Longitude</string>
@@ -1210,6 +1215,9 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_n_sec">%1$d s</string>
     <string name="ev_bms_n_min">%1$d min</string>
     <string name="ev_bms_n_kmh">%1$d km/h</string>
+    <string name="ev_bms_n_meters">%1$d m</string>
+    <string name="ev_bms_n_km_int">%1$d km</string>
+    <string name="ev_bms_n_ah">%1$s Ah</string>
     <string name="ev_bms_n_volt">%1$.2f V</string>
     <string name="ev_bms_n_percent">%1$d %%</string>
     <string name="ev_bms_n_celsius">%1$d °C</string>

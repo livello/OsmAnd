@@ -57,10 +57,23 @@
 		android:background="?attr/selectableItemBackgroundBorderless"
 		android:gravity="center"
 		android:includeFontPadding="false"
-		android:minWidth="40dp"
-		android:paddingStart="6dp"
-		android:paddingEnd="6dp"
+		android:minWidth="36dp"
+		android:paddingStart="4dp"
+		android:paddingEnd="4dp"
 		android:text="📊"
+		android:textSize="20sp" />
+
+	<TextView
+		android:id="@+id/tab_history"
+		android:layout_width="wrap_content"
+		android:layout_height="match_parent"
+		android:background="?attr/selectableItemBackgroundBorderless"
+		android:gravity="center"
+		android:includeFontPadding="false"
+		android:minWidth="36dp"
+		android:paddingStart="4dp"
+		android:paddingEnd="4dp"
+		android:text="📋"
 		android:textSize="20sp" />
 
 	<TextView
@@ -70,8 +83,8 @@
 		android:background="?attr/selectableItemBackgroundBorderless"
 		android:gravity="center"
 		android:includeFontPadding="false"
-		android:minWidth="40dp"
-		android:paddingStart="6dp"
+		android:minWidth="36dp"
+		android:paddingStart="4dp"
 		android:paddingEnd="8dp"
 		android:text="ℹ️"
 		android:textSize="20sp" />

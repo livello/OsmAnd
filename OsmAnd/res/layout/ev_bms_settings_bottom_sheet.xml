@@ -44,6 +44,21 @@
 		</ScrollView>
 
 		<ScrollView
+			android:id="@+id/ev_bms_history_scroll"
+			android:layout_width="match_parent"
+			android:layout_height="match_parent"
+			android:fillViewport="true"
+			android:visibility="gone">
+
+			<LinearLayout
+				android:id="@+id/ev_bms_history_list"
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				android:orientation="vertical"
+				android:paddingBottom="16dp" />
+		</ScrollView>
+
+		<ScrollView
 			android:id="@+id/ev_bms_about_scroll"
 			android:layout_width="match_parent"
 			android:layout_height="match_parent"

@@ -29,7 +29,11 @@ import net.osmand.plus.utils.ColorUtilities
 import net.osmand.plus.utils.InsetTarget
 import net.osmand.plus.utils.InsetTarget.Type
 import net.osmand.plus.utils.InsetTargetsCollection
+import net.osmand.plus.utils.OsmAndFormatter
 import net.osmand.plus.utils.UiUtilities
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 
@@ -151,6 +155,8 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			visibleIf(tab == EvBmsSheetTab.FIELDS)
 		root.findViewById<View>(R.id.ev_bms_charts_scroll).visibility =
 			visibleIf(tab == EvBmsSheetTab.CHARTS)
+		root.findViewById<View>(R.id.ev_bms_history_scroll).visibility =
+			visibleIf(tab == EvBmsSheetTab.HISTORY)
 		root.findViewById<View>(R.id.ev_bms_about_scroll).visibility =
 			visibleIf(tab == EvBmsSheetTab.ABOUT)
 		for ((key, button) in tabButtons) {
@@ -159,6 +165,7 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		when (tab) {
 			EvBmsSheetTab.FIELDS -> bindFields()
 			EvBmsSheetTab.CHARTS -> bindCharts(force = true)
+			EvBmsSheetTab.HISTORY -> bindHistory()
 			EvBmsSheetTab.ABOUT -> bindAbout()
 			EvBmsSheetTab.SETTINGS -> {}
 		}
@@ -216,10 +223,12 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		tabButtons[EvBmsSheetTab.SETTINGS] = root.findViewById(R.id.tab_settings)
 		tabButtons[EvBmsSheetTab.FIELDS] = root.findViewById(R.id.tab_fields)
 		tabButtons[EvBmsSheetTab.CHARTS] = root.findViewById(R.id.tab_charts)
+		tabButtons[EvBmsSheetTab.HISTORY] = root.findViewById(R.id.tab_history)
 		tabButtons[EvBmsSheetTab.ABOUT] = root.findViewById(R.id.tab_about)
 		tabButtons[EvBmsSheetTab.SETTINGS]?.contentDescription = getString(R.string.shared_string_settings)
 		tabButtons[EvBmsSheetTab.FIELDS]?.contentDescription = getString(R.string.ev_bms_telemetry_fields)
 		tabButtons[EvBmsSheetTab.CHARTS]?.contentDescription = getString(R.string.ev_bms_tab_charts)
+		tabButtons[EvBmsSheetTab.HISTORY]?.contentDescription = getString(R.string.ev_bms_tab_history)
 		tabButtons[EvBmsSheetTab.ABOUT]?.contentDescription = getString(R.string.ev_bms_tab_about)
 		for ((tab, button) in tabButtons) {
 			button.setOnClickListener { showTab(tab) }
@@ -429,6 +438,73 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			row.chart.data = LineData(set)
 			row.chart.invalidate()
 		}
+	}
+
+	private fun bindHistory() {
+		val list = view?.findViewById<LinearLayout>(R.id.ev_bms_history_list) ?: return
+		list.removeAllViews()
+		val inflater = layoutInflater
+		val themed = UiUtilities.getThemedContext(requireContext(), nightMode)
+		val charges = plugin.chargeHistory().asReversed()
+		val trips = plugin.tripHistory().asReversed()
+		list.addView(telemetryGroupHeader(themed, R.string.ev_bms_charge_history))
+		if (charges.isEmpty()) {
+			list.addView(emptyHint(getString(R.string.ev_bms_history_empty)))
+		} else {
+			for (row in charges) {
+				val item = inflater.inflate(R.layout.ev_bms_history_row, list, false)
+				item.findViewById<TextView>(R.id.title).text =
+					"${fmtDateTime(row.startMs)} → ${fmtTime(row.endMs)}"
+				item.findViewById<TextView>(R.id.description).text = buildString {
+					append(getString(R.string.ev_bms_history_duration, fmtDuration(row.durationMs())))
+					append(" · ")
+					append(getString(R.string.ev_bms_history_charged_ah, n(row.chargedAh)))
+				}
+				item.findViewById<View>(R.id.delete_btn).setOnClickListener {
+					plugin.deleteChargeRecord(row.startMs, row.endMs)
+					settingsFragment()?.refreshHistoryPrefs()
+					bindHistory()
+				}
+				list.addView(item)
+			}
+		}
+		list.addView(telemetryGroupHeader(themed, R.string.ev_bms_trip_history))
+		if (trips.isEmpty()) {
+			list.addView(emptyHint(getString(R.string.ev_bms_history_empty)))
+		} else {
+			for (row in trips) {
+				val item = inflater.inflate(R.layout.ev_bms_history_row, list, false)
+				item.findViewById<TextView>(R.id.title).text =
+					"${fmtDateTime(row.startMs)} → ${fmtTime(row.endMs)}"
+				item.findViewById<TextView>(R.id.description).text = buildString {
+					append(getString(R.string.ev_bms_history_distance, n(row.distanceKm)))
+					append(" · ")
+					append(getString(R.string.ev_bms_history_ride, fmtDuration(row.movingMs), fmtDuration(row.durationMs())))
+				}
+				item.findViewById<View>(R.id.delete_btn).setOnClickListener {
+					plugin.deleteTripRecord(row.startMs, row.endMs)
+					settingsFragment()?.refreshHistoryPrefs()
+					bindHistory()
+				}
+				list.addView(item)
+			}
+		}
+	}
+
+	private fun fmtDateTime(ms: Long): String =
+		SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(ms))
+
+	private fun fmtTime(ms: Long): String =
+		SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(ms))
+
+	private fun fmtDuration(ms: Long): String =
+		OsmAndFormatter.getFormattedDurationShort((ms / 1000L).toInt().coerceAtLeast(0))
+
+	private fun n(v: Double?): String {
+		if (v == null || v.isNaN() || v.isInfinite()) {
+			return getString(R.string.ev_bms_value_none)
+		}
+		return String.format(Locale.getDefault(), "%.2f", v)
 	}
 
 	private fun bindAbout() {

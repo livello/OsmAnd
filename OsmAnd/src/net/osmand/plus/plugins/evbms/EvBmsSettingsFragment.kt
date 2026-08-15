@@ -171,6 +171,8 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		setupChargeStillSec()
 		setupChargeStillKmh()
 		setupChargeCurrent()
+		setupChargeRearmDistance()
+		setupChargeRearmAh()
 		setupSwitch(plugin.ANNOUNCE_SOC.id)
 		setupChargeVoltStep()
 		setupSwitch(plugin.ANNOUNCE_RANGE_ON_STOP.id)
@@ -247,6 +249,8 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		decorate(plugin.CHARGE_STILL_SEC.id, "⏸️", R.drawable.ic_action_time)
 		decorate(plugin.CHARGE_STILL_KMH.id, "🚶", R.drawable.ic_action_speed)
 		decorate(plugin.CHARGE_CURRENT_A.id, "⚡", R.drawable.ic_action_battery)
+		decorate(plugin.CHARGE_REARM_M.id, "🛵", R.drawable.ic_action_distance)
+		decorate(plugin.CHARGE_REARM_MAH.id, "🔋", R.drawable.ic_action_battery)
 		decorate(plugin.ANNOUNCE_CHARGE_ETA.id, "⏳", R.drawable.ic_action_time_to_distance)
 		decorate("ev_bms_charge_history", "📋", R.drawable.ic_action_history)
 		decorate("ev_bms_trip_history", "🛵", R.drawable.ic_action_track_recordable)
@@ -503,6 +507,40 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		pref.setValue(plugin.CHARGE_STILL_KMH.get())
 	}
 
+	fun refreshHistoryPrefs() {
+		setupHistoryPrefs()
+	}
+
+	private fun setupChargeRearmDistance() {
+		val pref = findPreference<ListPreferenceEx>(plugin.CHARGE_REARM_M.id) ?: return
+		pref.setEntries(
+			arrayOf(
+				getString(R.string.ev_bms_n_meters, 50),
+				getString(R.string.ev_bms_n_meters, 100),
+				getString(R.string.ev_bms_n_meters, 200),
+				getString(R.string.ev_bms_n_meters, 500),
+				getString(R.string.ev_bms_n_km_int, 1)
+			)
+		)
+		pref.setEntryValues(arrayOf<Any>(50, 100, 200, 500, 1000))
+		pref.setValue(plugin.CHARGE_REARM_M.get())
+	}
+
+	private fun setupChargeRearmAh() {
+		val pref = findPreference<ListPreferenceEx>(plugin.CHARGE_REARM_MAH.id) ?: return
+		pref.setEntries(
+			arrayOf(
+				getString(R.string.ev_bms_n_ah, "0.1"),
+				getString(R.string.ev_bms_n_ah, "0.2"),
+				getString(R.string.ev_bms_n_ah, "0.3"),
+				getString(R.string.ev_bms_n_ah, "0.5"),
+				getString(R.string.ev_bms_n_ah, "1.0")
+			)
+		)
+		pref.setEntryValues(arrayOf<Any>(100, 200, 300, 500, 1000))
+		pref.setValue(plugin.CHARGE_REARM_MAH.get())
+	}
+
 	private fun setupChargeCurrent() {
 		val pref = findPreference<ListPreferenceEx>(plugin.CHARGE_CURRENT_A.id) ?: return
 		pref.setEntries(
@@ -618,11 +656,21 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 				return true
 			}
 			"ev_bms_charge_history" -> {
-				showChargeHistoryDialog(activity)
+				val sheet = parentFragment as? EvBmsSettingsBottomSheet
+				if (sheet != null) {
+					sheet.showTab(EvBmsSheetTab.HISTORY)
+				} else {
+					showChargeHistoryDialog(activity)
+				}
 				return true
 			}
 			"ev_bms_trip_history" -> {
-				showTripHistoryDialog(activity)
+				val sheet = parentFragment as? EvBmsSettingsBottomSheet
+				if (sheet != null) {
+					sheet.showTab(EvBmsSheetTab.HISTORY)
+				} else {
+					showTripHistoryDialog(activity)
+				}
 				return true
 			}
 			"ev_bms_cal_start" -> {

@@ -4498,6 +4498,8 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
 <b>🥾 Режим «Поход»</b><br/>
 Оставляет запас хода, GPS и телеметрию раз в 5 с, замедляет опрос BLE не реже 5 с, отключает тяжёлые слои карты, 3D, погоду, онлайн-тайлы и лишние Bluetooth-плагины.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Список изменений</b> · %1$s<br/>
+• Вкладка истории: зарядки и пробеги на заряде, удаление строки кнопкой 🗑️<br/>
+• Новая зарядка не начинается, пока не будет пробега и расхода батареи выше порогов в настройках; обрыв BLE больше не режет одну зарядку на несколько<br/>
 • Модалка EV-Телеметрии на всю высоту: ⚙️ настройки, ☑️ поля, 📊 живые графики, ℹ️ о плагине; последняя вкладка запоминается<br/>
 • Во вкладке графиков — линия по каждому выбранному числовому полю телеметрии<br/>
 • Модалка настроек не сжимается при скрытии кнопок Отмена / Калибровка / Старт — список занимает всю высоту<br/>
@@ -4534,6 +4536,7 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
 • История зарядок и пробегов на заряде]]></string>
     <string name="ev_bms_widget_group">EV-Телеметрия</string>
     <string name="ev_bms_tab_charts">Графики</string>
+    <string name="ev_bms_tab_history">История зарядок и пробегов</string>
     <string name="ev_bms_tab_about">О плагине</string>
     <string name="ev_bms_charts_empty">Ждём телеметрию…</string>
     <string name="ev_bms_charts_no_fields">Выберите поля телеметрии для графиков</string>
@@ -4561,6 +4564,8 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
     <string name="ev_bms_charge_still_sec">Стоянка перед зарядкой</string>
     <string name="ev_bms_charge_still_kmh">Порог движения</string>
     <string name="ev_bms_charge_current_a">Зарядный ток</string>
+    <string name="ev_bms_charge_rearm_m">Мин. пробег до следующей зарядки</string>
+    <string name="ev_bms_charge_rearm_ah">Мин. расход батареи до следующей зарядки</string>
     <string name="ev_bms_field_time">Время</string>
     <string name="ev_bms_field_lat">Широта</string>
     <string name="ev_bms_field_lon">Долгота</string>
@@ -4709,6 +4714,9 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
     <string name="ev_bms_n_sec">%1$d с</string>
     <string name="ev_bms_n_min">%1$d мин</string>
     <string name="ev_bms_n_kmh">%1$d км/ч</string>
+    <string name="ev_bms_n_meters">%1$d м</string>
+    <string name="ev_bms_n_km_int">%1$d км</string>
+    <string name="ev_bms_n_ah">%1$s А·ч</string>
     <string name="ev_bms_n_volt">%1$.2f В</string>
     <string name="ev_bms_n_percent">%1$d %%</string>
     <string name="ev_bms_n_celsius">%1$d °C</string>

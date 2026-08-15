@@ -4,7 +4,8 @@ enum class EvBmsSheetTab(val index: Int, val emoji: String) {
 	SETTINGS(0, "⚙️"),
 	FIELDS(1, "☑️"),
 	CHARTS(2, "📊"),
-	ABOUT(3, "ℹ️");
+	HISTORY(3, "📋"),
+	ABOUT(4, "ℹ️");
 
 	companion object {
 		fun from(index: Int): EvBmsSheetTab {
