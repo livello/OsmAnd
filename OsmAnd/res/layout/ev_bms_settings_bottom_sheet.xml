@@ -1,17 +1,69 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
 	android:id="@+id/ev_bms_settings_host"
 	android:layout_width="match_parent"
-	android:layout_height="match_parent">
+	android:layout_height="match_parent"
+	android:orientation="vertical">
+
+	<include layout="@layout/ev_bms_sheet_header" />
+
+	<View
+		android:layout_width="match_parent"
+		android:layout_height="1dp"
+		android:background="?attr/divider_color_basic" />
 
 	<FrameLayout
-		android:id="@+id/ev_bms_settings_container"
 		android:layout_width="match_parent"
-		android:layout_height="match_parent" />
+		android:layout_height="0dp"
+		android:layout_weight="1">
 
-	<FrameLayout
-		android:id="@+id/ev_bms_buttons_overlay"
-		android:layout_width="match_parent"
-		android:layout_height="wrap_content"
-		android:layout_gravity="bottom" />
-</FrameLayout>
+		<FrameLayout
+			android:id="@+id/ev_bms_settings_container"
+			android:layout_width="match_parent"
+			android:layout_height="match_parent" />
+
+		<FrameLayout
+			android:id="@+id/ev_bms_fields_container"
+			android:layout_width="match_parent"
+			android:layout_height="match_parent"
+			android:visibility="gone" />
+
+		<ScrollView
+			android:id="@+id/ev_bms_charts_scroll"
+			android:layout_width="match_parent"
+			android:layout_height="match_parent"
+			android:fillViewport="true"
+			android:visibility="gone">
+
+			<LinearLayout
+				android:id="@+id/ev_bms_charts_list"
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				android:orientation="vertical"
+				android:paddingBottom="88dp" />
+		</ScrollView>
+
+		<ScrollView
+			android:id="@+id/ev_bms_about_scroll"
+			android:layout_width="match_parent"
+			android:layout_height="match_parent"
+			android:fillViewport="true"
+			android:visibility="gone">
+
+			<TextView
+				android:id="@+id/ev_bms_about_text"
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				android:lineSpacingMultiplier="1.15"
+				android:padding="@dimen/content_padding"
+				android:textIsSelectable="true"
+				android:textSize="15sp" />
+		</ScrollView>
+
+		<FrameLayout
+			android:id="@+id/ev_bms_buttons_overlay"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:layout_gravity="bottom" />
+	</FrameLayout>
+</LinearLayout>

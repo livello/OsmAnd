@@ -42,6 +42,7 @@ import net.osmand.plus.widgets.ctxmenu.data.ContextMenuItem
 import net.osmand.shared.gpx.GpxTrackAnalysis
 import org.json.JSONException
 import org.json.JSONObject
+import java.util.ArrayDeque
 import java.util.Locale
 
 class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.Listener {
@@ -57,6 +58,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		const val DEFAULT_CHARGE_STILL_KMH = 5
 		const val DEFAULT_CHARGE_CURRENT_A = 2
 		private const val TAG = "EvBms"
+		private const val CHART_HISTORY_MAX = 240
 		const val CHARGE_ETA_REPEAT_MS = 300_000L
 		const val DEFAULT_CHARGE_VOLT_STEP_MV = 1000
 		const val DEFAULT_STOP_ANNOUNCE_REPEATS = 2
@@ -84,6 +86,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerBooleanPreference("ev_bms_record_gpx", true).makeGlobal().makeShared()
 	val TELEMETRY_FIELDS: CommonPreference<String> =
 		registerStringPreference("ev_bms_telemetry_fields", TelemetryField.DEFAULT_IDS).makeGlobal().makeShared()
+	val SHEET_TAB: CommonPreference<Int> =
+		registerIntPreference("ev_bms_sheet_tab", 0).makeGlobal().makeShared()
 	val SOC_CAL_STORE: CommonPreference<String> =
 		registerStringPreference("ev_bms_soc_cal_store", "").makeGlobal().makeShared()
 	val CHARGE_STILL_SEC: CommonPreference<Int> =
@@ -243,6 +247,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	@Volatile
 	var latestTelemetry: EvTelemetry? = null
 		private set
+	private val chartHistory = ArrayDeque<EvTelemetry>()
+	private val chartLock = Any()
 
 	private var mapActivity: MapActivity? = null
 	private var pollRunning = false
@@ -1458,6 +1464,12 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		val bmsFreshAfter = isBmsFresh()
 		val ctrlFreshAfter = isControllerFresh()
 		latestTelemetry = sample
+		synchronized(chartLock) {
+			chartHistory.addLast(sample)
+			while (chartHistory.size > CHART_HISTORY_MAX) {
+				chartHistory.removeFirst()
+			}
+		}
 		val events = ArrayList(pendingGpxEvents)
 		pendingGpxEvents.clear()
 		if (recorder.isRecording) {
@@ -1712,6 +1724,18 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	}
 
 	fun selectedTelemetryFields(): List<TelemetryField> = TelemetryField.parse(TELEMETRY_FIELDS.get())
+
+	fun chartHistorySnapshot(): List<EvTelemetry> {
+		synchronized(chartLock) {
+			return ArrayList(chartHistory)
+		}
+	}
+
+	fun sheetTab(): EvBmsSheetTab = EvBmsSheetTab.from(SHEET_TAB.get())
+
+	fun setSheetTab(tab: EvBmsSheetTab) {
+		SHEET_TAB.set(tab.index)
+	}
 
 	fun setTelemetryFields(selected: List<TelemetryField>) {
 		if (selected.isEmpty()) {

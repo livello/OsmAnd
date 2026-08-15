@@ -111,6 +111,38 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 		}
 	}
 
+	fun isChartable(): Boolean = this != TIME_MS && this != LAT && this != LON
+
+	fun chartValue(sample: EvTelemetry): Double? {
+		val raw = when (this) {
+			TIME_MS, LAT, LON -> return null
+			GPS_SPEED -> sample.gpsSpeedKmh
+			SOC -> sample.socPercent?.toDouble()
+			VOLTAGE -> sample.voltageV
+			CURRENT -> sample.currentA
+			REMAINING_AH -> sample.remainingAh
+			FULL_AH -> sample.fullAh
+			BMS_TEMP -> sample.bmsTempC
+			CYCLES -> sample.cycles?.toDouble()
+			MIN_CELL -> sample.minCellVoltageV
+			RANGE -> sample.remainingRangeKm
+			CTRL_VOLTAGE -> sample.controllerVoltageV
+			CTRL_CURRENT -> sample.controllerCurrentA
+			POWER -> sample.controllerPowerW
+			RPM -> sample.rpm?.toDouble()
+			GEAR -> sample.gear?.toDouble()
+			MOTOR_TEMP -> sample.motorTempC
+			CTRL_TEMP -> sample.controllerTempC
+			ODOMETER -> sample.farOdometerKm
+			FAR_TRIP -> sample.farTripKm
+			CTRL_SPEED -> sample.farSpeedKmh
+			CONSUMPTION -> sample.consumptionWhPerKm
+			COVERAGE -> sample.coverageWhPerKm
+			CHARGE_TRIP -> sample.chargeTripKm
+		}
+		return if (raw == null || raw.isNaN() || raw.isInfinite()) null else raw
+	}
+
 	companion object {
 		private val CLOCK = SimpleDateFormat("HH:mm:ss", Locale.US)
 		val DEFAULT_IDS = listOf(

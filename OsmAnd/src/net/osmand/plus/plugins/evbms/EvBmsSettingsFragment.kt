@@ -197,6 +197,10 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		refreshCalibrationPref()
 	}
 
+	fun refreshTelemetryFieldsPref() {
+		setupTelemetryFields()
+	}
+
 	fun refreshRecordingPref() {
 		val pref = findPreference<SwitchPreferenceEx>(plugin.RECORD_TELEMETRY.id) ?: return
 		pref.isChecked = plugin.hasTelemetrySession()
@@ -597,7 +601,12 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 				return true
 			}
 			plugin.TELEMETRY_FIELDS.id, "ev_bms_telemetry_fields" -> {
-				showTelemetryFieldsDialog(activity)
+				val sheet = parentFragment as? EvBmsSettingsBottomSheet
+				if (sheet != null) {
+					sheet.showTab(EvBmsSheetTab.FIELDS)
+				} else {
+					showTelemetryFieldsDialog(activity)
+				}
 				return true
 			}
 			"ev_bms_csv_folder" -> {

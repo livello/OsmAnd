@@ -1,15 +1,26 @@
 package net.osmand.plus.plugins.evbms
 
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.text.method.LinkMovementMethod
 import android.view.View
 import android.view.ViewGroup
+import android.widget.CheckBox
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.cardview.widget.CardView
+import androidx.core.graphics.Insets
+import androidx.core.text.HtmlCompat
 import androidx.fragment.app.FragmentManager
+import com.github.mikephil.charting.charts.LineChart
+import com.github.mikephil.charting.components.XAxis
+import com.github.mikephil.charting.data.Entry
+import com.github.mikephil.charting.data.LineData
+import com.github.mikephil.charting.data.LineDataSet
 import net.osmand.plus.R
 import net.osmand.plus.base.MenuBottomSheetDialogFragment
 import net.osmand.plus.base.bottomsheetmenu.BaseBottomSheetItem
-import net.osmand.plus.base.bottomsheetmenu.simpleitems.TitleItem
 import net.osmand.plus.plugins.PluginsHelper
 import net.osmand.plus.plugins.monitoring.TripRecordingBottomSheet
 import net.osmand.plus.plugins.monitoring.TripRecordingBottomSheet.ItemType
@@ -18,6 +29,7 @@ import net.osmand.plus.utils.ColorUtilities
 import net.osmand.plus.utils.InsetTarget
 import net.osmand.plus.utils.InsetTarget.Type
 import net.osmand.plus.utils.InsetTargetsCollection
+import net.osmand.plus.utils.UiUtilities
 
 class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 
@@ -33,10 +45,40 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	}
 
 	private val plugin = PluginsHelper.requirePlugin(EvBmsPlugin::class.java)
+	private val uiHandler = Handler(Looper.getMainLooper())
 	private var buttonsParent: ViewGroup? = null
 	private var buttonsBar: View? = null
 	private var lastCalRunning = false
 	private var actionButtonsVisible = true
+	private var currentTab = EvBmsSheetTab.SETTINGS
+	private val tabButtons = HashMap<EvBmsSheetTab, TextView>()
+	private val fieldValueViews = ArrayList<Pair<TelemetryField, TextView>>()
+	private val chartRows = ArrayList<ChartRow>()
+	private var chartsKey = ""
+	private var fieldsBound = false
+	private var aboutBound = false
+
+	private data class ChartRow(
+		val field: TelemetryField,
+		val chart: LineChart,
+		val value: TextView
+	)
+
+	private val liveTick = object : Runnable {
+		override fun run() {
+			if (view == null) {
+				return
+			}
+			when (currentTab) {
+				EvBmsSheetTab.FIELDS -> refreshFieldValues()
+				EvBmsSheetTab.CHARTS -> refreshCharts()
+				else -> {}
+			}
+			if (currentTab == EvBmsSheetTab.FIELDS || currentTab == EvBmsSheetTab.CHARTS) {
+				uiHandler.postDelayed(this, 1000)
+			}
+		}
+	}
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
@@ -44,16 +86,34 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	}
 
 	override fun createMenuItems(savedInstanceState: Bundle?) {
-		items.add(TitleItem(getString(R.string.ev_bms_plugin_name)))
 		val host = inflate(R.layout.ev_bms_settings_bottom_sheet)
-		val screen = AndroidUtils.getScreenHeight(requireActivity())
-		val height = (screen * 0.72f).toInt()
+		val activity = requireActivity()
+		val height = AndroidUtils.getScreenHeight(activity) -
+				AndroidUtils.getStatusBarHeight(activity) -
+				AndroidUtils.dpToPx(activity, 8f)
 		host.layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, height)
 		items.add(BaseBottomSheetItem.Builder().setCustomView(host).create())
 	}
 
+	override fun setupHeightAndBackground(mainView: View?, sysBars: Insets) {
+		super.setupHeightAndBackground(mainView, sysBars)
+		val activity = activity ?: return
+		if (mainView == null) {
+			return
+		}
+		val available = AndroidUtils.getScreenHeight(activity) -
+				sysBars.top - sysBars.bottom - AndroidUtils.dpToPx(activity, 8f)
+		itemsContainer?.layoutParams?.height = available
+		itemsContainer?.requestLayout()
+		mainView.findViewById<View>(R.id.ev_bms_settings_host)?.let {
+			it.layoutParams.height = available
+			it.requestLayout()
+		}
+	}
+
 	override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
 		super.onViewCreated(view, savedInstanceState)
+		bindTabs(view)
 		if (childFragmentManager.findFragmentByTag(SETTINGS_TAG) == null) {
 			val fragment = EvBmsSettingsFragment()
 			fragment.arguments = Bundle().apply {
@@ -63,6 +123,12 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 				.replace(R.id.ev_bms_settings_container, fragment, SETTINGS_TAG)
 				.commitNowAllowingStateLoss()
 		}
+		showTab(plugin.sheetTab(), persist = false)
+	}
+
+	override fun onDestroyView() {
+		uiHandler.removeCallbacks(liveTick)
+		super.onDestroyView()
 	}
 
 	override fun setupBottomButtons(view: ViewGroup) {
@@ -73,7 +139,43 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 
 	override fun hideButtonsContainer(): Boolean = true
 
+	fun showTab(tab: EvBmsSheetTab, persist: Boolean = true) {
+		currentTab = tab
+		if (persist) {
+			plugin.setSheetTab(tab)
+		}
+		val root = view ?: return
+		root.findViewById<View>(R.id.ev_bms_settings_container).visibility =
+			visibleIf(tab == EvBmsSheetTab.SETTINGS)
+		root.findViewById<View>(R.id.ev_bms_fields_container).visibility =
+			visibleIf(tab == EvBmsSheetTab.FIELDS)
+		root.findViewById<View>(R.id.ev_bms_charts_scroll).visibility =
+			visibleIf(tab == EvBmsSheetTab.CHARTS)
+		root.findViewById<View>(R.id.ev_bms_about_scroll).visibility =
+			visibleIf(tab == EvBmsSheetTab.ABOUT)
+		for ((key, button) in tabButtons) {
+			button.alpha = if (key == tab) 1f else 0.38f
+		}
+		when (tab) {
+			EvBmsSheetTab.FIELDS -> bindFields()
+			EvBmsSheetTab.CHARTS -> bindCharts(force = true)
+			EvBmsSheetTab.ABOUT -> bindAbout()
+			EvBmsSheetTab.SETTINGS -> {}
+		}
+		val showActions = tab == EvBmsSheetTab.SETTINGS
+		buttonsParent?.visibility = if (showActions && actionButtonsVisible) View.VISIBLE else View.GONE
+		if (tab == EvBmsSheetTab.FIELDS || tab == EvBmsSheetTab.CHARTS) {
+			uiHandler.removeCallbacks(liveTick)
+			uiHandler.post(liveTick)
+		} else {
+			uiHandler.removeCallbacks(liveTick)
+		}
+	}
+
 	fun setActionButtonsVisible(visible: Boolean) {
+		if (currentTab != EvBmsSheetTab.SETTINGS) {
+			return
+		}
 		if (actionButtonsVisible == visible) {
 			return
 		}
@@ -110,6 +212,249 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		}
 	}
 
+	private fun bindTabs(root: View) {
+		tabButtons[EvBmsSheetTab.SETTINGS] = root.findViewById(R.id.tab_settings)
+		tabButtons[EvBmsSheetTab.FIELDS] = root.findViewById(R.id.tab_fields)
+		tabButtons[EvBmsSheetTab.CHARTS] = root.findViewById(R.id.tab_charts)
+		tabButtons[EvBmsSheetTab.ABOUT] = root.findViewById(R.id.tab_about)
+		tabButtons[EvBmsSheetTab.SETTINGS]?.contentDescription = getString(R.string.shared_string_settings)
+		tabButtons[EvBmsSheetTab.FIELDS]?.contentDescription = getString(R.string.ev_bms_telemetry_fields)
+		tabButtons[EvBmsSheetTab.CHARTS]?.contentDescription = getString(R.string.ev_bms_tab_charts)
+		tabButtons[EvBmsSheetTab.ABOUT]?.contentDescription = getString(R.string.ev_bms_tab_about)
+		for ((tab, button) in tabButtons) {
+			button.setOnClickListener { showTab(tab) }
+		}
+	}
+
+	private fun bindFields() {
+		val container = view?.findViewById<ViewGroup>(R.id.ev_bms_fields_container) ?: return
+		if (fieldsBound && container.childCount > 0) {
+			refreshFieldValues()
+			return
+		}
+		container.removeAllViews()
+		fieldValueViews.clear()
+		val themed = UiUtilities.getThemedContext(requireActivity(), nightMode)
+		val inflater = layoutInflater
+		val content = inflater.inflate(R.layout.ev_bms_telemetry_fields_dialog, container, false)
+		content.findViewById<View>(R.id.fields_actions).visibility = View.GONE
+		container.addView(content)
+		val selected = plugin.selectedTelemetryFields().toMutableSet()
+		val list = content.findViewById<LinearLayout>(R.id.fields_list)
+		val checkboxes = ArrayList<Pair<TelemetryField, CheckBox>>()
+		fun persist() {
+			val chosen = TelemetryField.entries.filter { it in selected }
+			if (chosen.isEmpty()) {
+				app.showToastMessage(R.string.ev_bms_telemetry_fields_empty)
+				return
+			}
+			plugin.setTelemetryFields(chosen)
+			settingsFragment()?.refreshTelemetryFieldsPref()
+			chartsKey = ""
+		}
+		fun bindChecks() {
+			for ((field, box) in checkboxes) {
+				box.isChecked = field in selected
+			}
+		}
+		content.findViewById<TextView>(R.id.select_all).apply {
+			contentDescription = getString(R.string.shared_string_select_all)
+			setOnClickListener {
+				selected.clear()
+				selected.addAll(TelemetryField.entries)
+				bindChecks()
+				persist()
+			}
+		}
+		content.findViewById<TextView>(R.id.reset).apply {
+			contentDescription = getString(R.string.shared_string_reset)
+			setOnClickListener {
+				selected.clear()
+				selected.addAll(TelemetryField.parse(TelemetryField.DEFAULT_IDS))
+				bindChecks()
+				persist()
+			}
+		}
+		for ((groupRes, fields) in TelemetryField.grouped()) {
+			list.addView(telemetryGroupHeader(themed, groupRes))
+			for (field in fields) {
+				val row = inflater.inflate(R.layout.ev_bms_telemetry_field_row, list, false)
+				val box = row.findViewById<CheckBox>(R.id.compound_button)
+				val title = row.findViewById<TextView>(R.id.title)
+				val value = row.findViewById<TextView>(R.id.value)
+				title.text = "${field.emoji} ${getString(field.titleRes)}"
+				value.text = field.liveValue(themed, plugin.latestTelemetry)
+				box.isChecked = field in selected
+				UiUtilities.setupCompoundButton(box, nightMode, UiUtilities.CompoundButtonType.GLOBAL)
+				row.setOnClickListener {
+					box.isChecked = !box.isChecked
+					if (box.isChecked) selected.add(field) else selected.remove(field)
+					persist()
+				}
+				checkboxes.add(field to box)
+				fieldValueViews.add(field to value)
+				list.addView(row)
+			}
+		}
+		fieldsBound = true
+	}
+
+	private fun telemetryGroupHeader(themed: android.content.Context, groupRes: Int): View {
+		val hPad = AndroidUtils.dpToPx(themed, 16f)
+		val line = View(themed).apply {
+			layoutParams = LinearLayout.LayoutParams(0, AndroidUtils.dpToPx(themed, 1f), 1f)
+			setBackgroundColor(ColorUtilities.getDividerColor(themed, nightMode))
+		}
+		val label = TextView(themed).apply {
+			text = "${TelemetryField.groupEmoji(groupRes)} ${getString(groupRes)}"
+			setTextColor(ColorUtilities.getSecondaryTextColor(themed, nightMode))
+			textSize = 12f
+			maxLines = 1
+			setPadding(AndroidUtils.dpToPx(themed, 8f), 0, 0, 0)
+		}
+		return LinearLayout(themed).apply {
+			orientation = LinearLayout.HORIZONTAL
+			gravity = android.view.Gravity.CENTER_VERTICAL
+			setPadding(hPad, AndroidUtils.dpToPx(themed, 4f), hPad, AndroidUtils.dpToPx(themed, 2f))
+			addView(line)
+			addView(label)
+		}
+	}
+
+	private fun refreshFieldValues() {
+		val ctx = context ?: return
+		val sample = plugin.latestTelemetry
+		for ((field, view) in fieldValueViews) {
+			view.text = field.liveValue(ctx, sample)
+		}
+	}
+
+	private fun bindCharts(force: Boolean) {
+		val list = view?.findViewById<LinearLayout>(R.id.ev_bms_charts_list) ?: return
+		val fields = plugin.selectedTelemetryFields().filter { it.isChartable() }
+		val key = fields.joinToString(",") { it.id }
+		if (!force && key == chartsKey && chartRows.isNotEmpty()) {
+			refreshCharts()
+			return
+		}
+		chartsKey = key
+		list.removeAllViews()
+		chartRows.clear()
+		if (fields.isEmpty()) {
+			list.addView(emptyHint(getString(R.string.ev_bms_charts_no_fields)))
+			return
+		}
+		val inflater = layoutInflater
+		val ctx = requireContext()
+		for (field in fields) {
+			val row = inflater.inflate(R.layout.ev_bms_chart_row, list, false)
+			val title = row.findViewById<TextView>(R.id.title)
+			val value = row.findViewById<TextView>(R.id.value)
+			val chart = row.findViewById<LineChart>(R.id.chart)
+			title.text = "${field.emoji} ${getString(field.titleRes)}"
+			value.text = field.liveValue(ctx, plugin.latestTelemetry)
+			styleChart(chart)
+			chartRows.add(ChartRow(field, chart, value))
+			list.addView(row)
+		}
+		refreshCharts()
+	}
+
+	private fun styleChart(chart: LineChart) {
+		val ctx = requireContext()
+		val secondary = ColorUtilities.getSecondaryTextColor(ctx, nightMode)
+		val divider = ColorUtilities.getDividerColor(ctx, nightMode)
+		chart.description.isEnabled = false
+		chart.legend.isEnabled = false
+		chart.setTouchEnabled(false)
+		chart.setScaleEnabled(false)
+		chart.setPinchZoom(false)
+		chart.setDrawGridBackground(false)
+		chart.setDrawBorders(false)
+		chart.minOffset = 0f
+		chart.extraTopOffset = 2f
+		chart.extraBottomOffset = 2f
+		chart.extraRightOffset = 4f
+		chart.axisRight.isEnabled = false
+		chart.xAxis.position = XAxis.XAxisPosition.BOTTOM
+		chart.xAxis.setDrawAxisLine(false)
+		chart.xAxis.setDrawGridLines(false)
+		chart.xAxis.setDrawLabels(false)
+		chart.xAxis.setAvoidFirstLastClipping(true)
+		chart.axisLeft.setDrawAxisLine(false)
+		chart.axisLeft.setDrawGridLines(true)
+		chart.axisLeft.gridColor = divider
+		chart.axisLeft.textColor = secondary
+		chart.axisLeft.textSize = 9f
+		chart.axisLeft.setLabelCount(3, true)
+		chart.axisLeft.setDrawTopYLabelEntry(true)
+		chart.setNoDataText(getString(R.string.ev_bms_charts_empty))
+		chart.setNoDataTextColor(secondary)
+	}
+
+	private fun refreshCharts() {
+		val ctx = context ?: return
+		val history = plugin.chartHistorySnapshot()
+		val color = ColorUtilities.getActiveColor(ctx, nightMode)
+		val sample = plugin.latestTelemetry
+		for (row in chartRows) {
+			row.value.text = row.field.liveValue(ctx, sample)
+			val entries = ArrayList<Entry>()
+			val t0 = history.firstOrNull()?.timeMs ?: 0L
+			for (item in history) {
+				val y = row.field.chartValue(item) ?: continue
+				val x = ((item.timeMs - t0) / 1000.0).toFloat()
+				entries.add(Entry(x, y.toFloat()))
+			}
+			if (entries.isEmpty()) {
+				row.chart.clear()
+				row.chart.invalidate()
+				continue
+			}
+			if (entries.size == 1) {
+				val only = entries[0]
+				entries.add(Entry(only.x + 1f, only.y))
+			}
+			val set = LineDataSet(entries, "")
+			set.setDrawCircles(false)
+			set.setDrawValues(false)
+			set.setDrawFilled(true)
+			set.lineWidth = 1.6f
+			set.color = color
+			set.fillColor = color
+			set.fillAlpha = 48
+			set.setDrawHorizontalHighlightIndicator(false)
+			set.setDrawVerticalHighlightIndicator(false)
+			set.mode = LineDataSet.Mode.LINEAR
+			row.chart.data = LineData(set)
+			row.chart.invalidate()
+		}
+	}
+
+	private fun bindAbout() {
+		if (aboutBound) {
+			return
+		}
+		val text = view?.findViewById<TextView>(R.id.ev_bms_about_text) ?: return
+		val html = app.getString(R.string.ev_bms_plugin_description) +
+				app.getString(R.string.ev_bms_changelog, EvBmsRevision.GIT_HASH)
+		text.setTextColor(ColorUtilities.getPrimaryTextColor(requireContext(), nightMode))
+		text.movementMethod = LinkMovementMethod.getInstance()
+		text.text = HtmlCompat.fromHtml(html, HtmlCompat.FROM_HTML_MODE_LEGACY)
+		aboutBound = true
+	}
+
+	private fun emptyHint(message: String): TextView {
+		val pad = AndroidUtils.dpToPx(requireContext(), 16f)
+		return TextView(requireContext()).apply {
+			text = message
+			setPadding(pad, pad, pad, pad)
+			setTextColor(ColorUtilities.getSecondaryTextColor(context, nightMode))
+		}
+	}
+
+	private fun visibleIf(show: Boolean): Int = if (show) View.VISIBLE else View.GONE
+
 	private fun rebuildBottomButtons() {
 		val parent = buttonsParent ?: return
 		buttonsBar?.let { parent.removeView(it) }
@@ -123,7 +468,8 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		buttonsBar = bar
 		bar.alpha = if (actionButtonsVisible) 1f else 0f
 		parent.alpha = if (actionButtonsVisible) 1f else 0f
-		val overlayState = if (actionButtonsVisible) View.VISIBLE else View.GONE
+		val overlayState =
+			if (currentTab == EvBmsSheetTab.SETTINGS && actionButtonsVisible) View.VISIBLE else View.GONE
 		bar.visibility = overlayState
 		parent.visibility = overlayState
 		settingsFragment()?.setActionFooterInset(actionButtonsVisible)

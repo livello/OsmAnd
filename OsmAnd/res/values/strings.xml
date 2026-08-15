@@ -998,6 +998,8 @@ Tables in plugin settings: charge sessions (time, start/end battery temperature,
 <b>🥾 Hike mode</b><br/>
 Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+• EV-Telemetry sheet is a full-height hub: ⚙️ settings, ☑️ fields, 📊 live charts, ℹ️ about; last tab is restored<br/>
+• Charts tab draws a line graph for every selected numeric telemetry field<br/>
 • Settings sheet keeps its height while Cancel / Calibrate / Start hide on scroll; the list uses the full sheet<br/>
 • BMS and controller BLE links retry after a drop (backoff, scan-then-connect, stale-link watchdog) instead of waiting for an app restart<br/>
 • SOC is auto-calibrated from min cell voltage per BMS MAC: rest OCV while coasting, I·R compensation while charging<br/>
@@ -1031,6 +1033,10 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
 • Time-to-full widget and voice while charging, including after BMS link loss<br/>
 • Charge and distance-on-charge history tables]]></string>
     <string name="ev_bms_widget_group">EV-Telemetry</string>
+    <string name="ev_bms_tab_charts">Charts</string>
+    <string name="ev_bms_tab_about">About</string>
+    <string name="ev_bms_charts_empty">Waiting for telemetry…</string>
+    <string name="ev_bms_charts_no_fields">Select telemetry fields to plot</string>
     <string name="ev_bms_devices">Bluetooth devices</string>
     <string name="ev_bms_jbd_title">Battery BMS</string>
     <string name="ev_bms_controller_title">Motor controller</string>
