@@ -1,13 +1,17 @@
 package net.osmand.plus.plugins.evbms
 
 import android.content.Intent
+import android.location.Location
 import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 import net.osmand.PlatformUtil
 import net.osmand.plus.OsmandApplication
 import net.osmand.plus.utils.AndroidUtils
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileWriter
+import java.io.InputStream
+import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.io.Writer
 import java.nio.charset.StandardCharsets
@@ -26,14 +30,33 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 					"""<gpx version="1.1" creator="OsmAnd EV BMS" xmlns="http://www.topografix.com/GPX/1/1">""" +
 					"\n<trk>\n<trkseg>\n"
 		private const val GPX_FOOTER = "</trkseg>\n</trk>\n</gpx>\n"
+		private val GPX_POINT = Regex("""<trkpt\s+lat="([^"]+)"\s+lon="([^"]+)"""")
+		private val GPX_TIME = Regex("""<time>([^<]+)</time>""")
 	}
 
-	data class CsvEntry(val name: String, val uri: Uri, val lastModified: Long)
+	data class CsvEntry(
+		val name: String,
+		val uri: Uri,
+		val spec: String,
+		val lastModified: Long,
+		val sizeBytes: Long
+	)
+
+	data class LogSession(
+		val stamp: String,
+		val files: List<CsvEntry>,
+		val sizeBytes: Long,
+		val durationMs: Long?,
+		val distanceM: Double?
+	)
 
 	private var csvWriter: Writer? = null
 	private var gpxWriter: Writer? = null
+	private var csvSpec: String? = null
+	private var gpxSpec: String? = null
 	private var folderUri: String? = null
 	private var fields: List<TelemetryField> = TelemetryField.parse(null)
+	private var sessionFields: List<TelemetryField> = fields
 	private var writeGpx = false
 	private var lastFingerprint: String? = null
 
@@ -51,76 +74,107 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 		writeGpx = enabled
 	}
 
+	fun currentCsvSpec(): String? = csvSpec
+
+	fun currentGpxSpec(): String? = gpxSpec
+
+	fun sessionFieldIds(): String = sessionFields.joinToString(",") { it.id }
+
+	fun activeStamp(): String? = stampOf(csvSpec)
+
 	@Synchronized
-	fun start(): Boolean {
-		stop()
+	fun startNewSession(): Boolean {
+		detach()
+		csvSpec = null
+		gpxSpec = null
 		val stamp = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(Date())
-		val csvOk = openCsv("$stamp.csv")
-		if (!csvOk) {
+		sessionFields = fields
+		val csv = createFile("$stamp.csv", "text/csv") ?: return false
+		val csvOut = openWriter(csv, append = false) ?: return false
+		beginCsv(csvOut)
+		csvSpec = csv
+		if (writeGpx) {
+			val gpx = createFile("$stamp.gpx", "application/gpx+xml")
+			if (gpx != null) {
+				val gpxOut = openWriter(gpx, append = false)
+				if (gpxOut != null) {
+					beginGpx(gpxOut)
+					gpxSpec = gpx
+				}
+			}
+		}
+		lastFingerprint = null
+		return csvWriter != null
+	}
+
+	@Synchronized
+	fun pause() {
+		closeWriters(writeFooter = false)
+	}
+
+	@Synchronized
+	fun resume(): Boolean {
+		val csv = csvSpec ?: return false
+		if (!specExists(csv)) {
 			return false
 		}
-		if (writeGpx) {
-			openGpx("$stamp.gpx")
+		val csvOut = openWriter(csv, append = true) ?: return false
+		csvWriter = csvOut
+		val gpx = gpxSpec
+		if (!gpx.isNullOrBlank() && specExists(gpx)) {
+			gpxWriter = openWriter(gpx, append = true)
 		}
 		lastFingerprint = null
 		return true
 	}
 
-	private fun openCsv(name: String): Boolean {
-		return try {
-			val tree = folderTree()
-			val writer = if (tree != null) {
-				val created = tree.createFile("text/csv", name) ?: return startAppCsv(name)
-				val os = app.contentResolver.openOutputStream(created.uri) ?: return startAppCsv(name)
-				OutputStreamWriter(os, StandardCharsets.UTF_8)
-			} else {
-				return startAppCsv(name)
-			}
-			beginCsv(writer)
-			true
-		} catch (e: Exception) {
-			LOG.error("Cannot start CSV log", e)
-			false
-		}
-	}
-
-	private fun startAppCsv(name: String): Boolean {
-		val dir = app.getAppPath(DIR_NAME)
-		if (!dir.exists() && !dir.mkdirs()) {
+	@Synchronized
+	fun restore(csv: String, gpx: String?, fieldIds: String?): Boolean {
+		if (csv.isBlank() || !specExists(csv)) {
 			return false
 		}
-		beginCsv(FileWriter(File(dir, name), true))
+		closeWriters(writeFooter = false)
+		csvSpec = csv
+		gpxSpec = gpx?.takeIf { it.isNotBlank() && specExists(it) }
+		val parsed = TelemetryField.parse(fieldIds)
+		if (parsed.isNotEmpty()) {
+			sessionFields = parsed
+		}
 		return true
 	}
 
+	@Synchronized
+	fun saveAndClose(): Boolean {
+		try {
+			var gpx = gpxWriter
+			if (gpx == null) {
+				val spec = gpxSpec
+				if (!spec.isNullOrBlank() && specExists(spec)) {
+					gpx = openWriter(spec, append = true)
+					gpxWriter = gpx
+				}
+			}
+			gpx?.append(GPX_FOOTER)
+			gpx?.flush()
+		} catch (_: Exception) {
+		}
+		closeWriters(writeFooter = false)
+		csvSpec = null
+		gpxSpec = null
+		lastFingerprint = null
+		return true
+	}
+
+	@Synchronized
+	fun detach() {
+		closeWriters(writeFooter = false)
+		lastFingerprint = null
+	}
+
 	private fun beginCsv(out: Writer) {
-		out.append(fields.joinToString(";") { it.id }).append('\n')
+		out.append(sessionFields.joinToString(";") { it.id }).append('\n')
 		out.flush()
 		csvWriter = out
-	}
-
-	private fun openGpx(name: String) {
-		try {
-			val tree = folderTree()
-			val writer = if (tree != null) {
-				val created = tree.createFile("application/gpx+xml", name) ?: return startAppGpx(name)
-				val os = app.contentResolver.openOutputStream(created.uri) ?: return startAppGpx(name)
-				OutputStreamWriter(os, StandardCharsets.UTF_8)
-			} else {
-				return startAppGpx(name)
-			}
-			beginGpx(writer)
-		} catch (e: Exception) {
-			LOG.error("Cannot start GPX log", e)
-		}
-	}
-
-	private fun startAppGpx(name: String) {
-		val dir = app.getAppPath(DIR_NAME)
-		if (!dir.exists() && !dir.mkdirs()) {
-			return
-		}
-		beginGpx(FileWriter(File(dir, name), true))
 	}
 
 	private fun beginGpx(out: Writer) {
@@ -131,7 +185,7 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 
 	@Synchronized
 	fun append(sample: EvTelemetry) {
-		val fingerprint = fields.joinToString("\u001f") { it.fingerprint(sample) }
+		val fingerprint = sessionFields.joinToString("\u001f") { it.fingerprint(sample) }
 		if (fingerprint == lastFingerprint) {
 			return
 		}
@@ -150,7 +204,7 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 	private fun appendCsv(sample: EvTelemetry) {
 		val w = csvWriter ?: return
 		try {
-			w.append(fields.joinToString(";") { it.csvValue(sample) }).append('\n')
+			w.append(sessionFields.joinToString(";") { it.csvValue(sample) }).append('\n')
 			w.flush()
 		} catch (e: Exception) {
 			LOG.error("Cannot write CSV", e)
@@ -176,7 +230,9 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 			if (!description.isNullOrBlank()) {
 				sb.append("<desc>").append(xml(description)).append("</desc>\n")
 			}
-			val extras = fields.filter { it != TelemetryField.LAT && it != TelemetryField.LON && it != TelemetryField.TIME_MS }
+			val extras = sessionFields.filter {
+				it != TelemetryField.LAT && it != TelemetryField.LON && it != TelemetryField.TIME_MS
+			}
 			val body = extras.map { it.id to it.csvValue(sample) }.filter { it.second.isNotEmpty() }
 			if (body.isNotEmpty()) {
 				sb.append("<extensions>\n")
@@ -194,10 +250,11 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 		}
 	}
 
-	@Synchronized
-	fun stop() {
+	private fun closeWriters(writeFooter: Boolean) {
 		try {
-			gpxWriter?.append(GPX_FOOTER)
+			if (writeFooter) {
+				gpxWriter?.append(GPX_FOOTER)
+			}
 			gpxWriter?.flush()
 			gpxWriter?.close()
 		} catch (_: Exception) {
@@ -209,7 +266,6 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 		} catch (_: Exception) {
 		}
 		csvWriter = null
-		lastFingerprint = null
 	}
 
 	@get:Synchronized
@@ -234,7 +290,15 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 				if (!isLogName(name) || !file.isFile) {
 					continue
 				}
-				out.add(CsvEntry(name, file.uri, file.lastModified()))
+				out.add(
+					CsvEntry(
+						name,
+						file.uri,
+						file.uri.toString(),
+						file.lastModified(),
+						file.length()
+					)
+				)
 				seen.add(name)
 			}
 		}
@@ -246,13 +310,49 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 						CsvEntry(
 							file.name,
 							AndroidUtils.getUriForFile(app, file),
-							file.lastModified()
+							file.absolutePath,
+							file.lastModified(),
+							file.length()
 						)
 					)
 				}
 			}
 		}
 		return out.sortedByDescending { it.lastModified }
+	}
+
+	fun listSessions(): List<LogSession> {
+		return listFiles()
+			.groupBy { it.name.substringBeforeLast('.') }
+			.map { (stamp, files) ->
+				val csv = files.firstOrNull { it.name.endsWith(".csv", true) }
+				val gpx = files.firstOrNull { it.name.endsWith(".gpx", true) }
+				val stats = when {
+					csv != null -> parseCsvStats(csv.spec)
+					gpx != null -> parseGpxStats(gpx.spec)
+					else -> null to null
+				}
+				LogSession(
+					stamp = stamp,
+					files = files.sortedBy { it.name },
+					sizeBytes = files.sumOf { it.sizeBytes },
+					durationMs = stats.first,
+					distanceM = stats.second
+				)
+			}
+			.sortedByDescending { session -> session.files.maxOfOrNull { it.lastModified } ?: 0L }
+	}
+
+	fun deleteSession(session: LogSession): Boolean {
+		val active = activeStamp()
+		if (active != null && active == session.stamp) {
+			return false
+		}
+		var deleted = false
+		for (file in session.files) {
+			deleted = deleteSpec(file.spec) || deleted
+		}
+		return deleted
 	}
 
 	fun share(activity: android.app.Activity, uris: List<Uri>) {
@@ -272,6 +372,187 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 		}
 		intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
 		AndroidUtils.startActivityIfSafe(activity, Intent.createChooser(intent, null))
+	}
+
+	private fun createFile(name: String, mime: String): String? {
+		val tree = folderTree()
+		if (tree != null) {
+			try {
+				val created = tree.createFile(mime, name)
+				if (created != null) {
+					return created.uri.toString()
+				}
+			} catch (e: Exception) {
+				LOG.error("Cannot create $name in SAF folder", e)
+			}
+		}
+		val dir = app.getAppPath(DIR_NAME)
+		if (!dir.exists() && !dir.mkdirs()) {
+			return null
+		}
+		return File(dir, name).absolutePath
+	}
+
+	private fun openWriter(spec: String, append: Boolean): Writer? {
+		return try {
+			if (spec.startsWith("content:")) {
+				val mode = if (append) "wa" else "wt"
+				val os = app.contentResolver.openOutputStream(Uri.parse(spec), mode) ?: return null
+				OutputStreamWriter(os, StandardCharsets.UTF_8)
+			} else {
+				val file = File(spec)
+				file.parentFile?.mkdirs()
+				FileWriter(file, append)
+			}
+		} catch (e: Exception) {
+			LOG.error("Cannot open writer $spec", e)
+			null
+		}
+	}
+
+	private fun openInput(spec: String): InputStream? {
+		return try {
+			if (spec.startsWith("content:")) {
+				app.contentResolver.openInputStream(Uri.parse(spec))
+			} else {
+				FileInputStream(File(spec))
+			}
+		} catch (_: Exception) {
+			null
+		}
+	}
+
+	private fun specExists(spec: String): Boolean {
+		openInput(spec)?.use { return true }
+		return false
+	}
+
+	private fun deleteSpec(spec: String): Boolean {
+		return try {
+			if (spec.startsWith("content:")) {
+				val uri = Uri.parse(spec)
+				val single = DocumentFile.fromSingleUri(app, uri)
+				if (single != null && single.exists()) {
+					return single.delete()
+				}
+				folderTree()?.listFiles()?.firstOrNull { it.uri == uri }?.delete() == true
+			} else {
+				File(spec).delete()
+			}
+		} catch (e: Exception) {
+			LOG.error("Cannot delete $spec", e)
+			false
+		}
+	}
+
+	private fun stampOf(spec: String?): String? {
+		if (spec.isNullOrBlank()) {
+			return null
+		}
+		val name = if (spec.startsWith("content:")) {
+			DocumentFile.fromSingleUri(app, Uri.parse(spec))?.name
+				?: Uri.parse(spec).lastPathSegment?.substringAfterLast('/')
+		} else {
+			File(spec).name
+		} ?: return null
+		return name.substringBeforeLast('.')
+	}
+
+	private fun parseCsvStats(spec: String): Pair<Long?, Double?> {
+		val stream = openInput(spec) ?: return null to null
+		InputStreamReader(stream, StandardCharsets.UTF_8).buffered().use { input ->
+			val header = input.readLine() ?: return null to null
+			val cols = header.split(';')
+			val timeIdx = cols.indexOfFirst { it.equals(TelemetryField.TIME_MS.id, true) }
+			val latIdx = cols.indexOfFirst { it.equals(TelemetryField.LAT.id, true) }
+			val lonIdx = cols.indexOfFirst { it.equals(TelemetryField.LON.id, true) }
+			return scanTrack({ input.readLine() }) { line ->
+				val parts = line.split(';')
+				val time = if (timeIdx >= 0 && timeIdx < parts.size) parts[timeIdx].toLongOrNull() else null
+				val lat = if (latIdx >= 0 && latIdx < parts.size) parts[latIdx].toDoubleOrNull() else null
+				val lon = if (lonIdx >= 0 && lonIdx < parts.size) parts[lonIdx].toDoubleOrNull() else null
+				Triple(time, lat, lon)
+			}
+		}
+	}
+
+	private fun parseGpxStats(spec: String): Pair<Long?, Double?> {
+		val text = openInput(spec)?.bufferedReader(StandardCharsets.UTF_8)?.use { it.readText() }
+			?: return null to null
+		val times = ArrayList<Long>()
+		val points = ArrayList<Pair<Double, Double>>()
+		for (match in GPX_POINT.findAll(text)) {
+			val lat = match.groupValues[1].toDoubleOrNull() ?: continue
+			val lon = match.groupValues[2].toDoubleOrNull() ?: continue
+			points.add(lat to lon)
+		}
+		val timeFmt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
+			timeZone = TimeZone.getTimeZone("UTC")
+		}
+		for (match in GPX_TIME.findAll(text)) {
+			try {
+				val parsed = timeFmt.parse(match.groupValues[1])?.time ?: continue
+				times.add(parsed)
+			} catch (_: Exception) {
+			}
+		}
+		val duration = if (times.size >= 2) (times.last() - times.first()).coerceAtLeast(0L) else null
+		var distance: Double? = null
+		if (points.size >= 2) {
+			var sum = 0.0
+			for (i in 1 until points.size) {
+				val out = FloatArray(1)
+				Location.distanceBetween(
+					points[i - 1].first,
+					points[i - 1].second,
+					points[i].first,
+					points[i].second,
+					out
+				)
+				sum += out[0]
+			}
+			distance = sum
+		}
+		return duration to distance
+	}
+
+	private inline fun scanTrack(
+		readLine: () -> String?,
+		parse: (String) -> Triple<Long?, Double?, Double?>
+	): Pair<Long?, Double?> {
+		var firstT: Long? = null
+		var lastT: Long? = null
+		var prevLat: Double? = null
+		var prevLon: Double? = null
+		var dist = 0.0
+		var hasDist = false
+		while (true) {
+			val line = readLine() ?: break
+			if (line.isBlank()) {
+				continue
+			}
+			val (time, lat, lon) = parse(line)
+			if (time != null) {
+				if (firstT == null) {
+					firstT = time
+				}
+				lastT = time
+			}
+			if (lat != null && lon != null) {
+				val previousLat = prevLat
+				val previousLon = prevLon
+				if (previousLat != null && previousLon != null) {
+					val out = FloatArray(1)
+					Location.distanceBetween(previousLat, previousLon, lat, lon, out)
+					dist += out[0]
+					hasDist = true
+				}
+				prevLat = lat
+				prevLon = lon
+			}
+		}
+		val duration = if (firstT != null && lastT != null && lastT >= firstT) lastT - firstT else null
+		return duration to if (hasDist) dist else null
 	}
 
 	private fun isLogName(name: String): Boolean {

@@ -31,7 +31,8 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	}
 
 	private val plugin = PluginsHelper.requirePlugin(EvBmsPlugin::class.java)
-	private var startStopButton: CardView? = null
+	private var buttonsParent: ViewGroup? = null
+	private var buttonsBar: View? = null
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
@@ -60,45 +61,77 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	}
 
 	override fun setupBottomButtons(view: ViewGroup) {
+		buttonsParent = view
+		rebuildBottomButtons()
+	}
+
+	private fun rebuildBottomButtons() {
+		val parent = buttonsParent ?: return
+		buttonsBar?.let { parent.removeView(it) }
 		val contentPadding = getDimensionPixelSize(R.dimen.content_padding)
 		val topPadding = getDimensionPixelSize(R.dimen.context_menu_first_line_top_margin)
-		val buttonsContainer = inflate(R.layout.preference_button_with_icon_double)
-		buttonsContainer.setPadding(contentPadding, topPadding, contentPadding, contentPadding)
-		view.addView(buttonsContainer)
+		val paused = plugin.isTelemetryPaused()
+		val bar = inflate(
+			if (paused) R.layout.preference_button_with_icon_triple
+			else R.layout.preference_button_with_icon_double
+		)
+		bar.setPadding(contentPadding, topPadding, contentPadding, contentPadding)
+		parent.addView(bar)
+		buttonsBar = bar
 
-		val cancelButton = buttonsContainer.findViewById<CardView>(R.id.button_left)
+		val cancelButton = bar.findViewById<CardView>(R.id.button_left)
 		TripRecordingBottomSheet.createItem(app, nightMode, cancelButton, ItemType.CANCEL, true, null)
 		cancelButton.setOnClickListener { dismiss() }
 
-		val actionButton = buttonsContainer.findViewById<CardView>(R.id.button_right)
-		startStopButton = actionButton
-		bindStartStopButton(actionButton)
-		actionButton.setOnClickListener { toggleTelemetryRecording() }
+		if (paused) {
+			val stopButton = bar.findViewById<CardView>(R.id.button_center)
+			TripRecordingBottomSheet.createItem(app, nightMode, stopButton, ItemType.STOP, true, null)
+			stopButton.setOnClickListener {
+				plugin.stopTelemetryRecording()
+				refreshRecordingPref()
+				rebuildBottomButtons()
+			}
+			val resumeButton = bar.findViewById<CardView>(R.id.button_right)
+			TripRecordingBottomSheet.createItemActive(app, nightMode, resumeButton, ItemType.RESUME)
+			resumeButton.setOnClickListener {
+				plugin.resumeTelemetryRecording()
+				refreshRecordingPref()
+				rebuildBottomButtons()
+			}
+		} else {
+			val actionButton = bar.findViewById<CardView>(R.id.button_right)
+			if (plugin.isTelemetryRecording()) {
+				TripRecordingBottomSheet.createItem(app, nightMode, actionButton, ItemType.PAUSE, true, null)
+				actionButton.setOnClickListener {
+					plugin.pauseTelemetryRecording()
+					refreshRecordingPref()
+					rebuildBottomButtons()
+				}
+			} else {
+				TripRecordingBottomSheet.createItemActive(app, nightMode, actionButton, ItemType.START_RECORDING)
+				actionButton.setOnClickListener {
+					plugin.startTelemetryRecording()
+					refreshRecordingPref()
+					rebuildBottomButtons()
+				}
+			}
+		}
 	}
 
-	private fun toggleTelemetryRecording() {
-		if (plugin.isTelemetryRecording()) {
-			plugin.stopTelemetryRecording()
-		} else {
-			plugin.startTelemetryRecording()
-		}
-		startStopButton?.let { bindStartStopButton(it) }
+	private fun refreshRecordingPref() {
 		(childFragmentManager.findFragmentByTag(SETTINGS_TAG) as? EvBmsSettingsFragment)
 			?.refreshRecordingPref()
-	}
-
-	private fun bindStartStopButton(button: CardView) {
-		if (plugin.isTelemetryRecording()) {
-			TripRecordingBottomSheet.createItem(app, nightMode, button, ItemType.STOP, true, null)
-		} else {
-			TripRecordingBottomSheet.createItemActive(app, nightMode, button, ItemType.START_RECORDING)
-		}
 	}
 
 	override fun getInsetTargets(): InsetTargetsCollection {
 		val collection = super.getInsetTargets()
 		collection.removeType(Type.SCROLLABLE)
-		collection.replace(InsetTarget.createBottomContainer(R.id.double_bottom_buttons))
+		val id = if (plugin.isTelemetryPaused()) {
+			R.id.triple_bottom_buttons
+		} else {
+			R.id.double_bottom_buttons
+		}
+		collection.replace(InsetTarget.createBottomContainer(id))
 		return collection
 	}
 

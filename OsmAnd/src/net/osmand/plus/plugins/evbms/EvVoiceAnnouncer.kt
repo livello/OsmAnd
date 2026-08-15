@@ -31,8 +31,9 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 
 	private var tts: TextToSpeech? = null
 	private var ready = false
-	private var lastSpokenSoc: Int? = null
+	private var lastSpokenVoltageV: Double? = null
 	private var stoppedSinceMs: Long? = null
+	private var stopAnnounceCount = 0
 	private var lastRangeAnnounceMs = 0L
 	private var lastRangeShortMs = 0L
 	private var rangeShortActive = false
@@ -80,8 +81,9 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 		tts?.stop()
 		tts?.shutdown()
 		tts = null
-		lastSpokenSoc = null
+		lastSpokenVoltageV = null
 		stoppedSinceMs = null
+		stopAnnounceCount = 0
 		rangeShortActive = false
 		lastCellAlertLevel = 0
 		motorHeatActive = false
@@ -171,14 +173,14 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 		}
 	}
 
-	fun onSoc(soc: Int?, voltageV: Double?, stepPercent: Int, enabled: Boolean) {
-		if (!enabled || soc == null || stepPercent <= 0) {
+	fun onChargeVoltage(voltageV: Double?, stepV: Double, enabled: Boolean) {
+		if (!enabled || voltageV == null || stepV <= 0) {
 			return
 		}
-		val last = lastSpokenSoc
-		if (last == null || kotlin.math.abs(soc - last) >= stepPercent) {
-			val volts = voltageV?.let { String.format(Locale.US, "%.1f", it) } ?: return
-			lastSpokenSoc = soc
+		val last = lastSpokenVoltageV
+		if (last == null || kotlin.math.abs(voltageV - last) >= stepV) {
+			lastSpokenVoltageV = voltageV
+			val volts = String.format(Locale.US, "%.1f", voltageV)
 			speak(app.getString(R.string.ev_bms_voice_soc, volts))
 		}
 	}
@@ -330,7 +332,13 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 		}
 	}
 
-	fun onMotion(speedKmh: Double?, report: StopReport?, stopSpeedKmh: Double, enabled: Boolean) {
+	fun onMotion(
+		speedKmh: Double?,
+		report: StopReport?,
+		stopSpeedKmh: Double,
+		maxRepeats: Int,
+		enabled: Boolean
+	) {
 		if (!enabled) {
 			return
 		}
@@ -339,14 +347,22 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 		if (speed < stopSpeedKmh) {
 			if (stoppedSinceMs == null) {
 				stoppedSinceMs = now
+				stopAnnounceCount = 0
 			}
 			val held = now - (stoppedSinceMs ?: now)
-			if (held >= STOP_HOLD_MS && now - lastRangeAnnounceMs >= RANGE_REPEAT_MS && report != null) {
+			val cap = maxRepeats.coerceAtLeast(1)
+			if (held >= STOP_HOLD_MS &&
+				stopAnnounceCount < cap &&
+				now - lastRangeAnnounceMs >= RANGE_REPEAT_MS &&
+				report != null
+			) {
 				lastRangeAnnounceMs = now
+				stopAnnounceCount++
 				speak(buildStopText(report))
 			}
 		} else {
 			stoppedSinceMs = null
+			stopAnnounceCount = 0
 		}
 	}
 

@@ -4498,6 +4498,10 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
 <b>🥾 Режим «Поход»</b><br/>
 Оставляет запас хода, GPS и телеметрию раз в 5 с, замедляет опрос BLE не реже 5 с, отключает тяжёлые слои карты, 3D, погоду, онлайн-тайлы и лишние Bluetooth-плагины.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Список изменений</b> · %1$s<br/>
+• Запись: Пауза / Стоп+Продолжить; Стоп сохраняет трек; автовосстановление после вылета или перезапуска; старт и сохранение только вручную<br/>
+• В экспорте логов — размер, длительность, расстояние и удаление<br/>
+• Заряд озвучивается по шагу напряжения пакета, не по процентам SOC<br/>
+• Повторы оповещения на остановке можно ограничить<br/>
 • Индикатор связи — полоска 25 px по краю; заряд озвучивается как напряжение пакета<br/>
 • В модалке настроек кнопки «Отмена» / «Старт» записи телеметрии и иконки у каждого пункта<br/>
 • Плагин переименован в EV-Телеметрия; виджеты справа выровнены по правому краю, ширина независимая<br/>
@@ -4570,7 +4574,7 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
     <string name="ev_bms_field_odometer">Одометр</string>
     <string name="ev_bms_field_ctrl_speed">Скорость контроллера</string>
     <string name="ev_bms_announce_soc">Озвучивать заряд батареи</string>
-    <string name="ev_bms_soc_step">Шаг объявления заряда</string>
+    <string name="ev_bms_soc_step">Шаг объявления напряжения</string>
     <string name="ev_bms_announce_range_on_stop">Озвучивать остаток пробега на остановках</string>
     <string name="ev_bms_stop_speed">Порог скорости остановки</string>
     <string name="ev_bms_range_settings">Запас хода</string>
@@ -4659,6 +4663,12 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
     <string name="ev_bms_n_percent">%1$d %%</string>
     <string name="ev_bms_n_celsius">%1$d °C</string>
     <string name="ev_bms_n_amp">%1$d А</string>
+    <string name="ev_bms_n_repeats">%1$d</string>
+    <string name="ev_bms_stop_repeats">Повторы на остановке</string>
+    <string name="ev_bms_telemetry_saved">Трек телеметрии сохранён</string>
+    <string name="ev_bms_log_meta">%1$s · %2$s · %3$s</string>
+    <string name="ev_bms_log_in_use">Сначала остановите запись, чтобы удалить этот лог</string>
+    <string name="ev_bms_delete_log">Удалить %1$s?</string>
     <string name="map_rendering_engine_v2_unavailable">Версия 2 (OpenGL) в этой сборке не входит. Nightly собран с движком Version 1 (legacy). Чтобы включить OpenGL, нужна сборка flavor opengl, а не legacy.</string>
     <string name="unknown_bt_device">Неизвестное устройство</string>
     <string name="obd_vin">VIN</string>

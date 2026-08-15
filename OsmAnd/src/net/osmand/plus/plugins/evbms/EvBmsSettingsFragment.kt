@@ -13,6 +13,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import android.widget.CheckBox
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -132,8 +133,9 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		setupChargeStillKmh()
 		setupChargeCurrent()
 		setupSwitch(plugin.ANNOUNCE_SOC.id)
-		setupSocStep()
+		setupChargeVoltStep()
 		setupSwitch(plugin.ANNOUNCE_RANGE_ON_STOP.id)
+		setupStopRepeats()
 		setupSwitch(plugin.ANNOUNCE_RANGE_VS_ROUTE.id)
 		setupStopSpeed()
 		setupSwitch(plugin.ANNOUNCE_CELL_VOLTAGE.id)
@@ -151,11 +153,12 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		setupHistoryPrefs()
 		setupRouteProfile()
 		setupIcons()
+		refreshRecordingPref()
 	}
 
 	fun refreshRecordingPref() {
 		val pref = findPreference<SwitchPreferenceEx>(plugin.RECORD_TELEMETRY.id) ?: return
-		pref.isChecked = plugin.RECORD_TELEMETRY.get()
+		pref.isChecked = plugin.hasTelemetrySession()
 	}
 
 	private fun setupIcons() {
@@ -175,8 +178,9 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		decorate("ev_bms_export_csv", "📤", R.drawable.ic_action_gshare_dark)
 		decorate("ev_bms_voice", "🗣️", R.drawable.ic_action_volume_up)
 		decorate(plugin.ANNOUNCE_SOC.id, "🔋", R.drawable.ic_action_battery)
-		decorate(plugin.SOC_STEP_PERCENT.id, "📶", R.drawable.ic_action_percent)
+		decorate(plugin.CHARGE_VOLT_STEP_MV.id, "⚡", R.drawable.ic_action_obd_battery_voltage)
 		decorate(plugin.ANNOUNCE_RANGE_ON_STOP.id, "📏", R.drawable.ic_action_distance)
+		decorate(plugin.STOP_ANNOUNCE_REPEATS.id, "🔁", R.drawable.ic_action_time_span)
 		decorate(plugin.ANNOUNCE_RANGE_VS_ROUTE.id, "🧭", R.drawable.ic_action_gdirections_dark)
 		decorate(plugin.STOP_SPEED_KMH.id, "🐢", R.drawable.ic_action_speed)
 		decorate(plugin.ANNOUNCE_CELL_VOLTAGE.id, "⚠️", R.drawable.ic_action_alert)
@@ -284,17 +288,25 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		pref.setValue(plugin.POLL_INTERVAL_MS.get())
 	}
 
-	private fun setupSocStep() {
-		val pref = findPreference<ListPreferenceEx>(plugin.SOC_STEP_PERCENT.id) ?: return
+	private fun setupChargeVoltStep() {
+		val pref = findPreference<ListPreferenceEx>(plugin.CHARGE_VOLT_STEP_MV.id) ?: return
 		pref.setEntries(
 			arrayOf(
-				getString(R.string.ev_bms_n_percent, 1),
-				getString(R.string.ev_bms_n_percent, 5),
-				getString(R.string.ev_bms_n_percent, 10)
+				getString(R.string.ev_bms_n_volt, 0.5),
+				getString(R.string.ev_bms_n_volt, 1.0),
+				getString(R.string.ev_bms_n_volt, 2.0)
 			)
 		)
-		pref.setEntryValues(arrayOf<Any>(1, 5, 10))
-		pref.setValue(plugin.SOC_STEP_PERCENT.get())
+		pref.setEntryValues(arrayOf<Any>(500, 1000, 2000))
+		pref.setValue(plugin.CHARGE_VOLT_STEP_MV.get())
+	}
+
+	private fun setupStopRepeats() {
+		val pref = findPreference<ListPreferenceEx>(plugin.STOP_ANNOUNCE_REPEATS.id) ?: return
+		val values = arrayOf(1, 2, 3, 5, 10)
+		pref.setEntries(values.map { getString(R.string.ev_bms_n_repeats, it) }.toTypedArray())
+		pref.setEntryValues(values.map { it as Any }.toTypedArray())
+		pref.setValue(plugin.STOP_ANNOUNCE_REPEATS.get())
 	}
 
 	private fun setupStopSpeed() {
@@ -673,22 +685,87 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 	}
 
 	private fun showExportDialog(activity: Activity) {
-		val files = plugin.listCsvFiles()
-		if (files.isEmpty()) {
+		val sessions = plugin.listTelemetrySessions()
+		if (sessions.isEmpty()) {
 			app.showToastMessage(R.string.ev_bms_csv_none)
 			return
 		}
 		val themed = UiUtilities.getThemedContext(activity, isNightMode())
-		val labels = files.map { it.name }.toTypedArray()
-		AlertDialog.Builder(themed)
-			.setTitle(R.string.ev_bms_export_csv)
-			.setItems(labels) { _, which ->
-				if (which in files.indices) {
-					plugin.shareCsv(activity, listOf(files[which].uri))
+		val inflater = LayoutInflater.from(themed)
+		val items = ArrayList(sessions)
+		lateinit var dialog: AlertDialog
+		val adapter = object : ArrayAdapter<TelemetryRecorder.LogSession>(themed, 0, items) {
+			override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+				val view = convertView ?: inflater.inflate(R.layout.list_item_icon_and_right_btn, parent, false)
+				val session = getItem(position) ?: return view
+				view.findViewById<View>(R.id.toggle_item).visibility = View.GONE
+				view.findViewById<View>(R.id.secondary_icon).visibility = View.GONE
+				view.findViewById<ImageView>(R.id.icon).setImageDrawable(
+					app.uiUtilities.getThemedIcon(R.drawable.ic_action_save_to_file)
+				)
+				view.findViewById<TextView>(R.id.title).text = session.stamp
+				val desc = view.findViewById<TextView>(R.id.description)
+				desc.maxLines = 2
+				desc.isSingleLine = false
+				desc.text = formatLogMeta(session)
+				desc.visibility = View.VISIBLE
+				val delete = view.findViewById<TextView>(R.id.right_btn)
+				val active = plugin.isActiveTelemetrySession(session)
+				delete.text = getString(R.string.shared_string_delete)
+				delete.isEnabled = !active
+				delete.alpha = if (active) 0.4f else 1f
+				delete.setOnClickListener {
+					if (active) {
+						app.showToastMessage(R.string.ev_bms_log_in_use)
+					} else {
+						confirmDeleteLog(themed, session) {
+							remove(session)
+							notifyDataSetChanged()
+							if (isEmpty) {
+								dialog.dismiss()
+							}
+						}
+					}
 				}
+				view.setOnClickListener {
+					plugin.shareCsv(activity, session.files.map { it.uri })
+				}
+				return view
 			}
+		}
+		dialog = AlertDialog.Builder(themed)
+			.setTitle(R.string.ev_bms_export_csv)
+			.setAdapter(adapter, null)
 			.setPositiveButton(R.string.shared_string_share) { _, _ ->
-				plugin.shareCsv(activity, files.map { it.uri })
+				plugin.shareCsv(activity, items.flatMap { session -> session.files.map { it.uri } })
+			}
+			.setNegativeButton(R.string.shared_string_cancel, null)
+			.show()
+	}
+
+	private fun formatLogMeta(session: TelemetryRecorder.LogSession): String {
+		val size = AndroidUtils.formatSize(app, session.sizeBytes)
+		val duration = session.durationMs?.let {
+			OsmAndFormatter.getFormattedDurationShort((it / 1000L).toInt().coerceAtLeast(0))
+		} ?: getString(R.string.ev_bms_value_none)
+		val distance = session.distanceM?.let {
+			OsmAndFormatter.getFormattedDistance(it.toFloat(), app)
+		} ?: getString(R.string.ev_bms_value_none)
+		return getString(R.string.ev_bms_log_meta, size, duration, distance)
+	}
+
+	private fun confirmDeleteLog(
+		themed: android.content.Context,
+		session: TelemetryRecorder.LogSession,
+		onDeleted: () -> Unit
+	) {
+		AlertDialog.Builder(themed)
+			.setMessage(getString(R.string.ev_bms_delete_log, session.stamp))
+			.setPositiveButton(R.string.shared_string_delete) { _, _ ->
+				if (plugin.deleteTelemetrySession(session)) {
+					app.showToastMessage(R.string.shared_string_deleted)
+					onDeleted()
+				}
 			}
 			.setNegativeButton(R.string.shared_string_cancel, null)
 			.show()

@@ -39,7 +39,6 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 
 	companion object {
 		const val DEFAULT_POLL_MS = 2000
-		const val DEFAULT_SOC_STEP = 5
 		const val DEFAULT_STOP_SPEED = 3
 		const val REST_CURRENT_A = 5.0
 		const val CHARGE_HOLD_SAMPLES = 3
@@ -48,6 +47,11 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		const val DEFAULT_CHARGE_STILL_KMH = 3
 		const val DEFAULT_CHARGE_CURRENT_A = 5
 		const val CHARGE_ETA_REPEAT_MS = 300_000L
+		const val DEFAULT_CHARGE_VOLT_STEP_MV = 1000
+		const val DEFAULT_STOP_ANNOUNCE_REPEATS = 2
+		const val SESSION_IDLE = "idle"
+		const val SESSION_RECORDING = "recording"
+		const val SESSION_PAUSED = "paused"
 	}
 
 	val BMS_ADDRESS: CommonPreference<String> =
@@ -61,7 +65,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	val POLL_INTERVAL_MS: CommonPreference<Int> =
 		registerIntPreference("ev_bms_poll_interval_ms", DEFAULT_POLL_MS).makeGlobal().makeShared()
 	val RECORD_TELEMETRY: CommonPreference<Boolean> =
-		registerBooleanPreference("ev_bms_record_telemetry", true).makeGlobal().makeShared()
+		registerBooleanPreference("ev_bms_record_telemetry", false).makeGlobal().makeShared()
 	val RECORD_GPX: CommonPreference<Boolean> =
 		registerBooleanPreference("ev_bms_record_gpx", true).makeGlobal().makeShared()
 	val TELEMETRY_FIELDS: CommonPreference<String> =
@@ -74,10 +78,12 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerIntPreference("ev_bms_charge_current_a", DEFAULT_CHARGE_CURRENT_A).makeGlobal().makeShared()
 	val ANNOUNCE_SOC: CommonPreference<Boolean> =
 		registerBooleanPreference("ev_bms_announce_soc", true).makeGlobal().makeShared()
-	val SOC_STEP_PERCENT: CommonPreference<Int> =
-		registerIntPreference("ev_bms_soc_step_percent", DEFAULT_SOC_STEP).makeGlobal().makeShared()
+	val CHARGE_VOLT_STEP_MV: CommonPreference<Int> =
+		registerIntPreference("ev_bms_charge_volt_step_mv", DEFAULT_CHARGE_VOLT_STEP_MV).makeGlobal().makeShared()
 	val ANNOUNCE_RANGE_ON_STOP: CommonPreference<Boolean> =
 		registerBooleanPreference("ev_bms_announce_range_on_stop", true).makeGlobal().makeShared()
+	val STOP_ANNOUNCE_REPEATS: CommonPreference<Int> =
+		registerIntPreference("ev_bms_stop_announce_repeats", DEFAULT_STOP_ANNOUNCE_REPEATS).makeGlobal().makeShared()
 	val STOP_SPEED_KMH: CommonPreference<Int> =
 		registerIntPreference("ev_bms_stop_speed_kmh", DEFAULT_STOP_SPEED).makeGlobal().makeShared()
 	val USE_ROUTE_PROFILE: CommonPreference<Boolean> =
@@ -130,6 +136,14 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerStringPreference("ev_bms_charge_history", "").makeGlobal().makeShared()
 	private val TRIP_HISTORY: CommonPreference<String> =
 		registerStringPreference("ev_bms_trip_history", "").makeGlobal().makeShared()
+	private val TELEMETRY_SESSION_STATE: CommonPreference<String> =
+		registerStringPreference("ev_bms_telemetry_session_state", SESSION_IDLE).makeGlobal()
+	private val TELEMETRY_SESSION_CSV: CommonPreference<String> =
+		registerStringPreference("ev_bms_telemetry_session_csv", "").makeGlobal()
+	private val TELEMETRY_SESSION_GPX: CommonPreference<String> =
+		registerStringPreference("ev_bms_telemetry_session_gpx", "").makeGlobal()
+	private val TELEMETRY_SESSION_FIELDS: CommonPreference<String> =
+		registerStringPreference("ev_bms_telemetry_session_fields", "").makeGlobal()
 
 	private val handler = Handler(Looper.getMainLooper())
 	private val rangeEstimator = RangeEstimator()
@@ -260,13 +274,14 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		controllerClient = EvBleUartClient(app, EvBleUartClient.Role.CONTROLLER, this)
 		voice.init()
 		restoreSessions()
+		restoreTelemetrySession()
 		return true
 	}
 
 	override fun disable(app: OsmandApplication) {
 		super.disable(app)
 		stopPolling()
-		recorder.stop()
+		recorder.detach()
 		voice.shutdown()
 		bmsClient?.disconnect()
 		controllerClient?.disconnect()
@@ -277,6 +292,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		connectSavedDevices(activity)
 		startPolling()
 		applyHikeTelemetryState()
+		restoreTelemetrySessionIfNeeded()
 	}
 
 	override fun mapActivityPause(activity: MapActivity) {
@@ -1001,7 +1017,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 					} else {
 						updateRestMetrics(info.currentA, info.voltageV, lastCells)
 					}
-					voice.onSoc(info.socPercent, info.voltageV, SOC_STEP_PERCENT.get(), ANNOUNCE_SOC.get())
+					voice.onChargeVoltage(info.voltageV, CHARGE_VOLT_STEP_MV.get() / 1000.0, ANNOUNCE_SOC.get())
 				}
 			} else {
 				val (frames, rest) = JbdBmsProtocol.extractFrames(bmsBuffer)
@@ -1012,7 +1028,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 						lastBms = info.toSnapshot()
 						lastBmsRxMs = System.currentTimeMillis()
 						updateRestMetrics(info.currentA, info.voltageV, lastCells)
-						voice.onSoc(info.socPercent, info.voltageV, SOC_STEP_PERCENT.get(), ANNOUNCE_SOC.get())
+						voice.onChargeVoltage(info.voltageV, CHARGE_VOLT_STEP_MV.get() / 1000.0, ANNOUNCE_SOC.get())
 						continue
 					}
 					val cells = JbdBmsProtocol.parseCellVoltages(frame) ?: continue
@@ -1171,6 +1187,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			fusedSpeedKmh(loc),
 			buildStopReport(bmsFresh, ctrlFresh),
 			STOP_SPEED_KMH.get().toDouble(),
+			STOP_ANNOUNCE_REPEATS.get(),
 			ANNOUNCE_RANGE_ON_STOP.get() && bmsFresh
 		)
 		voice.onRangeVsRoute(
@@ -1322,16 +1339,9 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	}
 
 	fun applyHikeTelemetryState() {
-		if (!RECORD_TELEMETRY.get()) {
-			recorder.stop()
-			return
-		}
 		recorder.setFolderUri(CSV_FOLDER_URI.get())
 		recorder.setFields(selectedTelemetryFields())
 		recorder.setWriteGpx(RECORD_GPX.get())
-		if (!recorder.isRecording) {
-			recorder.start()
-		}
 	}
 
 	fun selectedTelemetryFields(): List<TelemetryField> = TelemetryField.parse(TELEMETRY_FIELDS.get())
@@ -1341,17 +1351,11 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			return
 		}
 		TELEMETRY_FIELDS.set(selected.joinToString(",") { it.id })
-		if (recorder.isRecording) {
-			recorder.stop()
-			applyHikeTelemetryState()
-		}
+		applyHikeTelemetryState()
 	}
 
 	fun restartTelemetryIfRecording() {
-		if (recorder.isRecording) {
-			recorder.stop()
-			applyHikeTelemetryState()
-		}
+		applyHikeTelemetryState()
 	}
 
 	fun telemetryFieldsSummary(ctx: android.content.Context): String {
@@ -1367,10 +1371,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		}
 		CSV_FOLDER_URI.set(uri.toString())
 		recorder.setFolderUri(uri.toString())
-		if (recorder.isRecording) {
-			recorder.stop()
-			applyHikeTelemetryState()
-		}
+		applyHikeTelemetryState()
 		return true
 	}
 
@@ -1384,6 +1385,20 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		return recorder.listFiles()
 	}
 
+	fun listTelemetrySessions(): List<TelemetryRecorder.LogSession> {
+		recorder.setFolderUri(CSV_FOLDER_URI.get())
+		return recorder.listSessions()
+	}
+
+	fun isActiveTelemetrySession(session: TelemetryRecorder.LogSession): Boolean {
+		return recorder.activeStamp() == session.stamp
+	}
+
+	fun deleteTelemetrySession(session: TelemetryRecorder.LogSession): Boolean {
+		recorder.setFolderUri(CSV_FOLDER_URI.get())
+		return recorder.deleteSession(session)
+	}
+
 	fun shareCsv(activity: Activity, uris: List<android.net.Uri>) {
 		recorder.share(activity, uris)
 	}
@@ -1392,17 +1407,95 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		EvBmsSettingsBottomSheet.showInstance(activity.supportFragmentManager)
 	}
 
-	fun isTelemetryRecording(): Boolean = recorder.isRecording
+	fun isTelemetryRecording(): Boolean = TELEMETRY_SESSION_STATE.get() == SESSION_RECORDING
+
+	fun isTelemetryPaused(): Boolean = TELEMETRY_SESSION_STATE.get() == SESSION_PAUSED
+
+	fun hasTelemetrySession(): Boolean = isTelemetryRecording() || isTelemetryPaused()
 
 	fun startTelemetryRecording(): Boolean {
-		RECORD_TELEMETRY.set(true)
+		if (isTelemetryPaused()) {
+			return resumeTelemetryRecording()
+		}
 		applyHikeTelemetryState()
-		return recorder.isRecording
+		val ok = recorder.startNewSession()
+		if (ok) {
+			RECORD_TELEMETRY.set(true)
+			persistTelemetrySession(SESSION_RECORDING)
+		}
+		return ok
+	}
+
+	fun pauseTelemetryRecording() {
+		if (!isTelemetryRecording()) {
+			return
+		}
+		recorder.pause()
+		persistTelemetrySession(SESSION_PAUSED)
+	}
+
+	fun resumeTelemetryRecording(): Boolean {
+		if (!isTelemetryPaused()) {
+			return recorder.isRecording
+		}
+		val ok = recorder.resume()
+		if (ok) {
+			RECORD_TELEMETRY.set(true)
+			persistTelemetrySession(SESSION_RECORDING)
+		}
+		return ok
 	}
 
 	fun stopTelemetryRecording() {
+		recorder.saveAndClose()
 		RECORD_TELEMETRY.set(false)
-		recorder.stop()
+		clearTelemetrySession()
+		app.showToastMessage(R.string.ev_bms_telemetry_saved)
+	}
+
+	private fun persistTelemetrySession(state: String) {
+		TELEMETRY_SESSION_STATE.set(state)
+		TELEMETRY_SESSION_CSV.set(recorder.currentCsvSpec().orEmpty())
+		TELEMETRY_SESSION_GPX.set(recorder.currentGpxSpec().orEmpty())
+		TELEMETRY_SESSION_FIELDS.set(recorder.sessionFieldIds())
+	}
+
+	private fun clearTelemetrySession() {
+		TELEMETRY_SESSION_STATE.set(SESSION_IDLE)
+		TELEMETRY_SESSION_CSV.set("")
+		TELEMETRY_SESSION_GPX.set("")
+		TELEMETRY_SESSION_FIELDS.set("")
+	}
+
+	private fun restoreTelemetrySessionIfNeeded() {
+		val state = TELEMETRY_SESSION_STATE.get()
+		if (state == SESSION_RECORDING && recorder.isRecording) {
+			return
+		}
+		if (state == SESSION_PAUSED && recorder.currentCsvSpec() != null) {
+			return
+		}
+		restoreTelemetrySession()
+	}
+
+	private fun restoreTelemetrySession() {
+		val state = TELEMETRY_SESSION_STATE.get()
+		val csv = TELEMETRY_SESSION_CSV.get()
+		if (state.isNullOrBlank() || state == SESSION_IDLE || csv.isNullOrBlank()) {
+			return
+		}
+		applyHikeTelemetryState()
+		val gpx = TELEMETRY_SESSION_GPX.get()?.takeIf { it.isNotBlank() }
+		val ok = recorder.restore(csv, gpx, TELEMETRY_SESSION_FIELDS.get())
+		if (!ok) {
+			RECORD_TELEMETRY.set(false)
+			clearTelemetrySession()
+			return
+		}
+		RECORD_TELEMETRY.set(true)
+		if (state == SESSION_RECORDING && !recorder.resume()) {
+			persistTelemetrySession(SESSION_PAUSED)
+		}
 	}
 
 	private fun activePollIntervalMs(): Long {

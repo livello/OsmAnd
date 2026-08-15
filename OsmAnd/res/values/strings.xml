@@ -998,6 +998,10 @@ Tables in plugin settings: charge sessions (time, start/end battery temperature,
 <b>🥾 Hike mode</b><br/>
 Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+• Recording: Pause / Stop+Resume; Stop saves the track; auto-restore after crash or reboot; start and save are manual<br/>
+• Export logs shows size, duration and distance, with delete<br/>
+• Battery charge is announced on pack voltage steps, not SOC percent<br/>
+• Stop announcements can be limited per stop<br/>
 • Link indicator is a 25 px edge strip; battery charge is announced as pack voltage<br/>
 • Settings sheet has Cancel / Start telemetry recording and icons for every item<br/>
 • Plugin renamed to EV-Telemetry; widgets right-align on the right panel with independent width<br/>
@@ -1070,7 +1074,7 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_field_odometer">Odometer</string>
     <string name="ev_bms_field_ctrl_speed">Controller speed</string>
     <string name="ev_bms_announce_soc">Announce battery charge</string>
-    <string name="ev_bms_soc_step">Charge announcement step</string>
+    <string name="ev_bms_soc_step">Voltage announcement step</string>
     <string name="ev_bms_announce_range_on_stop">Announce remaining range when stopped</string>
     <string name="ev_bms_stop_speed">Stop speed threshold</string>
     <string name="ev_bms_range_settings">Remaining range</string>
@@ -1159,6 +1163,12 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_n_percent">%1$d %%</string>
     <string name="ev_bms_n_celsius">%1$d °C</string>
     <string name="ev_bms_n_amp">%1$d A</string>
+    <string name="ev_bms_n_repeats">%1$d</string>
+    <string name="ev_bms_stop_repeats">Repeats while stopped</string>
+    <string name="ev_bms_telemetry_saved">Telemetry track saved</string>
+    <string name="ev_bms_log_meta">%1$s · %2$s · %3$s</string>
+    <string name="ev_bms_log_in_use">Stop recording before deleting this log</string>
+    <string name="ev_bms_delete_log">Delete %1$s?</string>
     <string name="map_rendering_engine_v2_unavailable">Version 2 (OpenGL) is not included in this APK. This Nightly build uses the legacy renderer. Rebuild with the OpenGL flavor to enable it.</string>
     <string name="background_opacity">Background opacity</string>
     <string name="corner_radius">Corner radius</string>

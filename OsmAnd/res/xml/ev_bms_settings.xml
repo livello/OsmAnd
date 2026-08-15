@@ -100,7 +100,7 @@
 		android:title="@string/ev_bms_announce_soc" />
 
 	<net.osmand.plus.settings.preferences.ListPreferenceEx
-		android:key="ev_bms_soc_step_percent"
+		android:key="ev_bms_charge_volt_step_mv"
 		android:layout="@layout/preference_with_descr"
 		android:title="@string/ev_bms_soc_step" />
 
@@ -110,6 +110,11 @@
 		android:summaryOff="@string/shared_string_disabled"
 		android:summaryOn="@string/shared_string_enabled"
 		android:title="@string/ev_bms_announce_range_on_stop" />
+
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="ev_bms_stop_announce_repeats"
+		android:layout="@layout/preference_with_descr"
+		android:title="@string/ev_bms_stop_repeats" />
 
 	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
 		android:key="ev_bms_announce_range_vs_route"
