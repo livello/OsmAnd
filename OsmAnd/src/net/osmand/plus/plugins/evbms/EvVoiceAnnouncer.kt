@@ -54,6 +54,8 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 	private var lastChargeEtaMs = 0L
 	private var lastChargeEtaBucket = -1
 	private var chargeEtaActive = false
+	private var lastChargeSoc: Int? = null
+	private var lastChargeTempC: Int? = null
 
 	fun init() {
 		if (tts != null) {
@@ -82,6 +84,8 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 		tts?.shutdown()
 		tts = null
 		lastSpokenVoltageV = null
+		lastChargeSoc = null
+		lastChargeTempC = null
 		stoppedSinceMs = null
 		stopAnnounceCount = 0
 		rangeShortActive = false
@@ -170,6 +174,35 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 		if (!announcedLost() && now - started >= LINK_LOSS_HOLD_MS) {
 			setAnnouncedLost(true)
 			speak(app.getString(lostRes))
+		}
+	}
+
+	fun onChargeProgress(
+		voltageV: Double?,
+		socPercent: Int?,
+		tempC: Double?,
+		announceCharge: Boolean,
+		announceTemp: Boolean
+	) {
+		if (announceCharge) {
+			val soc = socPercent?.takeIf { it in 0..100 }
+			if (soc != null) {
+				val last = lastChargeSoc
+				if (last == null || soc >= last + 1) {
+					lastChargeSoc = soc
+					speak(app.getString(R.string.ev_bms_voice_charge_soc, soc))
+				}
+			} else {
+				onChargeVoltage(voltageV, 0.5, true)
+			}
+		}
+		if (announceTemp && tempC != null) {
+			val rounded = Math.round(tempC).toInt()
+			val last = lastChargeTempC
+			if (last == null || kotlin.math.abs(rounded - last) >= 1) {
+				lastChargeTempC = rounded
+				speak(app.getString(R.string.ev_bms_voice_charge_temp, rounded))
+			}
 		}
 	}
 
@@ -424,6 +457,8 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 	fun onChargeFinished() {
 		chargeEtaActive = false
 		lastChargeEtaBucket = -1
+		lastChargeSoc = null
+		lastChargeTempC = null
 		speak(app.getString(R.string.ev_bms_voice_charge_done))
 	}
 

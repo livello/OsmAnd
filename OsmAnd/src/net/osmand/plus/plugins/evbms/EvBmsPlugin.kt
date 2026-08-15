@@ -1,6 +1,7 @@
 package net.osmand.plus.plugins.evbms
 
 import android.app.Activity
+import android.util.Log
 import androidx.core.text.HtmlCompat
 import android.graphics.drawable.Drawable
 import android.os.Handler
@@ -51,9 +52,10 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		const val REST_CURRENT_A = 5.0
 		const val CHARGE_HOLD_SAMPLES = 3
 		const val DATA_STALE_MS = 5000L
-		const val DEFAULT_CHARGE_STILL_SEC = 60
-		const val DEFAULT_CHARGE_STILL_KMH = 3
-		const val DEFAULT_CHARGE_CURRENT_A = 5
+		const val DEFAULT_CHARGE_STILL_SEC = 20
+		const val DEFAULT_CHARGE_STILL_KMH = 5
+		const val DEFAULT_CHARGE_CURRENT_A = 2
+		private const val TAG = "EvBms"
 		const val CHARGE_ETA_REPEAT_MS = 300_000L
 		const val DEFAULT_CHARGE_VOLT_STEP_MV = 1000
 		const val DEFAULT_STOP_ANNOUNCE_REPEATS = 2
@@ -386,9 +388,12 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			return null
 		}
 		val current = chargeFrozenCurrentA ?: return null
-		val full = chargeFullAh ?: return null
-		val lastAh = chargeLastAh ?: return null
-		if (current < 0.4 || full <= 0) {
+		val lastAh = chargeLastAh
+		val soc = lastBms?.socPercent
+		val full = chargeFullAh?.takeIf { it > 0.1 } ?: lastAh?.let { ah ->
+			soc?.takeIf { it in 1..99 }?.let { ah / (it / 100.0) }
+		}
+		if (current < 0.4 || full == null || full <= 0 || lastAh == null) {
 			return null
 		}
 		val elapsedH = if (chargeLastAhMs > 0L) {
@@ -427,13 +432,16 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 
 	private fun isVehicleMoving(): Boolean {
 		val limit = CHARGE_STILL_KMH.get().toDouble()
+		val ctrl = ctrlSpeedKmh()
+		if (isControllerFresh() && ctrl != null) {
+			return ctrl >= limit
+		}
 		val gps = if (lastLocation != null && lastLocation!!.hasSpeed()) {
 			lastLocation!!.speed * 3.6
 		} else {
 			null
 		}
-		val ctrl = ctrlSpeedKmh()
-		return (gps ?: 0.0) >= limit || (ctrl ?: 0.0) >= limit
+		return (gps ?: 0.0) >= limit
 	}
 
 	private fun updateChargeCycle(
@@ -453,13 +461,31 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		} else if (stillSinceMs == null) {
 			stillSinceMs = now
 		}
-		val stillMs = CHARGE_STILL_SEC.get().toLong().coerceAtLeast(15L) * 1000L
-		val stillLongEnough = stillSinceMs != null && now - stillSinceMs!! >= stillMs
-		val minA = CHARGE_CURRENT_A.get().toDouble().coerceAtLeast(1.0)
-		val absI = currentA?.let { kotlin.math.abs(it) } ?: 0.0
-		val intoPack = bmsFresh && currentA != null && absI >= minA &&
-				(lastChargeAh == null || remainingAh == null || remainingAh >= lastChargeAh!! - 0.02)
-		val chargeLike = stillLongEnough && intoPack
+		val stillMs = CHARGE_STILL_SEC.get().toLong().coerceAtLeast(10L) * 1000L
+		val minA = CHARGE_CURRENT_A.get().toDouble().coerceAtLeast(0.5)
+		val bmsAbs = currentA?.let { kotlin.math.abs(it) } ?: 0.0
+		val ctrlAbs = if (isControllerFresh()) ctrlCurrentA()?.let { kotlin.math.abs(it) } ?: 0.0 else 0.0
+		val absI = maxOf(bmsAbs, ctrlAbs)
+		val ahRising = remainingAh != null && lastChargeAh != null && remainingAh - lastChargeAh!! >= 0.03
+		val stillNeeded = if (absI >= minA || ahRising) {
+			minOf(stillMs, 15_000L).coerceAtLeast(8_000L)
+		} else {
+			stillMs
+		}
+		val stillLongEnough = stillSinceMs != null && now - stillSinceMs!! >= stillNeeded
+		val intoPack = (bmsFresh || (isControllerFresh() && ctrlAbs >= minA)) &&
+				(absI >= minA || ahRising) &&
+				(lastChargeAh == null || remainingAh == null || remainingAh >= lastChargeAh!! - 0.05)
+		val chargeLike = !moving && stillLongEnough && intoPack
+		if (chargeLike || charging || absI >= 0.4) {
+			Log.i(
+				TAG,
+				"charge detect moving=$moving still=${stillSinceMs?.let { now - it }}ms " +
+						"bmsI=${currentA} ctrlI=${ctrlCurrentA()} absI=$absI minA=$minA " +
+						"ah=$remainingAh lastAh=$lastChargeAh rising=$ahRising like=$chargeLike " +
+						"charging=$charging hold=$chargeHold fresh=$bmsFresh"
+			)
+		}
 		if (chargeLike) {
 			chargeHold++
 			chargeExitHold = 0
@@ -1106,7 +1132,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 					} else {
 						updateRestMetrics(info.currentA, info.voltageV, lastCells)
 					}
-					voice.onChargeVoltage(info.voltageV, CHARGE_VOLT_STEP_MV.get() / 1000.0, ANNOUNCE_SOC.get())
+					voice.onChargeVoltage(info.voltageV, CHARGE_VOLT_STEP_MV.get() / 1000.0, ANNOUNCE_SOC.get() && !charging)
 				}
 			} else {
 				val (frames, rest) = JbdBmsProtocol.extractFrames(bmsBuffer)
@@ -1118,7 +1144,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 						lastBms = info.toSnapshot()
 						lastBmsRxMs = System.currentTimeMillis()
 						updateRestMetrics(info.currentA, info.voltageV, lastCells)
-						voice.onChargeVoltage(info.voltageV, CHARGE_VOLT_STEP_MV.get() / 1000.0, ANNOUNCE_SOC.get())
+						voice.onChargeVoltage(info.voltageV, CHARGE_VOLT_STEP_MV.get() / 1000.0, ANNOUNCE_SOC.get() && !charging)
 						continue
 					}
 					val cells = JbdBmsProtocol.parseCellVoltages(frame) ?: continue
@@ -1260,15 +1286,20 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		val bmsFresh = isBmsFresh()
 		val ctrlFresh = isControllerFresh()
 		updateRestMetrics(bms?.currentA ?: ctrlCurrentA(), bms?.voltageV ?: ctrlVoltageV(), lastCells)
+		val packCurrentA = when {
+			bmsFresh && bms?.currentA != null && kotlin.math.abs(bms.currentA) >= 0.2 -> bms.currentA
+			ctrlFresh -> ctrlCurrentA()
+			else -> bms?.currentA
+		}
 		updateChargeCycle(
-			currentA = bms?.currentA,
+			currentA = packCurrentA,
 			remainingAh = remainingAh,
 			fullAh = bms?.fullMah?.div(1000.0),
 			voltageV = bms?.voltageV ?: ctrlVoltageV(),
 			tempC = batteryAnnounceTempC(),
 			minCellV = minCellVoltageV,
 			loc = loc,
-			bmsFresh = bmsFresh
+			bmsFresh = bmsFresh || (ctrlFresh && packCurrentA != null)
 		)
 		rangeEstimator.add(
 			System.currentTimeMillis(),
@@ -1383,6 +1414,15 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			tempIntervalMs,
 			ANNOUNCE_BATTERY_FREEZE.get() && bmsFresh
 		)
+		if (charging && bmsFreshAfter) {
+			voice.onChargeProgress(
+				sample.voltageV,
+				sample.socPercent,
+				sample.bmsTempC,
+				ANNOUNCE_SOC.get(),
+				ANNOUNCE_SOC.get() || ANNOUNCE_BATTERY_OVERHEAT.get()
+			)
+		}
 		voice.onChargeEta(chargeRemainingMs(), CHARGE_ETA_REPEAT_MS, ANNOUNCE_CHARGE_ETA.get() && charging)
 	}
 

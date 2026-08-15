@@ -998,6 +998,8 @@ Tables in plugin settings: charge sessions (time, start/end battery temperature,
 <b>🥾 Hike mode</b><br/>
 Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+• Charge detection ignores GPS jitter when the controller reports standstill, uses BMS or controller current, and treats rising remaining Ah as charging<br/>
+• While charging, voice announces SOC percent steps and battery temperature changes; time-to-full uses SOC if pack capacity is missing<br/>
 • Min cell voltage widget on the right panel<br/>
 • Right widget panel no longer draws an outer border<br/>
 • EV-Telemetry widgets have no outer frame or filled box<br/>
@@ -1113,6 +1115,8 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_connected">Connected to %1$s</string>
     <string name="ev_bms_disconnected">Disconnected from %1$s</string>
     <string name="ev_bms_voice_soc">Battery charge %1$s volts</string>
+    <string name="ev_bms_voice_charge_soc">Battery %1$d percent</string>
+    <string name="ev_bms_voice_charge_temp">Battery temperature %1$d degrees</string>
     <string name="ev_bms_voice_range">Remaining range %1$d km</string>
     <string name="ev_bms_voice_to_charge">Distance to charging %1$d km</string>
     <string name="ev_bms_voice_voltage">Voltage %1$s</string>
