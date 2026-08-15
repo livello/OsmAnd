@@ -23,6 +23,7 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 	data class StopReport(
 		val rangeKm: Double,
 		val routeLeftKm: Double?,
+		val rangeReserveKm: Double?,
 		val minCellV: Double?,
 		val motorTempC: Double?,
 		val batteryTempC: Double?,
@@ -37,6 +38,8 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 	private var lastRangeAnnounceMs = 0L
 	private var lastRangeShortMs = 0L
 	private var rangeShortActive = false
+	private var lastReserveAlertMs = 0L
+	private var lastReserveAlertLevel = 0
 	private var lastCellAlertMs = 0L
 	private var lastCellAlertLevel = 0
 	private var lastMotorHeatMs = 0L
@@ -89,6 +92,7 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 		stoppedSinceMs = null
 		stopAnnounceCount = 0
 		rangeShortActive = false
+		lastReserveAlertLevel = 0
 		lastCellAlertLevel = 0
 		motorHeatActive = false
 		batteryOverheatActive = false
@@ -235,6 +239,47 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 		} else if (rangeKm >= routeLeftKm) {
 			rangeShortActive = false
 		}
+	}
+
+	fun onRangeReserve(
+		shortfallKm: Double?,
+		smallKm: Double,
+		lowKm: Double,
+		announceSmall: Boolean,
+		announceLow: Boolean
+	) {
+		if ((!announceSmall && !announceLow) || shortfallKm == null) {
+			lastReserveAlertLevel = 0
+			return
+		}
+		val small = kotlin.math.min(smallKm, lowKm)
+		val low = kotlin.math.max(smallKm, lowKm)
+		val level = when {
+			announceLow && shortfallKm >= low -> 2
+			announceSmall && shortfallKm >= small -> 1
+			else -> 0
+		}
+		if (level == 0) {
+			if (shortfallKm < small - RANGE_HYSTERESIS_KM) {
+				lastReserveAlertLevel = 0
+			}
+			return
+		}
+		val now = System.currentTimeMillis()
+		val escalate = level > lastReserveAlertLevel
+		if (!escalate && now - lastReserveAlertMs < RANGE_SHORT_REPEAT_MS) {
+			lastReserveAlertLevel = level
+			return
+		}
+		lastReserveAlertMs = now
+		lastReserveAlertLevel = level
+		val km = Math.round(shortfallKm).toInt().coerceAtLeast(0)
+		speak(
+			app.getString(
+				if (level >= 2) R.string.ev_bms_voice_range_reserve_low else R.string.ev_bms_voice_range_reserve_small,
+				km
+			)
+		)
 	}
 
 	fun onRestCellVoltage(
@@ -406,6 +451,17 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 		if (routeKm != null) {
 			val dest = Math.round(routeKm).toInt().coerceAtLeast(0)
 			parts.add(app.getString(R.string.ev_bms_voice_to_charge, dest))
+		}
+		val reserve = report.rangeReserveKm
+		if (reserve != null) {
+			val km = Math.round(kotlin.math.abs(reserve)).toInt()
+			parts.add(
+				when {
+					reserve > 0.5 -> app.getString(R.string.ev_bms_voice_range_reserve_short, km)
+					reserve < -0.5 -> app.getString(R.string.ev_bms_voice_range_reserve_extra, km)
+					else -> app.getString(R.string.ev_bms_voice_range_reserve_ok)
+				}
+			)
 		}
 		val vmin = report.minCellV
 		if (vmin != null) {

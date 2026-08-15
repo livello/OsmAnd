@@ -36,11 +36,49 @@
 			android:visibility="gone">
 
 			<LinearLayout
-				android:id="@+id/ev_bms_charts_list"
 				android:layout_width="match_parent"
 				android:layout_height="wrap_content"
 				android:orientation="vertical"
-				android:paddingBottom="88dp" />
+				android:paddingBottom="88dp">
+
+				<LinearLayout
+					android:id="@+id/ev_bms_charts_toolbar"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:gravity="center_vertical"
+					android:orientation="horizontal"
+					android:paddingStart="@dimen/content_padding"
+					android:paddingEnd="@dimen/content_padding"
+					android:paddingTop="4dp">
+
+					<net.osmand.plus.widgets.TextViewEx
+						android:id="@+id/charts_live_status"
+						style="@style/DescStyle"
+						android:layout_width="0dp"
+						android:layout_height="wrap_content"
+						android:layout_weight="1"
+						android:text="@string/ev_bms_charts_live" />
+
+					<TextView
+						android:id="@+id/charts_pause_btn"
+						android:layout_width="wrap_content"
+						android:layout_height="40dp"
+						android:background="?attr/selectableItemBackgroundBorderless"
+						android:gravity="center"
+						android:includeFontPadding="false"
+						android:minWidth="40dp"
+						android:paddingStart="8dp"
+						android:paddingEnd="8dp"
+						android:text="⏸️"
+						android:textSize="20sp" />
+				</LinearLayout>
+
+				<LinearLayout
+					android:id="@+id/ev_bms_charts_list"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:orientation="vertical" />
+			</LinearLayout>
 		</ScrollView>
 
 		<ScrollView

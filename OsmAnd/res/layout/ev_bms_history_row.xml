@@ -3,51 +3,90 @@
 	xmlns:tools="http://schemas.android.com/tools"
 	android:layout_width="match_parent"
 	android:layout_height="wrap_content"
-	android:background="?attr/selectableItemBackground"
-	android:gravity="center_vertical"
-	android:minHeight="48dp"
-	android:orientation="horizontal"
-	android:paddingStart="@dimen/content_padding"
-	android:paddingEnd="0dp">
+	android:orientation="vertical">
 
 	<LinearLayout
-		android:layout_width="0dp"
+		android:layout_width="match_parent"
 		android:layout_height="wrap_content"
-		android:layout_weight="1"
-		android:orientation="vertical"
-		android:paddingTop="6dp"
-		android:paddingBottom="6dp"
-		android:paddingEnd="4dp">
+		android:background="?attr/selectableItemBackground"
+		android:gravity="center_vertical"
+		android:minHeight="48dp"
+		android:orientation="horizontal"
+		android:paddingStart="@dimen/content_padding"
+		android:paddingEnd="0dp">
 
-		<net.osmand.plus.widgets.TextViewEx
-			android:id="@+id/title"
-			style="@style/TitleStyle"
-			android:layout_width="match_parent"
+		<LinearLayout
+			android:id="@+id/history_text"
+			android:layout_width="0dp"
 			android:layout_height="wrap_content"
-			android:ellipsize="end"
-			android:maxLines="2"
-			tools:text="15.08.2026 18:40 → 21:12" />
+			android:layout_weight="1"
+			android:orientation="vertical"
+			android:paddingTop="6dp"
+			android:paddingBottom="6dp"
+			android:paddingEnd="4dp">
 
-		<net.osmand.plus.widgets.TextViewEx
-			android:id="@+id/description"
-			style="@style/DescStyle"
-			android:layout_width="match_parent"
-			android:layout_height="wrap_content"
-			android:ellipsize="end"
-			android:maxLines="3"
-			tools:text="Charged 12.4 Ah" />
+			<net.osmand.plus.widgets.TextViewEx
+				android:id="@+id/title"
+				style="@style/TitleStyle"
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				android:ellipsize="end"
+				android:maxLines="2"
+				tools:text="15.08.2026 18:40 → 21:12" />
+
+			<net.osmand.plus.widgets.TextViewEx
+				android:id="@+id/description"
+				style="@style/DescStyle"
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				android:ellipsize="end"
+				android:maxLines="5"
+				tools:text="Charged 12.4 Ah" />
+		</LinearLayout>
+
+		<TextView
+			android:id="@+id/expand_btn"
+			android:layout_width="wrap_content"
+			android:layout_height="match_parent"
+			android:background="?attr/selectableItemBackgroundBorderless"
+			android:gravity="center"
+			android:includeFontPadding="false"
+			android:paddingStart="4dp"
+			android:paddingEnd="4dp"
+			android:text="📈"
+			android:textSize="16sp" />
+
+		<TextView
+			android:id="@+id/delete_btn"
+			android:layout_width="wrap_content"
+			android:layout_height="match_parent"
+			android:background="?attr/selectableItemBackgroundBorderless"
+			android:contentDescription="@string/shared_string_delete"
+			android:gravity="center"
+			android:includeFontPadding="false"
+			android:paddingStart="4dp"
+			android:paddingEnd="12dp"
+			android:text="@string/ev_bms_delete_emoji"
+			android:textSize="18sp" />
 	</LinearLayout>
 
-	<TextView
-		android:id="@+id/delete_btn"
-		android:layout_width="wrap_content"
-		android:layout_height="match_parent"
-		android:background="?attr/selectableItemBackgroundBorderless"
-		android:contentDescription="@string/shared_string_delete"
-		android:gravity="center"
-		android:includeFontPadding="false"
-		android:paddingStart="8dp"
-		android:paddingEnd="12dp"
-		android:text="@string/ev_bms_delete_emoji"
-		android:textSize="18sp" />
+	<com.github.mikephil.charting.charts.LineChart
+		android:id="@+id/history_chart"
+		android:layout_width="match_parent"
+		android:layout_height="132dp"
+		android:layout_marginStart="@dimen/content_padding"
+		android:layout_marginEnd="@dimen/content_padding"
+		android:layout_marginBottom="8dp"
+		android:visibility="gone" />
+
+	<net.osmand.plus.widgets.TextViewEx
+		android:id="@+id/history_chart_legend"
+		style="@style/DescStyle"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginStart="@dimen/content_padding"
+		android:layout_marginEnd="@dimen/content_padding"
+		android:layout_marginBottom="8dp"
+		android:visibility="gone"
+		tools:text="I 12 A · T 28 °C" />
 </LinearLayout>

@@ -1,5 +1,6 @@
 package net.osmand.plus.plugins.evbms
 
+import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -78,13 +79,11 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			}
 			when (currentTab) {
 				EvBmsSheetTab.FIELDS -> refreshFieldValues()
-				EvBmsSheetTab.CHARTS -> refreshCharts()
+				EvBmsSheetTab.CHARTS -> if (plugin.isChartsLive()) refreshCharts()
 				EvBmsSheetTab.JOURNAL -> refreshJournalTail()
 				else -> {}
 			}
-			if (currentTab == EvBmsSheetTab.FIELDS || currentTab == EvBmsSheetTab.CHARTS ||
-				currentTab == EvBmsSheetTab.JOURNAL
-			) {
+			if (shouldLiveTick()) {
 				uiHandler.postDelayed(this, 1000)
 			}
 		}
@@ -180,12 +179,18 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		}
 		val showActions = tab == EvBmsSheetTab.SETTINGS
 		buttonsParent?.visibility = if (showActions && actionButtonsVisible) View.VISIBLE else View.GONE
-		if (tab == EvBmsSheetTab.FIELDS || tab == EvBmsSheetTab.CHARTS || tab == EvBmsSheetTab.JOURNAL) {
+		if (shouldLiveTick()) {
 			uiHandler.removeCallbacks(liveTick)
 			uiHandler.post(liveTick)
 		} else {
 			uiHandler.removeCallbacks(liveTick)
 		}
+	}
+
+	private fun shouldLiveTick(): Boolean {
+		return currentTab == EvBmsSheetTab.FIELDS ||
+				currentTab == EvBmsSheetTab.JOURNAL ||
+				(currentTab == EvBmsSheetTab.CHARTS && plugin.isChartsLive())
 	}
 
 	fun setActionButtonsVisible(visible: Boolean) {
@@ -350,6 +355,7 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	}
 
 	private fun bindCharts(force: Boolean) {
+		bindChartsToolbar()
 		val list = view?.findViewById<LinearLayout>(R.id.ev_bms_charts_list) ?: return
 		val fields = plugin.selectedTelemetryFields().filter { it.isChartable() }
 		val key = fields.joinToString(",") { it.id }
@@ -378,6 +384,28 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			list.addView(row)
 		}
 		refreshCharts()
+	}
+
+	private fun bindChartsToolbar() {
+		val root = view ?: return
+		val status = root.findViewById<TextView>(R.id.charts_live_status) ?: return
+		val btn = root.findViewById<TextView>(R.id.charts_pause_btn) ?: return
+		val live = plugin.isChartsLive()
+		status.setText(if (live) R.string.ev_bms_charts_live else R.string.ev_bms_charts_paused)
+		btn.text = if (live) "⏸️" else "▶️"
+		btn.contentDescription = getString(
+			if (live) R.string.ev_bms_charts_pause else R.string.ev_bms_charts_resume
+		)
+		btn.setOnClickListener {
+			plugin.setChartsLive(!plugin.isChartsLive())
+			bindChartsToolbar()
+			if (plugin.isChartsLive()) {
+				uiHandler.removeCallbacks(liveTick)
+				uiHandler.post(liveTick)
+			} else if (currentTab == EvBmsSheetTab.CHARTS) {
+				uiHandler.removeCallbacks(liveTick)
+			}
+		}
 	}
 
 	private fun styleChart(chart: LineChart) {
@@ -470,8 +498,15 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 					append(getString(R.string.ev_bms_history_duration, fmtDuration(row.durationMs())))
 					append(" · ")
 					append(getString(R.string.ev_bms_history_charged_ah, n(row.chargedAh)))
+					append('\n')
+					append(getString(R.string.ev_bms_history_temp, nTemp(row.startTempC), nTemp(row.endTempC)))
 				}
-				item.findViewById<View>(R.id.delete_btn).setOnClickListener {
+				wireHistoryChart(
+					item,
+					EvHistoryChartStore.KIND_CHARGE,
+					row.startMs,
+					row.endMs
+				) {
 					plugin.deleteChargeRecord(row.startMs, row.endMs)
 					settingsFragment()?.refreshHistoryPrefs()
 					bindHistory()
@@ -491,8 +526,17 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 					append(getString(R.string.ev_bms_history_distance, n(row.distanceKm)))
 					append(" · ")
 					append(getString(R.string.ev_bms_history_ride, fmtDuration(row.movingMs), fmtDuration(row.durationMs())))
+					append('\n')
+					append(getString(R.string.ev_bms_history_temp, nTemp(row.startTempC), nTemp(row.endTempC)))
+					append('\n')
+					append(getString(R.string.ev_bms_history_motor_temp, nTemp(row.startMotorTempC), nTemp(row.endMotorTempC)))
 				}
-				item.findViewById<View>(R.id.delete_btn).setOnClickListener {
+				wireHistoryChart(
+					item,
+					EvHistoryChartStore.KIND_TRIP,
+					row.startMs,
+					row.endMs
+				) {
 					plugin.deleteTripRecord(row.startMs, row.endMs)
 					settingsFragment()?.refreshHistoryPrefs()
 					bindHistory()
@@ -500,6 +544,140 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 				list.addView(item)
 			}
 		}
+	}
+
+	private fun wireHistoryChart(
+		item: View,
+		kind: String,
+		startMs: Long,
+		endMs: Long,
+		onDelete: () -> Unit
+	) {
+		val chart = item.findViewById<LineChart>(R.id.history_chart)
+		val legend = item.findViewById<TextView>(R.id.history_chart_legend)
+		val expand = item.findViewById<TextView>(R.id.expand_btn)
+		styleChart(chart)
+		chart.axisLeft.setDrawLabels(false)
+		chart.axisLeft.setLabelCount(2, true)
+		item.findViewById<View>(R.id.delete_btn).setOnClickListener { onDelete() }
+		expand.setOnClickListener {
+			val show = chart.visibility != View.VISIBLE
+			if (show) {
+				val data = plugin.historyChart(kind, startMs, endMs)
+				if (data == null) {
+					app.showToastMessage(R.string.ev_bms_history_chart_empty)
+					return@setOnClickListener
+				}
+				fillHistoryChart(chart, legend, data)
+			}
+			chart.visibility = if (show) View.VISIBLE else View.GONE
+			legend.visibility = if (show) View.VISIBLE else View.GONE
+			expand.alpha = if (show) 1f else 0.55f
+		}
+	}
+
+	private fun fillHistoryChart(
+		chart: LineChart,
+		legend: TextView,
+		data: EvHistoryChartStore.Chart
+	) {
+		val sets = ArrayList<LineDataSet>()
+		val legendParts = ArrayList<String>()
+		for ((id, ys) in data.series) {
+			val norm = normalizeSeries(ys)
+			val entries = ArrayList<Entry>()
+			for (i in data.xs.indices) {
+				if (i >= norm.size || norm[i].isNaN()) {
+					continue
+				}
+				entries.add(Entry(data.xs[i], norm[i]))
+			}
+			if (entries.isEmpty()) {
+				continue
+			}
+			if (entries.size == 1) {
+				val only = entries[0]
+				entries.add(Entry(only.x + 1f, only.y))
+			}
+			val color = historySeriesColor(id)
+			val set = LineDataSet(entries, id)
+			set.setDrawCircles(false)
+			set.setDrawValues(false)
+			set.setDrawFilled(false)
+			set.lineWidth = 1.6f
+			set.color = color
+			set.setDrawHorizontalHighlightIndicator(false)
+			set.setDrawVerticalHighlightIndicator(false)
+			set.mode = LineDataSet.Mode.LINEAR
+			sets.add(set)
+			val last = data.last(id)
+			legendParts.add(historySeriesLegend(id, last))
+		}
+		if (sets.isEmpty()) {
+			chart.clear()
+			legend.setText(R.string.ev_bms_history_chart_empty)
+			return
+		}
+		chart.data = LineData(*sets.toTypedArray())
+		chart.invalidate()
+		legend.text = legendParts.joinToString("  ·  ")
+	}
+
+	private fun normalizeSeries(ys: FloatArray): FloatArray {
+		var min = Float.POSITIVE_INFINITY
+		var max = Float.NEGATIVE_INFINITY
+		for (y in ys) {
+			if (y.isNaN()) {
+				continue
+			}
+			if (y < min) min = y
+			if (y > max) max = y
+		}
+		if (!min.isFinite() || !max.isFinite()) {
+			return FloatArray(ys.size) { Float.NaN }
+		}
+		val span = (max - min).coerceAtLeast(1e-4f)
+		return FloatArray(ys.size) { i ->
+			val y = ys[i]
+			if (y.isNaN()) Float.NaN else (y - min) / span
+		}
+	}
+
+	private fun historySeriesColor(id: String): Int = when (id) {
+		EvHistoryChartStore.S_CURRENT, EvHistoryChartStore.S_POWER -> Color.parseColor("#1E88E5")
+		EvHistoryChartStore.S_TEMP, EvHistoryChartStore.S_CONS -> Color.parseColor("#FB8C00")
+		EvHistoryChartStore.S_MIN_V -> Color.parseColor("#E53935")
+		EvHistoryChartStore.S_MAX_V, EvHistoryChartStore.S_MOTOR -> Color.parseColor("#00897B")
+		else -> Color.parseColor("#5E35B1")
+	}
+
+	private fun historySeriesLegend(id: String, last: Float?): String {
+		val name = when (id) {
+			EvHistoryChartStore.S_CURRENT -> getString(R.string.ev_bms_widget_current)
+			EvHistoryChartStore.S_TEMP -> getString(R.string.ev_bms_widget_battery_temp)
+			EvHistoryChartStore.S_MIN_V -> getString(R.string.ev_bms_widget_min_cell)
+			EvHistoryChartStore.S_MAX_V -> getString(R.string.ev_bms_history_max_cell)
+			EvHistoryChartStore.S_POWER -> getString(R.string.ev_bms_widget_power)
+			EvHistoryChartStore.S_CONS -> getString(R.string.ev_bms_widget_consumption)
+			EvHistoryChartStore.S_MOTOR -> getString(R.string.ev_bms_widget_motor_temp)
+			else -> id
+		}
+		val value = when {
+			last == null -> getString(R.string.ev_bms_value_none)
+			id == EvHistoryChartStore.S_MIN_V || id == EvHistoryChartStore.S_MAX_V ->
+				String.format(Locale.getDefault(), "%.3f", last)
+			id == EvHistoryChartStore.S_CONS -> String.format(Locale.getDefault(), "%.0f", last)
+			else -> String.format(Locale.getDefault(), "%.1f", last)
+		}
+		val unit = when (id) {
+			EvHistoryChartStore.S_CURRENT -> "A"
+			EvHistoryChartStore.S_TEMP, EvHistoryChartStore.S_MOTOR -> "°C"
+			EvHistoryChartStore.S_MIN_V, EvHistoryChartStore.S_MAX_V -> "V"
+			EvHistoryChartStore.S_POWER -> "W"
+			EvHistoryChartStore.S_CONS -> "Wh/km"
+			else -> ""
+		}
+		return "$name $value $unit".trim()
 	}
 
 	private fun fmtDateTime(ms: Long): String =
@@ -516,6 +694,13 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			return getString(R.string.ev_bms_value_none)
 		}
 		return String.format(Locale.getDefault(), "%.2f", v)
+	}
+
+	private fun nTemp(v: Double?): String {
+		if (v == null || v.isNaN() || v.isInfinite()) {
+			return getString(R.string.ev_bms_value_none)
+		}
+		return String.format(Locale.getDefault(), "%.0f", v)
 	}
 
 	private fun bindJournal() {

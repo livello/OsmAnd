@@ -74,6 +74,8 @@ class EvHistoryStore(private val app: OsmandApplication) {
 		val minCellV: Double?,
 		val startTempC: Double?,
 		val endTempC: Double?,
+		val startMotorTempC: Double? = null,
+		val endMotorTempC: Double? = null,
 		val distanceKm: Double?,
 		val movingMs: Long,
 		val startLat: Double?,
@@ -92,6 +94,8 @@ class EvHistoryStore(private val app: OsmandApplication) {
 				.putOpt("minCellV", minCellV)
 				.putOpt("startTempC", startTempC)
 				.putOpt("endTempC", endTempC)
+				.putOpt("startMotorTempC", startMotorTempC)
+				.putOpt("endMotorTempC", endMotorTempC)
 				.putOpt("distanceKm", distanceKm)
 				.put("movingMs", movingMs)
 				.putOpt("startLat", startLat)
@@ -110,6 +114,8 @@ class EvHistoryStore(private val app: OsmandApplication) {
 					minCellV = json.optNullableDouble("minCellV"),
 					startTempC = json.optNullableDouble("startTempC"),
 					endTempC = json.optNullableDouble("endTempC"),
+					startMotorTempC = json.optNullableDouble("startMotorTempC"),
+					endMotorTempC = json.optNullableDouble("endMotorTempC"),
 					distanceKm = json.optNullableDouble("distanceKm"),
 					movingMs = json.optLong("movingMs"),
 					startLat = json.optNullableDouble("startLat"),

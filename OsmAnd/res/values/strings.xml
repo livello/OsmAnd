@@ -998,6 +998,10 @@ Tables in plugin settings: charge sessions (time, start/end battery temperature,
 <b>🥾 Hike mode</b><br/>
 Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+• Charts tab: ⏸️ / ▶️ pause so live graphs stop drawing and stop buffering in the background<br/>
+• Charge history shows start/end battery temperature and a collapsed chart of current, temperature, min and max cell voltage (computed once from telemetry)<br/>
+• Distance-on-charge history shows battery and motor temperatures and a collapsed chart of power, Wh/km, motor temperature and min cell voltage<br/>
+• Range-reserve widget: remaining route minus remaining range; voice for the current value, small and low shortfall, with thresholds<br/>
 • Journal tab: switch on a DEBUG log of plugin and BLE actions, then export or clear it<br/>
 • History tab lists charge sessions and distance-on-charge rides, with 🗑️ to delete a row<br/>
 • A new charge cannot start until you have ridden and used battery past the thresholds in settings; BLE drop-outs no longer split one charge into many<br/>
@@ -1048,6 +1052,10 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_journal_clear_q">Delete the DEBUG journal file?</string>
     <string name="ev_bms_charts_empty">Waiting for telemetry…</string>
     <string name="ev_bms_charts_no_fields">Select telemetry fields to plot</string>
+    <string name="ev_bms_charts_live">Live charts</string>
+    <string name="ev_bms_charts_paused">Charts paused</string>
+    <string name="ev_bms_charts_pause">Pause charts</string>
+    <string name="ev_bms_charts_resume">Resume charts</string>
     <string name="ev_bms_devices">Bluetooth devices</string>
     <string name="ev_bms_jbd_title">Battery BMS</string>
     <string name="ev_bms_controller_title">Motor controller</string>
@@ -1109,6 +1117,9 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_history_empty">No records yet</string>
     <string name="ev_bms_history_duration">Duration %1$s</string>
     <string name="ev_bms_history_temp">Battery temperature %1$s → %2$s °C</string>
+    <string name="ev_bms_history_motor_temp">Motor temperature %1$s → %2$s °C</string>
+    <string name="ev_bms_history_max_cell">Max cell</string>
+    <string name="ev_bms_history_chart_empty">No chart for this record</string>
     <string name="ev_bms_history_charged_ah">Charged %1$s Ah</string>
     <string name="ev_bms_history_date">Date %1$s</string>
     <string name="ev_bms_history_distance">Distance %1$s km</string>
@@ -1156,6 +1167,8 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_widget_soc_desc">Calibrated state of charge from min cell voltage, per BMS MAC</string>
     <string name="ev_bms_widget_range">Remaining range</string>
     <string name="ev_bms_widget_range_desc">Estimated remaining range from GPS or controller distance and 5-minute average Wh/km</string>
+    <string name="ev_bms_widget_range_reserve">Range reserve</string>
+    <string name="ev_bms_widget_range_reserve_desc">Remaining route distance minus remaining range. Positive means a shortfall</string>
     <string name="ev_bms_widget_consumption">Consumption</string>
     <string name="ev_bms_widget_consumption_desc">Average energy use in Wh/km over the last 5 minutes</string>
     <string name="ev_bms_widget_far_trip">Controller trip</string>
@@ -1197,6 +1210,16 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_delete_emoji" translatable="false">🗑️</string>
     <string name="ev_bms_csv_none">No telemetry files yet</string>
     <string name="ev_bms_announce_range_vs_route">Warn when range is less than the remaining route</string>
+    <string name="ev_bms_announce_range_reserve">Announce range reserve when stopped</string>
+    <string name="ev_bms_announce_range_reserve_small">Announce small range reserve</string>
+    <string name="ev_bms_announce_range_reserve_low">Announce low range reserve</string>
+    <string name="ev_bms_range_reserve_small_km">Small range-reserve threshold</string>
+    <string name="ev_bms_range_reserve_low_km">Low range-reserve threshold</string>
+    <string name="ev_bms_voice_range_reserve_short">Range shortfall %1$d kilometers</string>
+    <string name="ev_bms_voice_range_reserve_extra">Range reserve %1$d kilometers</string>
+    <string name="ev_bms_voice_range_reserve_ok">Range matches the remaining route</string>
+    <string name="ev_bms_voice_range_reserve_small">Small range reserve. Shortfall %1$d kilometers</string>
+    <string name="ev_bms_voice_range_reserve_low">Low range reserve. Shortfall %1$d kilometers</string>
     <string name="ev_bms_voice_range_short">Remaining range is less than the route. Range %1$d kilometers, route %2$d kilometers</string>
     <string name="ev_bms_widget_battery_temp">Battery temperature</string>
     <string name="ev_bms_widget_battery_temp_desc">Battery pack temperature from the BMS</string>

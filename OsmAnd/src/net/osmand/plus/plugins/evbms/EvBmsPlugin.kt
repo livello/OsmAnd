@@ -67,6 +67,9 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		const val DEFAULT_SPEED_CAL_DISTANCE_M = 1000
 		const val DEFAULT_VEHICLE_MASS_KG = 200f
 		const val DEFAULT_DRIVER_MASS_KG = 80f
+		const val DEFAULT_RESERVE_SMALL_KM = 5
+		const val DEFAULT_RESERVE_LOW_KM = 15
+		private const val HISTORY_SAMPLE_MIN_MS = 2000L
 		const val SESSION_IDLE = "idle"
 		const val SESSION_RECORDING = "recording"
 		const val SESSION_PAUSED = "paused"
@@ -124,6 +127,18 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerStringPreference("ev_bms_csv_folder_uri", "").makeGlobal().makeShared()
 	val ANNOUNCE_RANGE_VS_ROUTE: CommonPreference<Boolean> =
 		registerBooleanPreference("ev_bms_announce_range_vs_route", true).makeGlobal().makeShared()
+	val ANNOUNCE_RANGE_RESERVE: CommonPreference<Boolean> =
+		registerBooleanPreference("ev_bms_announce_range_reserve", true).makeGlobal().makeShared()
+	val ANNOUNCE_RANGE_RESERVE_SMALL: CommonPreference<Boolean> =
+		registerBooleanPreference("ev_bms_announce_range_reserve_small", true).makeGlobal().makeShared()
+	val ANNOUNCE_RANGE_RESERVE_LOW: CommonPreference<Boolean> =
+		registerBooleanPreference("ev_bms_announce_range_reserve_low", true).makeGlobal().makeShared()
+	val RANGE_RESERVE_SMALL_KM: CommonPreference<Int> =
+		registerIntPreference("ev_bms_range_reserve_small_km", DEFAULT_RESERVE_SMALL_KM).makeGlobal().makeShared()
+	val RANGE_RESERVE_LOW_KM: CommonPreference<Int> =
+		registerIntPreference("ev_bms_range_reserve_low_km", DEFAULT_RESERVE_LOW_KM).makeGlobal().makeShared()
+	val CHARTS_LIVE: CommonPreference<Boolean> =
+		registerBooleanPreference("ev_bms_charts_live", true).makeGlobal().makeShared()
 	val CONTROLLER_PROTOCOL: CommonPreference<String> =
 		registerStringPreference("ev_controller_protocol", "auto").makeGlobal().makeShared()
 	val ANNOUNCE_CELL_VOLTAGE: CommonPreference<Boolean> =
@@ -191,6 +206,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private val journal = EvDebugJournal(app)
 	private val voice = EvVoiceAnnouncer(app)
 	private val historyStore = EvHistoryStore(app)
+	private val historyCharts = EvHistoryChartStore(app)
 	private val hikeMode = HikeModeController(app, this)
 	private val farSnapshot = FarDriverProtocol.FarDriverSnapshot()
 	private val vescSnapshot = VescProtocol.VescSnapshot()
@@ -243,6 +259,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private var tripMinCellV: Double? = null
 	private var tripLastVoltageV: Double? = null
 	private var tripLastTempC: Double? = null
+	private var tripStartMotorTempC: Double? = null
+	private var tripLastMotorTempC: Double? = null
 	private var tripMovingMs = 0L
 	private var tripLastMoveMs = 0L
 	private var chargeTripGpsKm = 0.0
@@ -255,6 +273,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private var rearmStartSoc: Int? = null
 	private var rearmLastLoc: Location? = null
 	private val pendingGpxEvents = ArrayList<Pair<String, String>>()
+	private val historySamples = ArrayList<EvHistoryChartStore.Sample>()
+	private var historySampleLastMs = 0L
 	private var lastBmsRxMs = 0L
 	private var lastCtrlRxMs = 0L
 	private var pollCellsNext = false
@@ -617,6 +637,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			finishTrip(now, loc)
 		}
 		journal.i("charge", "begin ah=$remainingAh full=$fullAh I=$currentA temp=$tempC")
+		historySamples.clear()
+		historySampleLastMs = 0L
 		charging = true
 		CHARGE_CYCLE_ACTIVE.set(false)
 		chargeStartMs = now
@@ -656,6 +678,9 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			endLon = loc?.longitude
 		)
 		saveChargeRecord(record)
+		historyCharts.save(EvHistoryChartStore.KIND_CHARGE, record.startMs, record.endMs, ArrayList(historySamples))
+		historySamples.clear()
+		historySampleLastMs = 0L
 		markGpxEvent(
 			app.getString(R.string.ev_bms_gpx_charge_end),
 			chargeEventDescription(
@@ -683,16 +708,20 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		tripStartMs = now
 		tripStartVoltageV = lastBms?.voltageV ?: ctrlVoltageV()
 		tripStartTempC = batteryAnnounceTempC()
+		tripStartMotorTempC = ctrlMotorTempC()
 		tripStartLat = loc?.latitude
 		tripStartLon = loc?.longitude
 		tripMinCellV = minCellVoltageV
 		tripLastVoltageV = tripStartVoltageV
 		tripLastTempC = tripStartTempC
+		tripLastMotorTempC = tripStartMotorTempC
 		tripMovingMs = 0L
 		tripLastMoveMs = 0L
 		chargeTripGpsKm = 0.0
 		chargeTripStartOdoKm = ctrlOdometerKm()
 		chargeTripLastLoc = loc?.let { Location(it) }
+		historySamples.clear()
+		historySampleLastMs = 0L
 		CHARGE_END_TRACK_M.set(app.savingTrackHelper.distance.toInt().coerceAtLeast(0))
 		persistTripSession()
 	}
@@ -725,6 +754,10 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		if (minCellV != null) {
 			tripMinCellV = minOf(tripMinCellV ?: minCellV, minCellV)
 		}
+		val motor = ctrlMotorTempC()
+		if (motor != null) {
+			tripLastMotorTempC = motor
+		}
 		persistTripSession()
 	}
 
@@ -741,6 +774,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			minCellV = tripMinCellV ?: minCellVoltageV,
 			startTempC = tripStartTempC,
 			endTempC = tripLastTempC ?: batteryAnnounceTempC(),
+			startMotorTempC = tripStartMotorTempC,
+			endMotorTempC = tripLastMotorTempC ?: ctrlMotorTempC(),
 			distanceKm = chargeTripKm(),
 			movingMs = tripMovingMs,
 			startLat = tripStartLat,
@@ -750,6 +785,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		)
 		if (record.distanceKm != null && record.distanceKm > 0.02 || record.movingMs > 30_000L) {
 			saveTripRecord(record)
+			historyCharts.save(EvHistoryChartStore.KIND_TRIP, record.startMs, record.endMs, ArrayList(historySamples))
 			markGpxEvent(
 				app.getString(R.string.ev_bms_gpx_charge_trip),
 				tripEventDescription(record)
@@ -759,9 +795,13 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		tripStartMs = 0L
 		tripMovingMs = 0L
 		tripLastMoveMs = 0L
+		tripStartMotorTempC = null
+		tripLastMotorTempC = null
 		chargeTripGpsKm = 0.0
 		chargeTripStartOdoKm = null
 		chargeTripLastLoc = null
+		historySamples.clear()
+		historySampleLastMs = 0L
 	}
 
 	private fun accumulateChargeTripDistance(moving: Boolean) {
@@ -834,6 +874,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		json.putD("minCellV", tripMinCellV)
 		json.putD("lastVoltageV", tripLastVoltageV)
 		json.putD("lastTempC", tripLastTempC)
+		json.putD("startMotorTempC", tripStartMotorTempC)
+		json.putD("lastMotorTempC", tripLastMotorTempC)
 		json.put("movingMs", tripMovingMs)
 		json.put("gpsKm", chargeTripGpsKm)
 		json.putD("startOdoKm", chargeTripStartOdoKm)
@@ -875,6 +917,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				tripMinCellV = json.optNullableDouble("minCellV")
 				tripLastVoltageV = json.optNullableDouble("lastVoltageV")
 				tripLastTempC = json.optNullableDouble("lastTempC")
+				tripStartMotorTempC = json.optNullableDouble("startMotorTempC")
+				tripLastMotorTempC = json.optNullableDouble("lastMotorTempC")
 				tripMovingMs = json.optLong("movingMs")
 				chargeTripGpsKm = json.optDouble("gpsKm", 0.0).coerceAtLeast(0.0)
 				chargeTripStartOdoKm = json.optNullableDouble("startOdoKm")
@@ -908,12 +952,17 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	fun deleteChargeRecord(startMs: Long, endMs: Long) {
 		val rows = chargeHistory().filterNot { it.startMs == startMs && it.endMs == endMs }
 		CHARGE_HISTORY.set(historyStore.encodeCharges(rows))
+		historyCharts.delete(EvHistoryChartStore.KIND_CHARGE, startMs, endMs)
 	}
 
 	fun deleteTripRecord(startMs: Long, endMs: Long) {
 		val rows = tripHistory().filterNot { it.startMs == startMs && it.endMs == endMs }
 		TRIP_HISTORY.set(historyStore.encodeTrips(rows))
+		historyCharts.delete(EvHistoryChartStore.KIND_TRIP, startMs, endMs)
 	}
+
+	fun historyChart(kind: String, startMs: Long, endMs: Long): EvHistoryChartStore.Chart? =
+		historyCharts.loadOrBuild(kind, startMs, endMs)
 
 	private fun canStartNextCharge(): Boolean = rearmReady
 
@@ -1063,6 +1112,12 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		if (row.minCellV != null) {
 			parts.add(String.format(Locale.US, "min %.3f V", row.minCellV))
 		}
+		if (row.startTempC != null || row.endTempC != null) {
+			parts.add(String.format(Locale.US, "batt %.0f→%.0f °C", row.startTempC ?: Double.NaN, row.endTempC ?: Double.NaN))
+		}
+		if (row.startMotorTempC != null || row.endMotorTempC != null) {
+			parts.add(String.format(Locale.US, "mot %.0f→%.0f °C", row.startMotorTempC ?: Double.NaN, row.endMotorTempC ?: Double.NaN))
+		}
 		return parts.joinToString(" · ")
 	}
 
@@ -1074,6 +1129,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		return EvVoiceAnnouncer.StopReport(
 			rangeKm = range,
 			routeLeftKm = getRouteLeftKm(),
+			rangeReserveKm = if (ANNOUNCE_RANGE_RESERVE.get()) rangeReserveKm() else null,
 			minCellV = minCellVoltageV,
 			motorTempC = if (ctrlFresh) ctrlMotorTempC() else null,
 			batteryTempC = batteryAnnounceTempC(),
@@ -1135,6 +1191,12 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			return null
 		}
 		return meters / 1000.0
+	}
+
+	fun rangeReserveKm(): Double? {
+		val route = getRouteLeftKm() ?: return null
+		val range = rangeEstimator.remainingRangeKm ?: latestTelemetry?.remainingRangeKm ?: return null
+		return route - range
 	}
 
 	fun startBmsScan(activity: Activity) {
@@ -1599,6 +1661,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		val bmsFreshAfter = isBmsFresh()
 		val ctrlFreshAfter = isControllerFresh()
 		latestTelemetry = sample
+		maybeCollectHistorySample(sample)
 		if (journal.enabled) {
 			journal.d(
 				"telem",
@@ -1607,10 +1670,12 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 						"motC=${sample.motorTempC} charge=$charging"
 			)
 		}
-		synchronized(chartLock) {
-			chartHistory.addLast(sample)
-			while (chartHistory.size > CHART_HISTORY_MAX) {
-				chartHistory.removeFirst()
+		if (isChartsLive()) {
+			synchronized(chartLock) {
+				chartHistory.addLast(sample)
+				while (chartHistory.size > CHART_HISTORY_MAX) {
+					chartHistory.removeFirst()
+				}
 			}
 		}
 		val events = ArrayList(pendingGpxEvents)
@@ -1646,6 +1711,13 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			if (bmsFresh) sample.remainingRangeKm else null,
 			getRouteLeftKm(),
 			ANNOUNCE_RANGE_VS_ROUTE.get() && bmsFresh
+		)
+		voice.onRangeReserve(
+			if (bmsFresh) rangeReserveKm() else null,
+			RANGE_RESERVE_SMALL_KM.get().toDouble(),
+			RANGE_RESERVE_LOW_KM.get().toDouble(),
+			ANNOUNCE_RANGE_RESERVE_SMALL.get() && bmsFresh,
+			ANNOUNCE_RANGE_RESERVE_LOW.get() && bmsFresh
 		)
 		voice.onRestCellVoltage(
 			if (bmsFresh) minCellVoltageV else null,
@@ -1782,6 +1854,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		val field = when (widgetType) {
 			WidgetType.EV_BMS_SOC -> EvBmsTextWidget.Field.SOC
 			WidgetType.EV_BMS_RANGE -> EvBmsTextWidget.Field.RANGE
+			WidgetType.EV_RANGE_RESERVE -> EvBmsTextWidget.Field.RANGE_RESERVE
 			WidgetType.EV_BMS_CONSUMPTION -> EvBmsTextWidget.Field.CONSUMPTION
 			WidgetType.EV_FAR_TRIP -> EvBmsTextWidget.Field.FAR_TRIP
 			WidgetType.EV_CHARGE_TRIP -> EvBmsTextWidget.Field.CHARGE_TRIP
@@ -1872,6 +1945,40 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		synchronized(chartLock) {
 			return ArrayList(chartHistory)
 		}
+	}
+
+	fun isChartsLive(): Boolean = CHARTS_LIVE.get()
+
+	fun setChartsLive(live: Boolean) {
+		CHARTS_LIVE.set(live)
+	}
+
+	private fun maybeCollectHistorySample(sample: EvTelemetry) {
+		if (!charging && tripStartMs <= 0L) {
+			return
+		}
+		val t = sample.timeMs
+		if (historySampleLastMs > 0L && t - historySampleLastMs < HISTORY_SAMPLE_MIN_MS) {
+			return
+		}
+		historySampleLastMs = t
+		val power = sample.controllerPowerW ?: run {
+			val v = sample.voltageV
+			val i = sample.currentA
+			if (v != null && i != null) v * i else null
+		}
+		historySamples.add(
+			EvHistoryChartStore.Sample(
+				t = t,
+				currentA = sample.currentA?.let { if (charging) kotlin.math.abs(it) else it },
+				battTempC = sample.bmsTempC,
+				minCellV = sample.minCellVoltageV,
+				maxCellV = lastCells?.maxOrNull(),
+				powerW = power,
+				consWhKm = sample.consumptionWhPerKm,
+				motorTempC = sample.motorTempC
+			)
+		)
 	}
 
 	fun sheetTab(): EvBmsSheetTab = EvBmsSheetTab.from(SHEET_TAB.get())

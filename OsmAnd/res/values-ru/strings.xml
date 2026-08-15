@@ -4498,6 +4498,10 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
 <b>🥾 Режим «Поход»</b><br/>
 Оставляет запас хода, GPS и телеметрию раз в 5 с, замедляет опрос BLE не реже 5 с, отключает тяжёлые слои карты, 3D, погоду, онлайн-тайлы и лишние Bluetooth-плагины.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Список изменений</b> · %1$s<br/>
+• Вкладка графиков: ⏸️ / ▶️ пауза, чтобы живые графики не перерисовывались и не буферизовались в фоне<br/>
+• История зарядок: температура батареи в начале и конце и свёрнутый график тока, температуры, мин. и макс. напряжения ячеек (считается один раз из телеметрии)<br/>
+• История пробега: температуры батареи и двигателя и свёрнутый график мощности, Wh/км, температуры двигателя и мин. напряжения ячейки<br/>
+• Виджет «резерв хода»: остаток маршрута минус запас хода; голос для текущего значения, малого и низкого резерва и пороги в настройках<br/>
 • Вкладка журнала: переключатель подробного DEBUG-лога действий плагина, экспорт и очистка<br/>
 • Вкладка истории: зарядки и пробеги на заряде, удаление строки кнопкой 🗑️<br/>
 • Новая зарядка не начинается, пока не будет пробега и расхода батареи выше порогов в настройках; обрыв BLE больше не режет одну зарядку на несколько<br/>
@@ -4548,6 +4552,10 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
     <string name="ev_bms_journal_clear_q">Удалить файл DEBUG-журнала?</string>
     <string name="ev_bms_charts_empty">Ждём телеметрию…</string>
     <string name="ev_bms_charts_no_fields">Выберите поля телеметрии для графиков</string>
+    <string name="ev_bms_charts_live">Живые графики</string>
+    <string name="ev_bms_charts_paused">Графики на паузе</string>
+    <string name="ev_bms_charts_pause">Пауза графиков</string>
+    <string name="ev_bms_charts_resume">Продолжить графики</string>
     <string name="ev_bms_devices">Устройства Bluetooth</string>
     <string name="ev_bms_jbd_title">BMS батареи</string>
     <string name="ev_bms_controller_title">Контроллер</string>
@@ -4609,6 +4617,9 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
     <string name="ev_bms_history_empty">Записей пока нет</string>
     <string name="ev_bms_history_duration">Длительность %1$s</string>
     <string name="ev_bms_history_temp">Температура батареи %1$s → %2$s °C</string>
+    <string name="ev_bms_history_motor_temp">Температура двигателя %1$s → %2$s °C</string>
+    <string name="ev_bms_history_max_cell">Максимум ячейки</string>
+    <string name="ev_bms_history_chart_empty">Нет графика для этой записи</string>
     <string name="ev_bms_history_charged_ah">Залито %1$s А·ч</string>
     <string name="ev_bms_history_date">Дата %1$s</string>
     <string name="ev_bms_history_distance">Расстояние %1$s км</string>
@@ -4656,6 +4667,8 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
     <string name="ev_bms_widget_soc_desc">Калиброванный уровень заряда по минимуму ячейки, отдельно для каждого MAC BMS</string>
     <string name="ev_bms_widget_range">Остаток пробега</string>
     <string name="ev_bms_widget_range_desc">Оценка пробега по GPS или одометру контроллера и среднему расходу Вт·ч/км за 5 минут</string>
+    <string name="ev_bms_widget_range_reserve">Резерв хода</string>
+    <string name="ev_bms_widget_range_reserve_desc">Остаток маршрута минус текущий запас хода. Плюс — нехватка километров</string>
     <string name="ev_bms_widget_consumption">Расход</string>
     <string name="ev_bms_widget_consumption_desc">Средний расход Вт·ч/км за последние 5 минут</string>
     <string name="ev_bms_widget_far_trip">Пробег контроллера</string>
@@ -4696,6 +4709,16 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
     <string name="ev_bms_export_csv_desc">Отправить записанные CSV и GPX</string>
     <string name="ev_bms_csv_none">Файлов телеметрии пока нет</string>
     <string name="ev_bms_announce_range_vs_route">Предупреждать, если запас хода меньше остатка маршрута</string>
+    <string name="ev_bms_announce_range_reserve">Озвучивать резерв хода на остановке</string>
+    <string name="ev_bms_announce_range_reserve_small">Оповещение о малом резерве хода</string>
+    <string name="ev_bms_announce_range_reserve_low">Оповещение о низком резерве хода</string>
+    <string name="ev_bms_range_reserve_small_km">Порог малого резерва хода</string>
+    <string name="ev_bms_range_reserve_low_km">Порог низкого резерва хода</string>
+    <string name="ev_bms_voice_range_reserve_short">Нехватка хода %1$d километров</string>
+    <string name="ev_bms_voice_range_reserve_extra">Резерв хода %1$d километров</string>
+    <string name="ev_bms_voice_range_reserve_ok">Запас хода совпадает с остатком маршрута</string>
+    <string name="ev_bms_voice_range_reserve_small">Малый резерв хода. Нехватка %1$d километров</string>
+    <string name="ev_bms_voice_range_reserve_low">Низкий резерв хода. Нехватка %1$d километров</string>
     <string name="ev_bms_voice_range_short">Запас хода меньше остатка маршрута. Запас %1$d километров, маршрут %2$d километров</string>
     <string name="ev_bms_widget_battery_temp">Температура батареи</string>
     <string name="ev_bms_widget_battery_temp_desc">Температура пакета по BMS</string>

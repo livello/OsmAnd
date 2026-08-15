@@ -152,6 +152,37 @@
 		android:summaryOn="@string/shared_string_enabled"
 		android:title="@string/ev_bms_announce_range_vs_route" />
 
+	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
+		android:key="ev_bms_announce_range_reserve"
+		android:layout="@layout/ev_bms_preference_switch"
+		android:summaryOff="@string/shared_string_disabled"
+		android:summaryOn="@string/shared_string_enabled"
+		android:title="@string/ev_bms_announce_range_reserve" />
+
+	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
+		android:key="ev_bms_announce_range_reserve_small"
+		android:layout="@layout/ev_bms_preference_switch"
+		android:summaryOff="@string/shared_string_disabled"
+		android:summaryOn="@string/shared_string_enabled"
+		android:title="@string/ev_bms_announce_range_reserve_small" />
+
+	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
+		android:key="ev_bms_announce_range_reserve_low"
+		android:layout="@layout/ev_bms_preference_switch"
+		android:summaryOff="@string/shared_string_disabled"
+		android:summaryOn="@string/shared_string_enabled"
+		android:title="@string/ev_bms_announce_range_reserve_low" />
+
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="ev_bms_range_reserve_small_km"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:title="@string/ev_bms_range_reserve_small_km" />
+
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="ev_bms_range_reserve_low_km"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:title="@string/ev_bms_range_reserve_low_km" />
+
 	<net.osmand.plus.settings.preferences.ListPreferenceEx
 		android:key="ev_bms_stop_speed_kmh"
 		android:layout="@layout/ev_bms_preference_with_descr"

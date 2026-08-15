@@ -178,6 +178,11 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		setupSwitch(plugin.ANNOUNCE_RANGE_ON_STOP.id)
 		setupStopRepeats()
 		setupSwitch(plugin.ANNOUNCE_RANGE_VS_ROUTE.id)
+		setupSwitch(plugin.ANNOUNCE_RANGE_RESERVE.id)
+		setupSwitch(plugin.ANNOUNCE_RANGE_RESERVE_SMALL.id)
+		setupSwitch(plugin.ANNOUNCE_RANGE_RESERVE_LOW.id)
+		setupKmThreshold(plugin.RANGE_RESERVE_SMALL_KM, arrayOf(2, 5, 8, 10, 15, 20))
+		setupKmThreshold(plugin.RANGE_RESERVE_LOW_KM, arrayOf(8, 10, 15, 20, 30, 50))
 		setupStopSpeed()
 		setupSwitch(plugin.ANNOUNCE_CELL_VOLTAGE.id)
 		setupCellThreshold(plugin.LOW_CELL_MV, arrayOf(3600, 3550, 3500, 3450, 3400))
@@ -234,6 +239,11 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		decorate(plugin.ANNOUNCE_RANGE_ON_STOP.id, "📏", R.drawable.ic_action_distance)
 		decorate(plugin.STOP_ANNOUNCE_REPEATS.id, "🔁", R.drawable.ic_action_time_span)
 		decorate(plugin.ANNOUNCE_RANGE_VS_ROUTE.id, "🧭", R.drawable.ic_action_gdirections_dark)
+		decorate(plugin.ANNOUNCE_RANGE_RESERVE.id, "🛣️", R.drawable.ic_action_distance)
+		decorate(plugin.ANNOUNCE_RANGE_RESERVE_SMALL.id, "⚠️", R.drawable.ic_action_alert)
+		decorate(plugin.ANNOUNCE_RANGE_RESERVE_LOW.id, "⛔", R.drawable.ic_action_alert)
+		decorate(plugin.RANGE_RESERVE_SMALL_KM.id, "📉", R.drawable.ic_action_arrow_down)
+		decorate(plugin.RANGE_RESERVE_LOW_KM.id, "📉", R.drawable.ic_action_arrow_down)
 		decorate(plugin.STOP_SPEED_KMH.id, "🐢", R.drawable.ic_action_speed)
 		decorate(plugin.ANNOUNCE_CELL_VOLTAGE.id, "⚠️", R.drawable.ic_action_alert)
 		decorate(plugin.LOW_CELL_MV.id, "🔻", R.drawable.ic_action_arrow_down)
@@ -447,6 +457,13 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		val pref = findPreference<ListPreferenceEx>(prefHolder.id) ?: return
 		pref.setEntries(celsius.map { getString(R.string.ev_bms_n_celsius, it) }.toTypedArray())
 		pref.setEntryValues(celsius.map { it as Any }.toTypedArray())
+		pref.setValue(prefHolder.get())
+	}
+
+	private fun setupKmThreshold(prefHolder: net.osmand.plus.settings.backend.preferences.CommonPreference<Int>, km: Array<Int>) {
+		val pref = findPreference<ListPreferenceEx>(prefHolder.id) ?: return
+		pref.setEntries(km.map { getString(R.string.ev_bms_n_km_int, it) }.toTypedArray())
+		pref.setEntryValues(km.map { it as Any }.toTypedArray())
 		pref.setValue(prefHolder.get())
 	}
 
