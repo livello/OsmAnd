@@ -24,6 +24,7 @@ import net.osmand.plus.settings.backend.preferences.CommonPreference
 import net.osmand.plus.settings.enums.ScreenLayoutMode
 import net.osmand.plus.settings.fragments.BaseSettingsFragment
 import net.osmand.plus.settings.fragments.SettingsScreenType
+import net.osmand.plus.utils.OsmAndFormatter
 import net.osmand.plus.views.mapwidgets.MapWidgetInfo
 import net.osmand.plus.views.mapwidgets.WidgetInfoCreator
 import net.osmand.plus.views.mapwidgets.WidgetType
@@ -49,6 +50,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		const val CHARGE_ETA_REPEAT_MS = 300_000L
 		const val DEFAULT_CHARGE_VOLT_STEP_MV = 1000
 		const val DEFAULT_STOP_ANNOUNCE_REPEATS = 2
+		const val DEFAULT_SPEED_CAL_DISTANCE_M = 1000
 		const val SESSION_IDLE = "idle"
 		const val SESSION_RECORDING = "recording"
 		const val SESSION_PAUSED = "paused"
@@ -124,6 +126,10 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerBooleanPreference("ev_bms_hike_mode", false).makeGlobal().makeShared()
 	val HIKE_SNAPSHOT: CommonPreference<String> =
 		registerStringPreference("ev_bms_hike_snapshot", "").makeGlobal()
+	val SPEED_CAL_DISTANCE_M: CommonPreference<Int> =
+		registerIntPreference("ev_bms_speed_cal_distance_m", DEFAULT_SPEED_CAL_DISTANCE_M).makeGlobal().makeShared()
+	val SPEED_CAL_FACTOR: CommonPreference<Float> =
+		registerFloatPreference("ev_bms_speed_cal_factor", 1f).makeGlobal().makeShared()
 	private val CHARGE_END_TRACK_M: CommonPreference<Int> =
 		registerIntPreference("ev_bms_charge_end_track_m", 0).makeGlobal()
 	private val CHARGE_CYCLE_ACTIVE: CommonPreference<Boolean> =
@@ -170,6 +176,12 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	var restPackVoltageV: Double? = null
 		private set
 	private var farTripStartKm: Double? = null
+	private var speedCalRunning = false
+	private var speedCalGpsM = 0.0
+	private var speedCalCtrlStartKm: Double? = null
+	private var speedCalCtrlM = 0.0
+	private var speedCalLastLoc: Location? = null
+	private var speedCalLastMs = 0L
 	private var lastChargeAh: Double? = null
 	private var stillSinceMs: Long? = null
 	private var charging = false
@@ -282,6 +294,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		super.disable(app)
 		stopPolling()
 		recorder.detach()
+		stopSpeedCalibration(notify = false)
 		voice.shutdown()
 		bmsClient?.disconnect()
 		controllerClient?.disconnect()
@@ -333,13 +346,13 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	}
 
 	fun farTripKm(): Double? {
-		val odo = ctrlOdometerKm() ?: return null
+		val odo = rawCtrlOdometerKm() ?: return null
 		val start = farTripStartKm
 		if (start == null) {
 			farTripStartKm = odo
 			return 0.0
 		}
-		return (odo - start).coerceAtLeast(0.0)
+		return ((odo - start) * speedCalFactor()).coerceAtLeast(0.0)
 	}
 
 	fun isCharging(): Boolean = charging
@@ -1130,6 +1143,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			remainingRouteElevation(),
 			USE_ROUTE_PROFILE.get()
 		)
+		tickSpeedCalibration(loc)
 		val sample = EvTelemetry(
 			lat = loc?.latitude,
 			lon = loc?.longitude,
@@ -1283,9 +1297,13 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 
 	private fun ctrlTempC(): Double? = vescSnapshot.controllerTempC ?: farSnapshot.controllerTempC
 
-	private fun ctrlOdometerKm(): Double? = vescSnapshot.odometerKm ?: farSnapshot.odometerKm
+	private fun ctrlOdometerKm(): Double? = rawCtrlOdometerKm()?.times(speedCalFactor())
 
-	private fun ctrlSpeedKmh(): Double? = vescSnapshot.speedKmh ?: farSnapshot.speedKmh
+	private fun ctrlSpeedKmh(): Double? = rawCtrlSpeedKmh()?.times(speedCalFactor())
+
+	private fun rawCtrlOdometerKm(): Double? = vescSnapshot.odometerKm ?: farSnapshot.odometerKm
+
+	private fun rawCtrlSpeedKmh(): Double? = vescSnapshot.speedKmh ?: farSnapshot.speedKmh
 
 	private fun ctrlAvgWhPerKm(): Double? = vescSnapshot.avgPowerWhPerKm ?: farSnapshot.avgPowerWhPerKm
 
@@ -1496,6 +1514,109 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		if (state == SESSION_RECORDING && !recorder.resume()) {
 			persistTelemetrySession(SESSION_PAUSED)
 		}
+	}
+
+	fun isSpeedCalibrating(): Boolean = speedCalRunning
+
+	fun speedCalTargetMeters(): Int = SPEED_CAL_DISTANCE_M.get().coerceAtLeast(100)
+
+	fun speedCalProgressGpsM(): Double = speedCalGpsM
+
+	fun startSpeedCalibration(): Boolean {
+		if (speedCalRunning) {
+			return true
+		}
+		speedCalRunning = true
+		speedCalGpsM = 0.0
+		speedCalCtrlM = 0.0
+		speedCalCtrlStartKm = rawCtrlOdometerKm()
+		speedCalLastLoc = lastLocation?.let { Location(it) }
+		speedCalLastMs = System.currentTimeMillis()
+		val target = OsmAndFormatter.getFormattedDistance(speedCalTargetMeters().toFloat(), app)
+		app.showToastMessage(app.getString(R.string.ev_bms_cal_started, target))
+		return true
+	}
+
+	fun stopSpeedCalibration(notify: Boolean = true) {
+		if (!speedCalRunning) {
+			return
+		}
+		speedCalRunning = false
+		speedCalLastLoc = null
+		if (notify) {
+			app.showToastMessage(R.string.ev_bms_cal_cancelled)
+		}
+	}
+
+	fun parseSpeedCalFactor(raw: String?): Float? {
+		val text = raw?.trim()?.replace(',', '.') ?: return null
+		val value = text.toFloatOrNull() ?: return null
+		if (!value.isFinite() || value < 0.5f || value > 2.0f) {
+			return null
+		}
+		return value
+	}
+
+	fun formattedSpeedCalFactor(): String {
+		return String.format(Locale.US, "%.3f", speedCalFactor())
+	}
+
+	private fun speedCalFactor(): Double {
+		val value = SPEED_CAL_FACTOR.get().toDouble()
+		return if (value.isFinite() && value > 0.0) value.coerceIn(0.5, 2.0) else 1.0
+	}
+
+	private fun tickSpeedCalibration(loc: Location?) {
+		if (!speedCalRunning) {
+			return
+		}
+		val now = System.currentTimeMillis()
+		if (speedCalCtrlStartKm == null) {
+			speedCalCtrlStartKm = rawCtrlOdometerKm()
+		}
+		val rawSpeed = rawCtrlSpeedKmh()
+		if (speedCalLastMs > 0L && rawSpeed != null && rawSpeed > 0.3) {
+			speedCalCtrlM += rawSpeed / 3.6 * ((now - speedCalLastMs).coerceAtLeast(0L) / 1000.0)
+		}
+		speedCalLastMs = now
+		if (loc != null && (!loc.hasAccuracy() || loc.accuracy <= 25f)) {
+			val prev = speedCalLastLoc
+			if (prev != null) {
+				val delta = prev.distanceTo(loc)
+				if (delta in 0.5f..80f) {
+					speedCalGpsM += delta
+				}
+			}
+			speedCalLastLoc = Location(loc)
+		}
+		if (speedCalGpsM >= speedCalTargetMeters()) {
+			finishSpeedCalibration()
+		}
+	}
+
+	private fun finishSpeedCalibration() {
+		speedCalRunning = false
+		speedCalLastLoc = null
+		val gpsKm = speedCalGpsM / 1000.0
+		val odoKm = speedCalCtrlStartKm?.let { start ->
+			rawCtrlOdometerKm()?.minus(start)
+		}
+		val ctrlKm = when {
+			odoKm != null && odoKm >= 0.05 -> odoKm
+			speedCalCtrlM >= 50.0 -> speedCalCtrlM / 1000.0
+			else -> null
+		}
+		if (ctrlKm == null || !gpsKm.isFinite() || gpsKm < 0.05) {
+			app.showToastMessage(R.string.ev_bms_cal_failed)
+			return
+		}
+		val factor = (gpsKm / ctrlKm).toFloat()
+		if (!factor.isFinite() || factor < 0.5f || factor > 2.0f) {
+			app.showToastMessage(R.string.ev_bms_cal_failed)
+			return
+		}
+		SPEED_CAL_FACTOR.set(factor)
+		app.showToastMessage(app.getString(R.string.ev_bms_cal_done, factor))
 	}
 
 	private fun activePollIntervalMs(): Long {

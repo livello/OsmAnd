@@ -27,6 +27,7 @@ import net.osmand.plus.plugins.evbms.ble.EvBleUartClient
 import net.osmand.plus.settings.bottomsheets.BooleanRadioButtonsBottomSheet
 import net.osmand.plus.settings.fragments.ApplyQueryType
 import net.osmand.plus.settings.fragments.BaseSettingsFragment
+import net.osmand.plus.settings.preferences.EditTextPreferenceEx
 import net.osmand.plus.settings.preferences.ListPreferenceEx
 import net.osmand.plus.settings.preferences.SwitchPreferenceEx
 import net.osmand.plus.utils.AndroidUtils
@@ -58,6 +59,16 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			for ((field, view) in fieldValueViews) {
 				view.text = field.liveValue(ctx, sample)
 			}
+			uiHandler.postDelayed(this, 1000)
+		}
+	}
+	private val refreshCalibration = object : Runnable {
+		override fun run() {
+			if (view == null) {
+				return
+			}
+			refreshCalibrationPref()
+			(parentFragment as? EvBmsSettingsBottomSheet)?.onCalibrationTick()
 			uiHandler.postDelayed(this, 1000)
 		}
 	}
@@ -124,6 +135,9 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		setupBmsProtocol()
 		setupControllerProtocol()
 		setupSwitch(plugin.HIKE_MODE.id)
+		setupCalDistance()
+		setupCalFactor()
+		setupCalAction()
 		setupPollInterval()
 		setupSwitch(plugin.RECORD_TELEMETRY.id)
 		setupSwitch(plugin.RECORD_GPX.id)
@@ -154,11 +168,17 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		setupRouteProfile()
 		setupIcons()
 		refreshRecordingPref()
+		refreshCalibrationPref()
 	}
 
 	fun refreshRecordingPref() {
 		val pref = findPreference<SwitchPreferenceEx>(plugin.RECORD_TELEMETRY.id) ?: return
 		pref.isChecked = plugin.hasTelemetrySession()
+	}
+
+	fun refreshCalibrationPref() {
+		setupCalFactor()
+		setupCalAction()
 	}
 
 	private fun setupIcons() {
@@ -169,6 +189,10 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		decorate(plugin.CONTROLLER_PROTOCOL.id, "⚙️", R.drawable.ic_action_settings)
 		decorate("ev_bms_modes", "🥾", R.drawable.ic_action_trekking_dark)
 		decorate(plugin.HIKE_MODE.id, "🥾", R.drawable.ic_action_trekking_dark)
+		decorate("ev_bms_calibration", "🎯", R.drawable.ic_action_distance)
+		decorate(plugin.SPEED_CAL_DISTANCE_M.id, "📏", R.drawable.ic_action_distance)
+		decorate(plugin.SPEED_CAL_FACTOR.id, "✖️", R.drawable.ic_action_speed)
+		decorate("ev_bms_cal_start", "▶️", R.drawable.ic_action_play_dark)
 		decorate("ev_bms_recording", "💾", R.drawable.ic_action_track_recordable)
 		decorate(plugin.POLL_INTERVAL_MS.id, "⏱️", R.drawable.ic_action_time)
 		decorate(plugin.RECORD_TELEMETRY.id, "📝", R.drawable.ic_action_save_to_file)
@@ -217,6 +241,8 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 	override fun onResume() {
 		super.onResume()
 		plugin.scanListener = this
+		uiHandler.removeCallbacks(refreshCalibration)
+		uiHandler.post(refreshCalibration)
 		val pending = pendingScanRole
 		val activity = activity
 		if (pending != null && activity != null && AndroidUtils.hasBLEPermission(activity)) {
@@ -227,6 +253,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 
 	override fun onDestroyView() {
 		uiHandler.removeCallbacks(refreshFieldValues)
+		uiHandler.removeCallbacks(refreshCalibration)
 		dismissPicker()
 		plugin.scanListener = null
 		plugin.stopScans()
@@ -286,6 +313,35 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		)
 		pref.setEntryValues(arrayOf<Any>(1000, 2000, 5000, 10000))
 		pref.setValue(plugin.POLL_INTERVAL_MS.get())
+	}
+
+	private fun setupCalDistance() {
+		val pref = findPreference<ListPreferenceEx>(plugin.SPEED_CAL_DISTANCE_M.id) ?: return
+		val meters = arrayOf(500, 1000, 2000, 5000)
+		pref.setEntries(meters.map { OsmAndFormatter.getFormattedDistance(it.toFloat(), app) }.toTypedArray())
+		pref.setEntryValues(meters.map { it as Any }.toTypedArray())
+		pref.setValue(plugin.SPEED_CAL_DISTANCE_M.get())
+	}
+
+	private fun setupCalFactor() {
+		val pref = findPreference<EditTextPreferenceEx>(plugin.SPEED_CAL_FACTOR.id) ?: return
+		val text = plugin.formattedSpeedCalFactor()
+		pref.text = text
+		pref.summary = text
+		pref.setDescription(R.string.ev_bms_cal_factor_desc)
+	}
+
+	private fun setupCalAction() {
+		val pref = findPreference<Preference>("ev_bms_cal_start") ?: return
+		if (plugin.isSpeedCalibrating()) {
+			pref.title = getString(R.string.ev_bms_calibrate_stop)
+			val done = OsmAndFormatter.getFormattedDistance(plugin.speedCalProgressGpsM().toFloat(), app)
+			val target = OsmAndFormatter.getFormattedDistance(plugin.speedCalTargetMeters().toFloat(), app)
+			pref.summary = getString(R.string.ev_bms_cal_progress, done, target)
+		} else {
+			pref.title = getString(R.string.ev_bms_cal_start)
+			pref.summary = getString(R.string.ev_bms_cal_factor_desc)
+		}
 	}
 
 	private fun setupChargeVoltStep() {
@@ -434,6 +490,16 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			}
 			return true
 		}
+		if (preference.key == plugin.SPEED_CAL_FACTOR.id) {
+			val parsed = plugin.parseSpeedCalFactor(newValue as? String)
+			if (parsed == null) {
+				app.showToastMessage(R.string.ev_bms_cal_factor_invalid)
+				return false
+			}
+			plugin.SPEED_CAL_FACTOR.set(parsed)
+			setupCalFactor()
+			return true
+		}
 		return super.onPreferenceChange(preference, newValue)
 	}
 
@@ -468,6 +534,16 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 				showTripHistoryDialog(activity)
 				return true
 			}
+			"ev_bms_cal_start" -> {
+				if (plugin.isSpeedCalibrating()) {
+					plugin.stopSpeedCalibration()
+				} else {
+					plugin.startSpeedCalibration()
+				}
+				refreshCalibrationPref()
+				(parentFragment as? EvBmsSettingsBottomSheet)?.onCalibrationTick()
+				return true
+			}
 		}
 		return super.onPreferenceClick(preference)
 	}
@@ -491,8 +567,8 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 
 	override fun onPreferenceChanged(prefId: String) {
 		super.onPreferenceChanged(prefId)
-		if (prefId == plugin.USE_ROUTE_PROFILE.id) {
-			setupRouteProfile()
+		if (prefId == plugin.SPEED_CAL_FACTOR.id) {
+			setupCalFactor()
 		}
 		if (prefId == plugin.RECORD_TELEMETRY.id) {
 			plugin.applyHikeTelemetryState()

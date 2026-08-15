@@ -3,6 +3,7 @@ package net.osmand.plus.plugins.evbms
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
+import android.widget.TextView
 import androidx.cardview.widget.CardView
 import androidx.fragment.app.FragmentManager
 import net.osmand.plus.R
@@ -33,6 +34,7 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	private val plugin = PluginsHelper.requirePlugin(EvBmsPlugin::class.java)
 	private var buttonsParent: ViewGroup? = null
 	private var buttonsBar: View? = null
+	private var lastCalRunning = false
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
@@ -62,7 +64,16 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 
 	override fun setupBottomButtons(view: ViewGroup) {
 		buttonsParent = view
+		lastCalRunning = plugin.isSpeedCalibrating()
 		rebuildBottomButtons()
+	}
+
+	fun onCalibrationTick() {
+		val running = plugin.isSpeedCalibrating()
+		if (running != lastCalRunning) {
+			lastCalRunning = running
+			rebuildBottomButtons()
+		}
 	}
 
 	private fun rebuildBottomButtons() {
@@ -71,10 +82,7 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		val contentPadding = getDimensionPixelSize(R.dimen.content_padding)
 		val topPadding = getDimensionPixelSize(R.dimen.context_menu_first_line_top_margin)
 		val paused = plugin.isTelemetryPaused()
-		val bar = inflate(
-			if (paused) R.layout.preference_button_with_icon_triple
-			else R.layout.preference_button_with_icon_double
-		)
+		val bar = inflate(R.layout.preference_button_with_icon_triple)
 		bar.setPadding(contentPadding, topPadding, contentPadding, contentPadding)
 		parent.addView(bar)
 		buttonsBar = bar
@@ -83,37 +91,57 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		TripRecordingBottomSheet.createItem(app, nightMode, cancelButton, ItemType.CANCEL, true, null)
 		cancelButton.setOnClickListener { dismiss() }
 
+		val centerButton = bar.findViewById<CardView>(R.id.button_center)
+		val rightButton = bar.findViewById<CardView>(R.id.button_right)
 		if (paused) {
-			val stopButton = bar.findViewById<CardView>(R.id.button_center)
-			TripRecordingBottomSheet.createItem(app, nightMode, stopButton, ItemType.STOP, true, null)
-			stopButton.setOnClickListener {
+			TripRecordingBottomSheet.createItem(app, nightMode, centerButton, ItemType.STOP, true, null)
+			centerButton.setOnClickListener {
 				plugin.stopTelemetryRecording()
 				refreshRecordingPref()
 				rebuildBottomButtons()
 			}
-			val resumeButton = bar.findViewById<CardView>(R.id.button_right)
-			TripRecordingBottomSheet.createItemActive(app, nightMode, resumeButton, ItemType.RESUME)
-			resumeButton.setOnClickListener {
+			TripRecordingBottomSheet.createItemActive(app, nightMode, rightButton, ItemType.RESUME)
+			rightButton.setOnClickListener {
 				plugin.resumeTelemetryRecording()
 				refreshRecordingPref()
 				rebuildBottomButtons()
 			}
 		} else {
-			val actionButton = bar.findViewById<CardView>(R.id.button_right)
+			bindCalibrateButton(centerButton)
 			if (plugin.isTelemetryRecording()) {
-				TripRecordingBottomSheet.createItem(app, nightMode, actionButton, ItemType.PAUSE, true, null)
-				actionButton.setOnClickListener {
+				TripRecordingBottomSheet.createItem(app, nightMode, rightButton, ItemType.PAUSE, true, null)
+				rightButton.setOnClickListener {
 					plugin.pauseTelemetryRecording()
 					refreshRecordingPref()
 					rebuildBottomButtons()
 				}
 			} else {
-				TripRecordingBottomSheet.createItemActive(app, nightMode, actionButton, ItemType.START_RECORDING)
-				actionButton.setOnClickListener {
+				TripRecordingBottomSheet.createItemActive(app, nightMode, rightButton, ItemType.START_RECORDING)
+				rightButton.setOnClickListener {
 					plugin.startTelemetryRecording()
 					refreshRecordingPref()
 					rebuildBottomButtons()
 				}
+			}
+		}
+	}
+
+	private fun bindCalibrateButton(button: CardView) {
+		if (plugin.isSpeedCalibrating()) {
+			TripRecordingBottomSheet.createItem(app, nightMode, button, ItemType.STOP, true, null)
+			button.findViewById<TextView>(R.id.button_text)?.setText(R.string.ev_bms_calibrate_stop)
+			button.setOnClickListener {
+				plugin.stopSpeedCalibration()
+				refreshCalibrationPref()
+				rebuildBottomButtons()
+			}
+		} else {
+			TripRecordingBottomSheet.createItem(app, nightMode, button, ItemType.START_NEW_SEGMENT, true, null)
+			button.findViewById<TextView>(R.id.button_text)?.setText(R.string.ev_bms_calibrate)
+			button.setOnClickListener {
+				plugin.startSpeedCalibration()
+				refreshCalibrationPref()
+				rebuildBottomButtons()
 			}
 		}
 	}
@@ -123,15 +151,15 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			?.refreshRecordingPref()
 	}
 
+	private fun refreshCalibrationPref() {
+		(childFragmentManager.findFragmentByTag(SETTINGS_TAG) as? EvBmsSettingsFragment)
+			?.refreshCalibrationPref()
+	}
+
 	override fun getInsetTargets(): InsetTargetsCollection {
 		val collection = super.getInsetTargets()
 		collection.removeType(Type.SCROLLABLE)
-		val id = if (plugin.isTelemetryPaused()) {
-			R.id.triple_bottom_buttons
-		} else {
-			R.id.double_bottom_buttons
-		}
-		collection.replace(InsetTarget.createBottomContainer(id))
+		collection.replace(InsetTarget.createBottomContainer(R.id.triple_bottom_buttons))
 		return collection
 	}
 

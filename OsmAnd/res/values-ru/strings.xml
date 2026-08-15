@@ -4498,6 +4498,7 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
 <b>🥾 Режим «Поход»</b><br/>
 Оставляет запас хода, GPS и телеметрию раз в 5 с, замедляет опрос BLE не реже 5 с, отключает тяжёлые слои карты, 3D, погоду, онлайн-тайлы и лишние Bluetooth-плагины.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Список изменений</b> · %1$s<br/>
+• Автокалибровка скорости и пробега контроллера по GPS, коэффициент можно править вручную<br/>
 • Запись: Пауза / Стоп+Продолжить; Стоп сохраняет трек; автовосстановление после вылета или перезапуска; старт и сохранение только вручную<br/>
 • В экспорте логов — размер, длительность, расстояние и удаление<br/>
 • Заряд озвучивается по шагу напряжения пакета, не по процентам SOC<br/>
@@ -4669,6 +4670,19 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
     <string name="ev_bms_log_meta">%1$s · %2$s · %3$s</string>
     <string name="ev_bms_log_in_use">Сначала остановите запись, чтобы удалить этот лог</string>
     <string name="ev_bms_delete_log">Удалить %1$s?</string>
+    <string name="ev_bms_calibration">Калибровка скорости и пробега</string>
+    <string name="ev_bms_cal_distance">Расстояние автокалибровки</string>
+    <string name="ev_bms_cal_factor">Калибровочный коэффициент</string>
+    <string name="ev_bms_cal_factor_desc">Расстояние по GPS, делённое на пробег контроллера. 1.000 — без поправки.</string>
+    <string name="ev_bms_calibrate">Калибровка</string>
+    <string name="ev_bms_calibrate_stop">Стоп калибровки</string>
+    <string name="ev_bms_cal_start">Запуск автокалибровки</string>
+    <string name="ev_bms_cal_progress">Калибровка: %1$s / %2$s GPS</string>
+    <string name="ev_bms_cal_done">Калибровка сохранена: коэффициент %1$.3f</string>
+    <string name="ev_bms_cal_failed">Калибровка не удалась. Нужны GPS и связь с контроллером.</string>
+    <string name="ev_bms_cal_started">Автокалибровка начата. Проедьте %1$s при устойчивом GPS.</string>
+    <string name="ev_bms_cal_cancelled">Автокалибровка отменена</string>
+    <string name="ev_bms_cal_factor_invalid">Введите коэффициент от 0.500 до 2.000</string>
     <string name="map_rendering_engine_v2_unavailable">Версия 2 (OpenGL) в этой сборке не входит. Nightly собран с движком Version 1 (legacy). Чтобы включить OpenGL, нужна сборка flavor opengl, а не legacy.</string>
     <string name="unknown_bt_device">Неизвестное устройство</string>
     <string name="obd_vin">VIN</string>

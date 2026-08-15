@@ -45,6 +45,28 @@
 		android:title="@string/ev_bms_widget_hike" />
 
 	<PreferenceCategory
+		android:key="ev_bms_calibration"
+		android:layout="@layout/preference_category_with_descr"
+		android:title="@string/ev_bms_calibration" />
+
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="ev_bms_speed_cal_distance_m"
+		android:layout="@layout/preference_with_descr"
+		android:title="@string/ev_bms_cal_distance" />
+
+	<net.osmand.plus.settings.preferences.EditTextPreferenceEx
+		android:key="ev_bms_speed_cal_factor"
+		android:layout="@layout/preference_with_descr"
+		android:persistent="false"
+		android:title="@string/ev_bms_cal_factor" />
+
+	<Preference
+		android:key="ev_bms_cal_start"
+		android:layout="@layout/preference_with_descr"
+		android:persistent="false"
+		android:title="@string/ev_bms_cal_start" />
+
+	<PreferenceCategory
 		android:key="ev_bms_recording"
 		android:layout="@layout/preference_category_with_descr"
 		android:title="@string/ev_bms_recording" />

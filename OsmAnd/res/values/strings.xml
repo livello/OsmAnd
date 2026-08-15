@@ -998,6 +998,7 @@ Tables in plugin settings: charge sessions (time, start/end battery temperature,
 <b>🥾 Hike mode</b><br/>
 Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+• Auto-calibrate controller speed and distance against a GPS ride, with an editable factor<br/>
 • Recording: Pause / Stop+Resume; Stop saves the track; auto-restore after crash or reboot; start and save are manual<br/>
 • Export logs shows size, duration and distance, with delete<br/>
 • Battery charge is announced on pack voltage steps, not SOC percent<br/>
@@ -1169,6 +1170,19 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_log_meta">%1$s · %2$s · %3$s</string>
     <string name="ev_bms_log_in_use">Stop recording before deleting this log</string>
     <string name="ev_bms_delete_log">Delete %1$s?</string>
+    <string name="ev_bms_calibration">Speed and distance calibration</string>
+    <string name="ev_bms_cal_distance">Auto-calibration distance</string>
+    <string name="ev_bms_cal_factor">Calibration factor</string>
+    <string name="ev_bms_cal_factor_desc">GPS distance divided by controller distance. 1.000 means no correction.</string>
+    <string name="ev_bms_calibrate">Calibrate</string>
+    <string name="ev_bms_calibrate_stop">Stop calibration</string>
+    <string name="ev_bms_cal_start">Start auto-calibration</string>
+    <string name="ev_bms_cal_progress">Calibration: %1$s / %2$s GPS</string>
+    <string name="ev_bms_cal_done">Calibration saved: factor %1$.3f</string>
+    <string name="ev_bms_cal_failed">Calibration failed. Ride with GPS and a connected controller.</string>
+    <string name="ev_bms_cal_started">Auto-calibration started. Ride %1$s with a clear GPS signal.</string>
+    <string name="ev_bms_cal_cancelled">Auto-calibration cancelled</string>
+    <string name="ev_bms_cal_factor_invalid">Enter a factor between 0.500 and 2.000</string>
     <string name="map_rendering_engine_v2_unavailable">Version 2 (OpenGL) is not included in this APK. This Nightly build uses the legacy renderer. Rebuild with the OpenGL flavor to enable it.</string>
     <string name="background_opacity">Background opacity</string>
     <string name="corner_radius">Corner radius</string>
