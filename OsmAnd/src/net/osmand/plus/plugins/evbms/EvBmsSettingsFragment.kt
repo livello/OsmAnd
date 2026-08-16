@@ -155,6 +155,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		setupControllerProtocol()
 		setupSwitch(plugin.HIKE_MODE.id)
 		setupSpeedProfile()
+		setupHudLimits()
 		setupCalDistance()
 		setupCalFactor()
 		setupCalAction()
@@ -228,6 +229,11 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		decorate(plugin.SPEED_PROFILE_KMH.id, "🎚️", R.drawable.ic_action_speed)
 		decorate(plugin.SPEED_PROFILE_SLOW.id, "🐢", R.drawable.ic_action_map_style)
 		decorate(plugin.SPEED_PROFILE_FAST.id, "🏁", R.drawable.ic_action_map_style)
+		decorate(plugin.HUD_SHOW_KMH.id, "👁️", R.drawable.ic_action_speed)
+		decorate(plugin.HUD_LIMIT1_KMH.id, "🟢", R.drawable.ic_action_speed)
+		decorate(plugin.HUD_BUFFER1_KMH.id, "🟡", R.drawable.ic_action_speed)
+		decorate(plugin.HUD_LIMIT2_KMH.id, "🟠", R.drawable.ic_action_speed)
+		decorate(plugin.HUD_BUFFER2_KMH.id, "🔴", R.drawable.ic_action_speed)
 		decorate(plugin.SPEED_CAL_DISTANCE_M.id, "📏", R.drawable.ic_action_distance)
 		decorate(plugin.SPEED_CAL_FACTOR.id, "✖️", R.drawable.ic_action_speed)
 		decorate("ev_bms_cal_start", "▶️", R.drawable.ic_action_play_dark)
@@ -477,6 +483,43 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		pref.setEntries(names.toTypedArray())
 		pref.setEntryValues(keys.toTypedArray())
 		pref.setValue(selectedKey ?: "")
+	}
+
+	private fun setupHudLimits() {
+		setupHudKmh(
+			plugin.HUD_SHOW_KMH.id,
+			plugin.HUD_SHOW_KMH.get(),
+			R.string.ev_bms_hud_show_desc
+		)
+		setupHudKmh(
+			plugin.HUD_LIMIT1_KMH.id,
+			plugin.HUD_LIMIT1_KMH.get(),
+			R.string.ev_bms_hud_limit1_desc
+		)
+		setupHudKmh(
+			plugin.HUD_BUFFER1_KMH.id,
+			plugin.HUD_BUFFER1_KMH.get(),
+			R.string.ev_bms_hud_buffer1_desc
+		)
+		setupHudKmh(
+			plugin.HUD_LIMIT2_KMH.id,
+			plugin.HUD_LIMIT2_KMH.get(),
+			R.string.ev_bms_hud_limit2_desc
+		)
+		setupHudKmh(
+			plugin.HUD_BUFFER2_KMH.id,
+			plugin.HUD_BUFFER2_KMH.get(),
+			R.string.ev_bms_hud_buffer2_desc
+		)
+	}
+
+	private fun setupHudKmh(prefId: String, value: Int, descId: Int) {
+		val pref = findPreference<ListPreferenceEx>(prefId) ?: return
+		val kmh = arrayOf(20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 80, 90)
+		pref.setEntries(kmh.map { getString(R.string.ev_bms_n_kmh, it) }.toTypedArray())
+		pref.setEntryValues(kmh.map { it as Any }.toTypedArray())
+		pref.setValue(value)
+		pref.setDescription(descId)
 	}
 
 	private fun setupCalDistance() {
@@ -898,6 +941,14 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			prefId == plugin.SPEED_PROFILE_FAST.id
 		) {
 			setupSpeedProfile()
+		}
+		if (prefId == plugin.HUD_SHOW_KMH.id ||
+			prefId == plugin.HUD_LIMIT1_KMH.id ||
+			prefId == plugin.HUD_BUFFER1_KMH.id ||
+			prefId == plugin.HUD_LIMIT2_KMH.id ||
+			prefId == plugin.HUD_BUFFER2_KMH.id
+		) {
+			setupHudLimits()
 		}
 	}
 

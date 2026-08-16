@@ -974,7 +974,7 @@ You will be able to pair this scanner again at any time.</string>
 • 🔌 Distance on charge — starts with motion while telemetry recording is on, resets when a real charge begins.<br/>
 • ⏳ Charge: time to full, elapsed time, watt-hours into the pack.<br/>
 • 🛵 Controller trip, motor power, motor temperature, controller / MOSFET temperature.<br/>
-• 🏍️ Speedometer — Nissan Leaf-style full-width HUD with calibrated controller speed (integer km/h). Put it on the fast map profile; it uses the full width and about 80 percent of the screen height.<br/>
+• 🏍️ Speedometer — full-screen transparent arc HUD over the map. Hidden below a speed threshold; above it color and thickness encode city limits so speed can be read with peripheral vision. Put the widget on a map profile from Configure screen → EV-Telemetry.<br/>
 • 🗺️ Auto-switch OsmAnd map profiles at a speedometer threshold: slow profile keeps the map readable, fast profile shows the speedometer.<br/>
 • 🥾 Hike — lightens the map and slows BLE polling to 5 s; telemetry keeps writing.<br/><br/>
 <b>⏱️ Polling</b><br/>
@@ -1017,6 +1017,7 @@ Optional DEBUG log of plugin and BLE actions. Controller RX hex is limited to on
 <b>🥾 Hike mode</b><br/>
 Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+• 🏍️ Full-screen anti-speeding HUD: transparent circular arc over the map, hidden below a speed threshold; color and thickness encode city limits and gray zones<br/>
 • 🏍️ Nissan Leaf-style speedometer widget: full width, ~80% height, calibrated controller speed as a huge integer<br/>
 • 🗺️ Auto-switch slow/fast OsmAnd map profiles at a configurable speedometer threshold<br/>
 • 🔋 Telemetry fields: charge used (Ah), strong cell, imbalance between strong and weak cells; trip history stores used Ah<br/>
@@ -1259,8 +1260,8 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_widget_controller_temp_desc">MOSFET / controller temperature</string>
     <string name="ev_bms_widget_hike">Hike</string>
     <string name="ev_bms_widget_hike_desc">Turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins. Keeps BMS range, GPS and telemetry every 5 s with a slower BLE poll.</string>
-    <string name="ev_bms_widget_speedometer">Speedometer</string>
-    <string name="ev_bms_widget_speedometer_desc">Nissan Leaf-style HUD: calibrated controller speed as a huge integer, full screen width and about 80 percent of the height. Falls back to GPS if the controller is silent.</string>
+    <string name="ev_bms_widget_speedometer">Speedometer HUD</string>
+    <string name="ev_bms_widget_speedometer_desc">Full-screen transparent arc over the map. Hidden below a speed threshold; above it a high-contrast circular gauge uses color and thickness so you can read speed with peripheral vision. Uses calibrated controller speed, GPS as fallback. City limits and gray zones are in EV-Telemetry settings.</string>
     <string name="ev_bms_speedometer_gps">GPS</string>
     <string name="ev_bms_speed_profile">Map profiles by speed</string>
     <string name="ev_bms_speed_profile_auto">Auto-switch map profiles</string>
@@ -1269,6 +1270,17 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_speed_profile_kmh_desc">Calibrated controller speed that switches to the fast map profile. Drops a few km/h below this value before returning to the slow profile.</string>
     <string name="ev_bms_speed_profile_slow">Slow map profile</string>
     <string name="ev_bms_speed_profile_fast">Fast map profile</string>
+    <string name="ev_bms_hud">Anti-speeding HUD</string>
+    <string name="ev_bms_hud_show">Show HUD above</string>
+    <string name="ev_bms_hud_show_desc">Arc overlay stays hidden below this speed so the map stays clean. Hides again a few km/h below the threshold.</string>
+    <string name="ev_bms_hud_limit1">Green until (limit 1)</string>
+    <string name="ev_bms_hud_limit1_desc">City limit. Green arc below this speed.</string>
+    <string name="ev_bms_hud_buffer1">Yellow until (gray zone 1)</string>
+    <string name="ev_bms_hud_buffer1_desc">Warning yellow between limit 1 and this buffer.</string>
+    <string name="ev_bms_hud_limit2">Orange until (limit 2)</string>
+    <string name="ev_bms_hud_limit2_desc">Solid orange between the first buffer and this second limit.</string>
+    <string name="ev_bms_hud_buffer2">Stripe / red above (gray zone 2)</string>
+    <string name="ev_bms_hud_buffer2_desc">Striped orange up to this speed, then flashing neon red.</string>
     <string name="ev_bms_hike_on">Hike mode on</string>
     <string name="ev_bms_hike_off">Hike mode off</string>
     <string name="ev_bms_protocol">BMS protocol</string>

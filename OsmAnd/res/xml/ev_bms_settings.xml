@@ -79,6 +79,36 @@
 		android:title="@string/ev_bms_speed_profile_fast" />
 
 	<PreferenceCategory
+		android:key="ev_bms_hud"
+		android:layout="@layout/ev_bms_preference_category_divider"
+		android:title="@string/ev_bms_hud" />
+
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="ev_bms_hud_show_kmh"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:title="@string/ev_bms_hud_show" />
+
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="ev_bms_hud_limit1_kmh"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:title="@string/ev_bms_hud_limit1" />
+
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="ev_bms_hud_buffer1_kmh"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:title="@string/ev_bms_hud_buffer1" />
+
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="ev_bms_hud_limit2_kmh"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:title="@string/ev_bms_hud_limit2" />
+
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="ev_bms_hud_buffer2_kmh"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:title="@string/ev_bms_hud_buffer2" />
+
+	<PreferenceCategory
 		android:key="ev_bms_calibration"
 		android:layout="@layout/ev_bms_preference_category_divider"
 		android:title="@string/ev_bms_calibration" />

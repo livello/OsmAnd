@@ -86,6 +86,11 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		const val DEFAULT_RESERVE_SMALL_KM = 5
 		const val DEFAULT_RESERVE_LOW_KM = 15
 		const val DEFAULT_SPEED_PROFILE_KMH = 25
+		const val DEFAULT_HUD_SHOW_KMH = 40
+		const val DEFAULT_HUD_LIMIT1_KMH = 40
+		const val DEFAULT_HUD_BUFFER1_KMH = 50
+		const val DEFAULT_HUD_LIMIT2_KMH = 60
+		const val DEFAULT_HUD_BUFFER2_KMH = 70
 		private const val SPEED_PROFILE_HYSTERESIS_KMH = 3.0
 		private const val SPEED_PROFILE_HOLD_MS = 2000L
 		private const val HISTORY_SAMPLE_MIN_MS = 2000L
@@ -216,6 +221,16 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerStringPreference("ev_bms_speed_profile_slow", "").makeGlobal().makeShared()
 	val SPEED_PROFILE_FAST: CommonPreference<String> =
 		registerStringPreference("ev_bms_speed_profile_fast", "").makeGlobal().makeShared()
+	val HUD_SHOW_KMH: CommonPreference<Int> =
+		registerIntPreference("ev_bms_hud_show_kmh", DEFAULT_HUD_SHOW_KMH).makeGlobal().makeShared()
+	val HUD_LIMIT1_KMH: CommonPreference<Int> =
+		registerIntPreference("ev_bms_hud_limit1_kmh", DEFAULT_HUD_LIMIT1_KMH).makeGlobal().makeShared()
+	val HUD_BUFFER1_KMH: CommonPreference<Int> =
+		registerIntPreference("ev_bms_hud_buffer1_kmh", DEFAULT_HUD_BUFFER1_KMH).makeGlobal().makeShared()
+	val HUD_LIMIT2_KMH: CommonPreference<Int> =
+		registerIntPreference("ev_bms_hud_limit2_kmh", DEFAULT_HUD_LIMIT2_KMH).makeGlobal().makeShared()
+	val HUD_BUFFER2_KMH: CommonPreference<Int> =
+		registerIntPreference("ev_bms_hud_buffer2_kmh", DEFAULT_HUD_BUFFER2_KMH).makeGlobal().makeShared()
 	val VEHICLE_MASS_KG: CommonPreference<Float> =
 		registerFloatPreference("ev_bms_vehicle_mass_kg", DEFAULT_VEHICLE_MASS_KG).makeGlobal().makeShared()
 	val DRIVER_MASS_KG: CommonPreference<Float> =
@@ -2478,6 +2493,20 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			return SpeedometerReading(gps, false)
 		}
 		return null
+	}
+
+	fun speedometerHudZone(speedKmh: Double): EvSpeedometerHudView.Zone {
+		val l1 = HUD_LIMIT1_KMH.get()
+		val b1 = HUD_BUFFER1_KMH.get().coerceAtLeast(l1)
+		val l2 = HUD_LIMIT2_KMH.get().coerceAtLeast(b1)
+		val b2 = HUD_BUFFER2_KMH.get().coerceAtLeast(l2)
+		return when {
+			speedKmh < l1 -> EvSpeedometerHudView.Zone.GREEN
+			speedKmh < b1 -> EvSpeedometerHudView.Zone.YELLOW
+			speedKmh < l2 -> EvSpeedometerHudView.Zone.ORANGE
+			speedKmh < b2 -> EvSpeedometerHudView.Zone.STRIPE
+			else -> EvSpeedometerHudView.Zone.RED
+		}
 	}
 
 	private fun tickSpeedProfileSwitch() {
