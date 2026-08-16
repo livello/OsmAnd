@@ -95,6 +95,7 @@ class EvBleUartClient(
 		private const val CONNECT_TIMEOUT_MS = 8_000L
 		private const val AUTOCONNECT_TIMEOUT_MS = 25_000L
 		private const val RECONNECT_SCAN_MS = 5_000L
+		private const val CTRL_RX_LOG_MS = 1_000L
 
 		fun matchesAntName(name: String?): Boolean {
 			if (name.isNullOrBlank()) {
@@ -174,6 +175,8 @@ class EvBleUartClient(
 	@Volatile
 	var rxPackets: Long = 0
 		private set
+	private var lastRxLogMs = 0L
+	private var rxLogSkipped = 0
 
 	data class LinkStats(val rssiDbm: Int?, val txPackets: Long, val rxPackets: Long)
 
@@ -509,11 +512,28 @@ class EvBleUartClient(
 		}
 
 		private fun deliverRx(value: ByteArray) {
-			if (value.isNotEmpty()) {
-				rxPackets++
-				jd("RX ${value.size}B ${EvDebugJournal.hex(value)}")
-				listener.onBytes(role, value)
+			if (value.isEmpty()) {
+				return
 			}
+			rxPackets++
+			logRx(value)
+			listener.onBytes(role, value)
+		}
+
+		private fun logRx(value: ByteArray) {
+			if (role != Role.CONTROLLER) {
+				jd("RX ${value.size}B ${EvDebugJournal.hex(value)}")
+				return
+			}
+			val now = System.currentTimeMillis()
+			if (lastRxLogMs != 0L && now - lastRxLogMs < CTRL_RX_LOG_MS) {
+				rxLogSkipped++
+				return
+			}
+			val extra = if (rxLogSkipped > 0) " (+$rxLogSkipped skipped)" else ""
+			jd("RX ${value.size}B ${EvDebugJournal.hex(value)}$extra")
+			lastRxLogMs = now
+			rxLogSkipped = 0
 		}
 
 		override fun onReadRemoteRssi(gatt: BluetoothGatt, rssi: Int, status: Int) {

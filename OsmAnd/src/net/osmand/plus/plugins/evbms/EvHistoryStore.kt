@@ -20,7 +20,7 @@ class EvHistoryStore(private val app: OsmandApplication) {
 		private const val CHARGE_HEADER =
 			"start_time;end_time;duration_min;start_temp_c;end_temp_c;charged_ah;avg_current_a;start_lat;start_lon;end_lat;end_lon"
 		private const val TRIP_HEADER =
-			"start_time;end_time;date;duration_min;moving_min;stop_min;distance_km;energy_wh;wh_per_km;avg_moving_kmh;start_voltage_v;end_voltage_v;min_cell_v;start_temp_c;end_temp_c;start_lat;start_lon;end_lat;end_lon"
+			"start_time;end_time;date;duration_min;moving_min;stop_min;distance_km;energy_wh;used_ah;wh_per_km;avg_moving_kmh;start_voltage_v;end_voltage_v;min_cell_v;start_temp_c;end_temp_c;start_lat;start_lon;end_lat;end_lon"
 	}
 
 	data class ChargeRecord(
@@ -91,6 +91,7 @@ class EvHistoryStore(private val app: OsmandApplication) {
 		val distanceKm: Double?,
 		val movingMs: Long,
 		val energyWh: Double? = null,
+		val usedAh: Double? = null,
 		val specificWhKm: Double? = null,
 		val avgMovingKmh: Double? = null,
 		val stopMs: Long? = null,
@@ -115,6 +116,7 @@ class EvHistoryStore(private val app: OsmandApplication) {
 				.putOpt("distanceKm", distanceKm)
 				.put("movingMs", movingMs)
 				.putOpt("energyWh", energyWh)
+				.putOpt("usedAh", usedAh)
 				.putOpt("specificWhKm", specificWhKm)
 				.putOpt("avgMovingKmh", avgMovingKmh)
 				.putOpt("stopMs", stopMs)
@@ -139,6 +141,7 @@ class EvHistoryStore(private val app: OsmandApplication) {
 					distanceKm = json.optNullableDouble("distanceKm"),
 					movingMs = json.optLong("movingMs"),
 					energyWh = json.optNullableDouble("energyWh"),
+					usedAh = json.optNullableDouble("usedAh"),
 					specificWhKm = json.optNullableDouble("specificWhKm"),
 					avgMovingKmh = json.optNullableDouble("avgMovingKmh"),
 					stopMs = if (json.has("stopMs") && !json.isNull("stopMs")) json.optLong("stopMs") else null,
@@ -200,6 +203,7 @@ class EvHistoryStore(private val app: OsmandApplication) {
 				n(row.stopMs?.div(60000.0), "%.1f"),
 				n(row.distanceKm, "%.3f"),
 				n(row.energyWh, "%.1f"),
+				n(row.usedAh, "%.3f"),
 				n(row.specificWhKm, "%.1f"),
 				n(row.avgMovingKmh, "%.1f"),
 				n(row.startVoltageV, "%.2f"),

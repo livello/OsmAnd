@@ -19,6 +19,8 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 	BMS_TEMP("bms_temp_c", R.string.ev_bms_widget_battery_temp, R.string.ev_bms_field_group_battery, "🌡️"),
 	CYCLES("cycles", R.string.ev_bms_field_cycles, R.string.ev_bms_field_group_battery, "🔁"),
 	MIN_CELL("min_cell_v", R.string.ev_bms_field_min_cell, R.string.ev_bms_field_group_battery, "🔻"),
+	MAX_CELL("max_cell_v", R.string.ev_bms_field_max_cell, R.string.ev_bms_field_group_battery, "🔺"),
+	CELL_IMBALANCE("cell_imbalance_v", R.string.ev_bms_field_cell_imbalance, R.string.ev_bms_field_group_battery, "⚖️"),
 	RANGE("range_km", R.string.ev_bms_field_range, R.string.ev_bms_field_group_battery, "📏"),
 	CTRL_VOLTAGE("controller_voltage_v", R.string.ev_bms_field_ctrl_voltage, R.string.ev_bms_field_group_controller, "⚡"),
 	CTRL_CURRENT("controller_current_a", R.string.ev_bms_field_ctrl_current, R.string.ev_bms_field_group_controller, "🔌"),
@@ -31,6 +33,7 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 	FAR_TRIP("controller_trip_km", R.string.ev_bms_widget_far_trip, R.string.ev_bms_field_group_controller, "🛵"),
 	CTRL_SPEED("controller_speed_kmh", R.string.ev_bms_field_ctrl_speed, R.string.ev_bms_field_group_controller, "🚀"),
 	CONSUMPTION("consumption_wh_km", R.string.ev_bms_widget_consumption, R.string.ev_bms_field_group_ride, "📊"),
+	USED_AH("used_ah", R.string.ev_bms_field_used_ah, R.string.ev_bms_field_group_ride, "🔋"),
 	COVERAGE("coverage_wh_km", R.string.ev_bms_field_coverage, R.string.ev_bms_field_group_ride, "📊"),
 	CHARGE_TRIP("charge_trip_km", R.string.ev_bms_widget_charge_trip, R.string.ev_bms_field_group_ride, "🔌"),
 	RANGE_RESERVE("range_reserve_km", R.string.ev_bms_widget_range_reserve, R.string.ev_bms_field_group_ride, "🛣️"),
@@ -50,6 +53,8 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 			BMS_TEMP -> n(sample.bmsTempC, "%.1f")
 			CYCLES -> sample.cycles?.toString().orEmpty()
 			MIN_CELL -> n(sample.minCellVoltageV, "%.3f")
+			MAX_CELL -> n(sample.maxCellVoltageV, "%.3f")
+			CELL_IMBALANCE -> n(sample.cellImbalanceV, "%.4f")
 			CTRL_VOLTAGE -> n(sample.controllerVoltageV, "%.2f")
 			CTRL_CURRENT -> n(sample.controllerCurrentA, "%.2f")
 			POWER -> n(sample.controllerPowerW, "%.0f")
@@ -59,6 +64,7 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 			CTRL_TEMP -> n(sample.controllerTempC, "%.1f")
 			RANGE -> n(sample.remainingRangeKm, "%.2f")
 			CONSUMPTION -> n(sample.energyWh, "%.1f")
+			USED_AH -> n(sample.usedAh, "%.3f")
 			COVERAGE -> n(sample.consumptionWhPerKm ?: sample.coverageWhPerKm, "%.1f")
 			ODOMETER -> n(sample.farOdometerKm, "%.3f")
 			FAR_TRIP -> n(sample.farTripKm, "%.3f")
@@ -87,6 +93,10 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 			BMS_TEMP -> unit(sample.bmsTempC, "%.1f", "°C", empty)
 			CYCLES -> sample.cycles?.toString() ?: empty
 			MIN_CELL -> unit(sample.minCellVoltageV, "%.3f", "V", empty)
+			MAX_CELL -> unit(sample.maxCellVoltageV, "%.3f", "V", empty)
+			CELL_IMBALANCE -> sample.cellImbalanceV?.let {
+				String.format(Locale.US, "%.0f mV", it * 1000.0)
+			} ?: empty
 			CTRL_VOLTAGE -> unit(sample.controllerVoltageV, "%.2f", "V", empty)
 			CTRL_CURRENT -> unit(sample.controllerCurrentA, "%.2f", "A", empty)
 			POWER -> unit(sample.controllerPowerW, "%.0f", "W", empty)
@@ -96,6 +106,7 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 			CTRL_TEMP -> unit(sample.controllerTempC, "%.1f", "°C", empty)
 			RANGE -> unit(sample.remainingRangeKm, "%.1f", "km", empty)
 			CONSUMPTION -> unit(sample.energyWh, "%.0f", "Wh", empty)
+			USED_AH -> unit(sample.usedAh, "%.2f", "Ah", empty)
 			COVERAGE -> unit(sample.consumptionWhPerKm ?: sample.coverageWhPerKm, "%.0f", "Wh/km", empty)
 			ODOMETER -> unit(sample.farOdometerKm, "%.2f", "km", empty)
 			FAR_TRIP -> unit(sample.farTripKm, "%.2f", "km", empty)
@@ -131,6 +142,8 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 			BMS_TEMP -> sample.bmsTempC
 			CYCLES -> sample.cycles?.toDouble()
 			MIN_CELL -> sample.minCellVoltageV
+			MAX_CELL -> sample.maxCellVoltageV
+			CELL_IMBALANCE -> sample.cellImbalanceV?.times(1000.0)
 			RANGE -> sample.remainingRangeKm
 			CTRL_VOLTAGE -> sample.controllerVoltageV
 			CTRL_CURRENT -> sample.controllerCurrentA
@@ -143,6 +156,7 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 			FAR_TRIP -> sample.farTripKm
 			CTRL_SPEED -> sample.farSpeedKmh
 			CONSUMPTION -> sample.energyWh
+			USED_AH -> sample.usedAh
 			COVERAGE -> sample.consumptionWhPerKm ?: sample.coverageWhPerKm
 			CHARGE_TRIP -> sample.chargeTripKm
 			RANGE_RESERVE -> sample.rangeReserveKm

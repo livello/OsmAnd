@@ -33,6 +33,7 @@ class RangeEstimator(
 
 	private var tripDistanceKm = 0.0
 	private var tripWh = 0.0
+	private var tripAh = 0.0
 	private var lastTripAh: Double? = null
 
 	@Volatile
@@ -93,6 +94,7 @@ class RangeEstimator(
 		if (prevAh != null && remainingAh - prevAh > 1.0) {
 			tripDistanceKm = 0.0
 			tripWh = 0.0
+			tripAh = 0.0
 			segmentWhPerKm.clear()
 		}
 		lastTripAh = remainingAh
@@ -128,9 +130,13 @@ class RangeEstimator(
 	fun tripEnergyWh(): Double? = tripWh.takeIf { it > 0.01 }
 
 	@Synchronized
+	fun tripUsedAh(): Double? = tripAh.takeIf { it > 0.001 }
+
+	@Synchronized
 	fun markTripBoundary() {
 		tripDistanceKm = 0.0
 		tripWh = 0.0
+		tripAh = 0.0
 		lastTripAh = null
 	}
 
@@ -140,6 +146,7 @@ class RangeEstimator(
 		segmentWhPerKm.clear()
 		tripDistanceKm = 0.0
 		tripWh = 0.0
+		tripAh = 0.0
 		lastTripAh = null
 		remainingRangeKm = null
 		consumptionAhPerKm = null
@@ -164,6 +171,7 @@ class RangeEstimator(
 			dWh *= REGEN_EFFICIENCY
 		}
 		tripDistanceKm += dKm
+		tripAh = (tripAh + dAh).coerceAtLeast(0.0)
 		if (useRouteProfile || dWh > 0) {
 			tripWh += dWh
 		}

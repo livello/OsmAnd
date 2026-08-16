@@ -291,6 +291,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private val socCalibrator = SocCalibrator()
 	private var calibratedSocPercent: Int? = null
 	private var tripStartMs = 0L
+	private var tripStartRemainingAh: Double? = null
 	private var tripStartVoltageV: Double? = null
 	private var tripStartTempC: Double? = null
 	private var tripStartLat: Double? = null
@@ -571,6 +572,17 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		return minOf(raw, odoKm * excess)
 	}
 
+	private fun tripUsedAh(remainingAh: Double?): Double? {
+		if (charging || tripStartMs <= 0L) {
+			return null
+		}
+		val start = tripStartRemainingAh
+		if (start != null && remainingAh != null) {
+			return (start - remainingAh).coerceAtLeast(0.0)
+		}
+		return rangeEstimator.tripUsedAh()
+	}
+
 	private fun isVehicleMoving(): Boolean {
 		val limit = CHARGE_STILL_KMH.get().toDouble()
 		val ctrl = ctrlSpeedKmh()
@@ -806,6 +818,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 
 	private fun startTripSession(now: Long, loc: Location?) {
 		tripStartMs = now
+		tripStartRemainingAh = lastBms?.remainingMah?.div(1000.0)
 		tripStartVoltageV = lastBms?.voltageV ?: ctrlVoltageV()
 		tripStartTempC = batteryAnnounceTempC()
 		tripStartMotorTempC = ctrlMotorTempC()
@@ -855,6 +868,9 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		if (minCellV != null) {
 			tripMinCellV = minOf(tripMinCellV ?: minCellV, minCellV)
 		}
+		if (tripStartRemainingAh == null) {
+			tripStartRemainingAh = lastBms?.remainingMah?.div(1000.0)
+		}
 		val motor = ctrlMotorTempC()
 		if (motor != null) {
 			tripLastMotorTempC = motor
@@ -880,6 +896,12 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			null
 		}
 		val stopMs = (now - start - tripMovingMs).coerceAtLeast(0L)
+		val endAh = lastBms?.remainingMah?.div(1000.0)
+		val usedAh = when {
+			tripStartRemainingAh != null && endAh != null ->
+				(tripStartRemainingAh!! - endAh).coerceAtLeast(0.0)
+			else -> rangeEstimator.tripUsedAh()
+		}
 		val record = EvHistoryStore.ChargeTripRecord(
 			startMs = start,
 			endMs = now,
@@ -893,6 +915,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			distanceKm = distanceKm,
 			movingMs = tripMovingMs,
 			energyWh = energyWh,
+			usedAh = usedAh,
 			specificWhKm = specificWhKm,
 			avgMovingKmh = avgMovingKmh,
 			stopMs = stopMs,
@@ -911,6 +934,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		}
 		TRIP_SESSION.set("")
 		tripStartMs = 0L
+		tripStartRemainingAh = null
 		tripMovingMs = 0L
 		tripLastMoveMs = 0L
 		tripStartMotorTempC = null
@@ -993,6 +1017,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		}
 		val json = JSONObject()
 		json.put("startMs", tripStartMs)
+		json.putD("startAh", tripStartRemainingAh)
 		json.putD("startVoltageV", tripStartVoltageV)
 		json.putD("startTempC", tripStartTempC)
 		json.putD("startLat", tripStartLat)
@@ -1040,6 +1065,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			try {
 				val json = JSONObject(tripRaw)
 				tripStartMs = json.optLong("startMs")
+				tripStartRemainingAh = json.optNullableDouble("startAh")
 				tripStartVoltageV = json.optNullableDouble("startVoltageV")
 				tripStartTempC = json.optNullableDouble("startTempC")
 				tripStartLat = json.optNullableDouble("startLat")
@@ -1293,6 +1319,9 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		}
 		if (row.energyWh != null) {
 			parts.add(String.format(Locale.US, "%.0f Wh", row.energyWh))
+		}
+		if (row.usedAh != null) {
+			parts.add(String.format(Locale.US, "%.2f Ah", row.usedAh))
 		}
 		if (row.specificWhKm != null) {
 			parts.add(String.format(Locale.US, "%.0f Wh/km", row.specificWhKm))
@@ -2163,6 +2192,12 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		if (liveMinCell != null && liveMinCell > 0) {
 			minCellVoltageV = liveMinCell
 		}
+		val liveMaxCell = lastCells?.maxOrNull()?.takeIf { it > 0 }
+		val imbalanceV = if (liveMinCell != null && liveMaxCell != null && lastCells.orEmpty().size >= 2) {
+			(liveMaxCell - liveMinCell).coerceAtLeast(0.0)
+		} else {
+			null
+		}
 		val packCurrentA = when {
 			bmsFresh && bms?.currentA != null && kotlin.math.abs(bms.currentA) >= 0.2 -> bms.currentA
 			ctrlFresh -> ctrlCurrentA()
@@ -2222,6 +2257,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			bmsTempC = batteryAnnounceTempC(),
 			cycles = bms?.cycles,
 			minCellVoltageV = minCellVoltageV,
+			maxCellVoltageV = liveMaxCell,
+			cellImbalanceV = imbalanceV,
 			controllerVoltageV = ctrlVoltageV(),
 			controllerCurrentA = ctrlCurrentA(),
 			controllerPowerW = ctrlPowerW(),
@@ -2232,6 +2269,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			remainingRangeKm = rangeEstimator.remainingRangeKm,
 			consumptionAhPerKm = rangeEstimator.consumptionAhPerKm,
 			energyWh = rangeEstimator.tripEnergyWh(),
+			usedAh = tripUsedAh(remainingAh),
 			consumptionWhPerKm = rangeEstimator.consumptionWhPerKm,
 			coverageWhPerKm = rangeEstimator.coverageWhPerKm,
 			weakCellFactor = rangeEstimator.weakCellFactor,

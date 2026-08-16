@@ -997,6 +997,8 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 				buf.append(getString(R.string.ev_bms_history_distance, n(row.distanceKm))).append('\n')
 				buf.append(getString(R.string.ev_bms_history_ride, fmtDuration(row.movingMs), fmtDuration(row.durationMs()))).append('\n')
 				buf.append(getString(R.string.ev_bms_history_voltage, n(row.startVoltageV), n(row.endVoltageV))).append('\n')
+				buf.append(getString(R.string.ev_bms_history_used_ah, n(row.usedAh))).append('\n')
+				buf.append(getString(R.string.ev_bms_history_energy_wh, n(row.energyWh))).append('\n')
 				buf.append(getString(R.string.ev_bms_history_min_cell, n(row.minCellV))).append('\n')
 				buf.append(getString(R.string.ev_bms_history_temp, n(row.startTempC), n(row.endTempC))).append("\n\n")
 			}

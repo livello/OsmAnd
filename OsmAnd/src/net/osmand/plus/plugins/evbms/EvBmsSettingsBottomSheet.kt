@@ -617,6 +617,7 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 				)
 				append('\n')
 				append("📊 ").append(getString(R.string.ev_bms_history_energy_wh, bNum(n0(row.energyWh))))
+				append(" · 🔋 ").append(getString(R.string.ev_bms_history_used_ah, bNum(n(row.usedAh))))
 				append(" · 📈 ").append(getString(R.string.ev_bms_history_specific_whkm, bNum(n0(row.specificWhKm))))
 				append('\n')
 				append("🚀 ").append(getString(R.string.ev_bms_history_avg_speed, bNum(n(row.avgMovingKmh))))

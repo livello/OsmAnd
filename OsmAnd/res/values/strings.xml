@@ -969,7 +969,7 @@ You will be able to pair this scanner again at any time.</string>
 • After a drop, both BLE links retry on their own (backoff, scan-then-connect). A live BMS GATT is not torn down just because UART telemetry is silent.<br/><br/>
 <b>📊 Widgets</b><br/>
 • 🔋 SOC (auto-calibrated from min cell voltage per BMS MAC), pack voltage, pack current, min cell, battery temperature.<br/>
-• 📏 Remaining range and ⚡ consumption (Wh/km, 5-minute window).<br/>
+• 📏 Remaining range, 📊 total consumption (Wh) and specific consumption (Wh/km).<br/>
 • 🛣️ Range reserve — remaining range minus remaining route. Positive means extra kilometers.<br/>
 • 🔌 Distance on charge — starts with motion while telemetry recording is on, resets when a real charge begins.<br/>
 • ⏳ Charge: time to full, elapsed time, watt-hours into the pack.<br/>
@@ -978,15 +978,15 @@ You will be able to pair this scanner again at any time.</string>
 <b>⏱️ Polling</b><br/>
 BMS (JBD/ANT) and controller (VESC/FarDriver) have separate poll frequencies, from 200 ms (5 Hz, BLE UART maximum) to 10 s. Range still uses about 1 s samples so GPS jitter does not inflate distance. CSV/GPX default to 1 s; unchanged rows are skipped. Same-as-poll at 5 Hz makes large files without helping range.<br/><br/>
 <b>☑️ Fields</b><br/>
-Choose which values go into CSV, GPX and live charts, including range reserve and stop time. Select-all / deselect scroll with the list so the fields use the full height of the tab. Live values sit beside each field.<br/><br/>
+Choose which values go into CSV, GPX and live charts, including total consumption (Wh), charge used (Ah), specific consumption (Wh/km), strong cell, cell imbalance, range reserve and stop time. Select-all / deselect scroll with the list so the fields use the full height of the tab. Live values sit beside each field.<br/><br/>
 <b>📊 Charts</b><br/>
 A line graph for every selected numeric field. ⏸️ / ▶️ pauses drawing and stops buffering in the background. Tap the chart title for Up / Down / To start / To end / Pause / Resume.<br/><br/>
 <b>📋 History</b><br/>
 Charge sessions: duration, Ah from the BMS, start/end battery temperature, weak-cell voltage at start and end, and stop time (from motion stop until motion and discharge after the charge actually ended). 📈 opens a collapsed chart of charge current, temperature, min and max cell voltage — computed once from recorded telemetry and stored.<br/>
-Distance-on-charge rides: distance, moving and total time, battery and motor temperatures. 📈 opens power, Wh/km, motor temperature and min cell voltage. 🗑️ deletes a row and its chart.<br/>
+Distance-on-charge rides: distance, charge used (Ah), total and specific consumption, start/end pack voltage, average moving speed, stop time, battery and motor temperatures. 📈 opens power, Wh/km, motor temperature and min cell voltage. 🗑️ deletes a row and its chart.<br/>
 A new charge cannot start until you have ridden and used battery past the thresholds in settings; BLE drop-outs no longer split one charge into many.<br/><br/>
 <b>🔌 Distance on charge</b><br/>
-Counts as soon as the vehicle starts moving with telemetry recording on. GPS, controller odometer or OsmAnd trip recording supply the distance. The counter resets to zero when a real charge cycle starts (standstill plus charge current, so regen and towing do not reset it). While charging it stays at 0. A dash means recording is off or motion has not started yet.<br/><br/>
+Counts as soon as the vehicle starts moving with telemetry recording on. GPS, controller odometer or OsmAnd trip recording supply the distance. Optional filter caps GPS distance at the controller odometer (with calibration) times 100–150 percent. The counter resets to zero when a real charge cycle starts (standstill, positive BMS current into the pack, and near-zero controller current). While charging it stays at 0. A dash means recording is off or motion has not started yet.<br/><br/>
 <b>📏 Remaining range</b><br/>
 Energy used versus distance over a rolling 5-minute window. Distance prefers GPS. If GPS jumps, accuracy is worse than 40 m, or implied speed is above 160 km/h, the controller odometer is used instead. Range samples about once a second even when BLE is polled faster.<br/>
 Coverage Wh/km is the most conservative of: the 5-minute window, the trip average, controller average Wh/km, and the 80th percentile of recent segments. Remaining energy is remaining Ah × rest pack voltage, then reduced by:<br/>
@@ -1011,10 +1011,16 @@ Temperature and cell alerts speak only while that BLE link is up and telemetry i
 Semicolon CSV and optional GPX 1.1 with the selected fields. The record interval (default 1 s) is independent of BLE poll. Unchanged samples are not written again. While OsmAnd trip recording is on, EV-Telemetry does not write a second GPX: charge start/end, distance-on-charge and Wh/km go into that track. Open it in My Places for waypoints, charts and coloring by consumption.<br/>
 Controller speed and distance can be auto-calibrated against a GPS ride; the factor is editable.<br/><br/>
 <b>📜 Journal</b><br/>
-Optional DEBUG log of plugin and BLE actions, including TX/RX hex. Export or clear from the journal tab.<br/><br/>
+Optional DEBUG log of plugin and BLE actions. Controller RX hex is limited to one frame per second; BMS replies are logged in full. Export or clear from the journal tab.<br/><br/>
 <b>🥾 Hike mode</b><br/>
 Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+• 🔋 Telemetry fields: charge used (Ah), strong cell, imbalance between strong and weak cells; trip history stores used Ah<br/>
+• 🔌 Charge only when BMS current is positive into the pack and controller current is idle; pack current keeps JBD sign (− discharge / + charge)<br/>
+• 🛣️ Optional GPS trip cap at controller odometer × calibration × 100–150%<br/>
+• 📋 Charge and ride history merged, newest first, with emoji and bold numbers<br/>
+• 📡 BLE picker: device name, RSSI, service type, sorted by signal, no duplicate MAC<br/>
+• 📜 Controller debug RX limited to one frame per second<br/>
 • 📶 Settings link row: 🟢 / 🔴, name, MAC, RSSI and ↑TX / ↓RX counts, refreshed every second<br/>
 • 🔓 Xiaoxiang unlock: appkey 0x21, then legacy 0x15, then UART; a live BMS GATT is no longer dropped because telemetry is silent<br/>
 • Separate BMS and controller BLE poll frequencies, down to 200 ms (5 Hz); CSV/GPX default to 1 s so max poll does not inflate logs<br/>
@@ -1127,6 +1133,9 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_field_full_ah">Full Ah</string>
     <string name="ev_bms_field_cycles">Cycles</string>
     <string name="ev_bms_field_min_cell">Min cell</string>
+    <string name="ev_bms_field_max_cell">Strong cell</string>
+    <string name="ev_bms_field_cell_imbalance">Cell imbalance</string>
+    <string name="ev_bms_field_used_ah">Charge used</string>
     <string name="ev_bms_field_ctrl_voltage">Controller voltage</string>
     <string name="ev_bms_field_ctrl_current">Controller current</string>
     <string name="ev_bms_field_rpm">RPM</string>
@@ -1166,6 +1175,7 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_history_min_cell_range">Weak cell %1$s → %2$s V</string>
     <string name="ev_bms_history_stop_time">Stop time %1$s</string>
     <string name="ev_bms_history_energy_wh">Total consumption %1$s Wh</string>
+    <string name="ev_bms_history_used_ah">Charge used %1$s Ah</string>
     <string name="ev_bms_history_specific_whkm">Specific consumption %1$s Wh/km</string>
     <string name="ev_bms_history_avg_speed">Average moving speed %1$s km/h</string>
     <string name="ev_bms_history_avg_charge_a">Average charge current %1$s A</string>
