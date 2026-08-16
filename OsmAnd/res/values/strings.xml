@@ -977,7 +977,7 @@ You will be able to pair this scanner again at any time.</string>
 <b>☑️ Fields</b><br/>
 Choose which values go into CSV, GPX and live charts, including range reserve and stop time. Select-all / deselect scroll with the list so the fields use the full height of the tab. Live values sit beside each field.<br/><br/>
 <b>📊 Charts</b><br/>
-A line graph for every selected numeric field. ⏸️ / ▶️ pauses drawing and stops buffering in the background. Long-press a chart for Up / Down / To start / To end / Pause / Resume.<br/><br/>
+A line graph for every selected numeric field. ⏸️ / ▶️ pauses drawing and stops buffering in the background. Tap the chart title for Up / Down / To start / To end / Pause / Resume.<br/><br/>
 <b>📋 History</b><br/>
 Charge sessions: duration, Ah from the BMS, start/end battery temperature, weak-cell voltage at start and end, and stop time (from motion stop until motion and discharge after the charge actually ended). 📈 opens a collapsed chart of charge current, temperature, min and max cell voltage — computed once from recorded telemetry and stored.<br/>
 Distance-on-charge rides: distance, moving and total time, battery and motor temperatures. 📈 opens power, Wh/km, motor temperature and min cell voltage. 🗑️ deletes a row and its chart.<br/>
@@ -1013,10 +1013,11 @@ Optional DEBUG log of plugin and BLE actions, including TX/RX hex. Export or cle
 Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
 • JBD / Xiaoxiang password unlocks the BLE dongle (FF AA) before UART reads, matching the official app<br/>
+• Nightly builds unlock OsmAnd Pro features (no free-version limits)<br/>
 • Deleting a charge or ride history row asks for confirmation first<br/>
-• Live-chart action menu waits for a longer still press so scrolling does not open it<br/>
+• Live-chart actions open from the chart title button, not from a long press on the graph<br/>
 • Range reserve = remaining range minus remaining route; fields for range reserve and stop time<br/>
-• Long-press a live chart: Up, Down, To start, To end, Pause, Resume<br/>
+• Chart title menu: Up, Down, To start, To end, Pause, Resume<br/>
 • Charge history: weak-cell voltage at start/end and stop time from park until motion and discharge after charge end<br/>
 • Fields tab: select-all / deselect scroll with the list instead of sticking under the hub title<br/>
 • Charts tab: ⏸️ / ▶️ pause so live graphs stop drawing and stop buffering in the background<br/>
@@ -1198,6 +1199,7 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_chart_move_down">Move down</string>
     <string name="ev_bms_chart_move_start">Move to start</string>
     <string name="ev_bms_chart_move_end">Move to end</string>
+    <string name="ev_bms_chart_actions">Chart actions: %1$s</string>
     <string name="ev_bms_widget_consumption">Consumption</string>
     <string name="ev_bms_widget_consumption_desc">Average energy use in Wh/km over the last 5 minutes</string>
     <string name="ev_bms_widget_far_trip">Controller trip</string>

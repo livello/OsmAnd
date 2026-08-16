@@ -5,9 +5,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.text.method.LinkMovementMethod
-import android.view.MotionEvent
 import android.view.View
-import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.widget.CheckBox
 import android.widget.LinearLayout
@@ -46,7 +44,6 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	companion object {
 		val TAG: String = EvBmsSettingsBottomSheet::class.java.simpleName
 		private const val SETTINGS_TAG = "ev_bms_settings_embedded"
-		private const val CHART_LONG_PRESS_MS = 900L
 
 		fun showInstance(fragmentManager: FragmentManager) {
 			if (AndroidUtils.isFragmentCanBeAdded(fragmentManager, TAG)) {
@@ -69,7 +66,6 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	private var fieldsBound = false
 	private var aboutBound = false
 	private var journalBound = false
-	private val chartLongPressRunnables = ArrayList<Runnable>()
 
 	private data class ChartRow(
 		val field: TelemetryField,
@@ -142,7 +138,6 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 
 	override fun onDestroyView() {
 		uiHandler.removeCallbacks(liveTick)
-		cancelChartLongPresses()
 		super.onDestroyView()
 	}
 
@@ -373,7 +368,6 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		chartsKey = key
 		list.removeAllViews()
 		chartRows.clear()
-		cancelChartLongPresses()
 		if (fields.isEmpty()) {
 			list.addView(emptyHint(getString(R.string.ev_bms_charts_no_fields)))
 			return
@@ -386,12 +380,10 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			val value = row.findViewById<TextView>(R.id.value)
 			val chart = row.findViewById<LineChart>(R.id.chart)
 			title.text = "${field.emoji} ${getString(field.titleRes)}"
+			styleChartTitle(title, field)
 			value.text = field.liveValue(ctx, plugin.latestTelemetry)
 			styleChart(chart)
-			chart.isClickable = false
-			chart.isLongClickable = false
 			chartRows.add(ChartRow(field, chart, value))
-			attachChartLongPress(row, chart, field)
 			list.addView(row)
 		}
 		refreshCharts()
@@ -419,47 +411,11 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		}
 	}
 
-	private fun cancelChartLongPresses() {
-		for (pending in chartLongPressRunnables) {
-			uiHandler.removeCallbacks(pending)
-		}
-		chartLongPressRunnables.clear()
-	}
-
-	private fun attachChartLongPress(row: View, chart: View, field: TelemetryField) {
-		val slop = ViewConfiguration.get(row.context).scaledTouchSlop
-		val delayMs = maxOf(CHART_LONG_PRESS_MS, ViewConfiguration.getLongPressTimeout().toLong() * 2)
-		var downX = 0f
-		var downY = 0f
-		val pending = Runnable {
-			if (row.isAttachedToWindow) {
-				showChartMenu(row, field)
-			}
-		}
-		chartLongPressRunnables.add(pending)
-		val listener = View.OnTouchListener { _, event ->
-			when (event.actionMasked) {
-				MotionEvent.ACTION_DOWN -> {
-					uiHandler.removeCallbacks(pending)
-					downX = event.rawX
-					downY = event.rawY
-					uiHandler.postDelayed(pending, delayMs)
-				}
-				MotionEvent.ACTION_MOVE -> {
-					val dx = event.rawX - downX
-					val dy = event.rawY - downY
-					if (dx * dx + dy * dy > slop * slop) {
-						uiHandler.removeCallbacks(pending)
-					}
-				}
-				MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_UP -> {
-					uiHandler.removeCallbacks(pending)
-				}
-			}
-			false
-		}
-		row.setOnTouchListener(listener)
-		chart.setOnTouchListener(listener)
+	private fun styleChartTitle(title: TextView, field: TelemetryField) {
+		val ctx = title.context
+		title.setTextColor(ColorUtilities.getActiveColor(ctx, nightMode))
+		title.contentDescription = getString(R.string.ev_bms_chart_actions, getString(field.titleRes))
+		title.setOnClickListener { showChartMenu(title, field) }
 	}
 
 	private fun showChartMenu(anchor: View, field: TelemetryField) {
