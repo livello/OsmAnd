@@ -79,9 +79,19 @@
 		android:title="@string/ev_bms_recording" />
 
 	<net.osmand.plus.settings.preferences.ListPreferenceEx
-		android:key="ev_bms_poll_interval_ms"
+		android:key="ev_bms_bms_poll_ms"
 		android:layout="@layout/ev_bms_preference_with_descr"
-		android:title="@string/ev_bms_poll_interval" />
+		android:title="@string/ev_bms_bms_poll" />
+
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="ev_bms_ctrl_poll_ms"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:title="@string/ev_bms_ctrl_poll" />
+
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="ev_bms_record_interval_ms"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:title="@string/ev_bms_record_interval" />
 
 	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
 		android:key="ev_bms_record_telemetry"

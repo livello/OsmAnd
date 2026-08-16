@@ -163,6 +163,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		setupCalFactor()
 		setupCalAction()
 		setupPollInterval()
+		setupRecordInterval()
 		setupSwitch(plugin.RECORD_TELEMETRY.id)
 		setupSwitch(plugin.RECORD_GPX.id)
 		findPreference<SwitchPreferenceEx>(plugin.RECORD_GPX.id)?.setDescription(R.string.ev_bms_record_gpx_desc)
@@ -228,7 +229,9 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		decorate(plugin.SPEED_CAL_DISTANCE_M.id, "📏", R.drawable.ic_action_distance)
 		decorate(plugin.SPEED_CAL_FACTOR.id, "✖️", R.drawable.ic_action_speed)
 		decorate("ev_bms_cal_start", "▶️", R.drawable.ic_action_play_dark)
-		decorate(plugin.POLL_INTERVAL_MS.id, "⏱️", R.drawable.ic_action_time)
+		decorate(plugin.BMS_POLL_MS.id, "🔋", R.drawable.ic_action_time)
+		decorate(plugin.CONTROLLER_POLL_MS.id, "🛵", R.drawable.ic_action_time)
+		decorate(plugin.RECORD_INTERVAL_MS.id, "💾", R.drawable.ic_action_time_span)
 		decorate(plugin.RECORD_TELEMETRY.id, "📝", R.drawable.ic_action_save_to_file)
 		decorate(plugin.RECORD_GPX.id, "🗺️", R.drawable.ic_action_polygom_dark)
 		decorate(plugin.TELEMETRY_FIELDS.id, "☑️", R.drawable.ic_action_list_flat)
@@ -355,17 +358,43 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 	}
 
 	private fun setupPollInterval() {
-		val pref = findPreference<ListPreferenceEx>(plugin.POLL_INTERVAL_MS.id) ?: return
+		setupPollMsPref(plugin.BMS_POLL_MS, R.string.ev_bms_bms_poll_desc)
+		setupPollMsPref(plugin.CONTROLLER_POLL_MS, R.string.ev_bms_ctrl_poll_desc)
+	}
+
+	private fun setupPollMsPref(
+		holder: net.osmand.plus.settings.backend.preferences.CommonPreference<Int>,
+		descriptionRes: Int
+	) {
+		val pref = findPreference<ListPreferenceEx>(holder.id) ?: return
+		pref.setEntries(EvBmsPlugin.POLL_MS_VALUES.map { pollLabel(it) }.toTypedArray())
+		pref.setEntryValues(EvBmsPlugin.POLL_MS_VALUES.map { it as Any }.toTypedArray())
+		pref.setValue(holder.get())
+		pref.setDescription(descriptionRes)
+	}
+
+	private fun setupRecordInterval() {
+		val pref = findPreference<ListPreferenceEx>(plugin.RECORD_INTERVAL_MS.id) ?: return
 		pref.setEntries(
-			arrayOf(
-				getString(R.string.ev_bms_n_sec, 1),
-				getString(R.string.ev_bms_n_sec, 2),
-				getString(R.string.ev_bms_n_sec, 5),
-				getString(R.string.ev_bms_n_sec, 10)
-			)
+			EvBmsPlugin.RECORD_INTERVAL_MS_VALUES.map { ms ->
+				if (ms == EvBmsPlugin.RECORD_INTERVAL_SAME) {
+					getString(R.string.ev_bms_record_interval_same)
+				} else {
+					pollLabel(ms)
+				}
+			}.toTypedArray()
 		)
-		pref.setEntryValues(arrayOf<Any>(1000, 2000, 5000, 10000))
-		pref.setValue(plugin.POLL_INTERVAL_MS.get())
+		pref.setEntryValues(EvBmsPlugin.RECORD_INTERVAL_MS_VALUES.map { it as Any }.toTypedArray())
+		pref.setValue(plugin.RECORD_INTERVAL_MS.get())
+		pref.setDescription(R.string.ev_bms_record_interval_desc)
+	}
+
+	private fun pollLabel(ms: Int): String {
+		return if (ms < 1000) {
+			getString(R.string.ev_bms_n_ms, ms)
+		} else {
+			getString(R.string.ev_bms_n_sec, ms / 1000)
+		}
 	}
 
 	private fun setupCalDistance() {
@@ -737,6 +766,9 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		}
 		if (prefId == plugin.RECORD_GPX.id) {
 			plugin.restartTelemetryIfRecording()
+		}
+		if (prefId == plugin.BMS_POLL_MS.id || prefId == plugin.CONTROLLER_POLL_MS.id) {
+			plugin.reschedulePolling()
 		}
 		if (prefId == plugin.BMS_PROTOCOL.id) {
 			setupJbdPassword()

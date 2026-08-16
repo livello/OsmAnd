@@ -50,6 +50,13 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 
 	companion object {
 		const val DEFAULT_POLL_MS = 2000
+		const val MIN_POLL_MS = 200
+		const val DEFAULT_BMS_POLL_MS = 500
+		const val DEFAULT_CTRL_POLL_MS = 200
+		const val DEFAULT_RECORD_INTERVAL_MS = 1000
+		const val RECORD_INTERVAL_SAME = 0
+		val POLL_MS_VALUES = intArrayOf(200, 500, 1000, 2000, 5000, 10000)
+		val RECORD_INTERVAL_MS_VALUES = intArrayOf(RECORD_INTERVAL_SAME, 500, 1000, 2000, 5000)
 		const val DEFAULT_STOP_SPEED = 3
 		const val REST_CURRENT_A = 5.0
 		const val CHARGE_HOLD_SAMPLES = 3
@@ -63,7 +70,9 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		const val DEFAULT_CHARGE_REARM_M = 200
 		const val DEFAULT_CHARGE_REARM_MAH = 300
 		private const val TAG = "EvBms"
-		private const val CHART_HISTORY_MAX = 240
+		private const val CHART_HISTORY_MAX = 480
+		private const val CHART_SAMPLE_MIN_MS = 500L
+		private const val RANGE_SAMPLE_MIN_MS = 1000L
 		const val CHARGE_ETA_REPEAT_MS = 300_000L
 		const val DEFAULT_CHARGE_VOLT_STEP_MV = 1000
 		const val DEFAULT_STOP_ANNOUNCE_REPEATS = 2
@@ -88,6 +97,12 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerStringPreference("ev_controller_name", "").makeGlobal().makeShared()
 	val POLL_INTERVAL_MS: CommonPreference<Int> =
 		registerIntPreference("ev_bms_poll_interval_ms", DEFAULT_POLL_MS).makeGlobal().makeShared()
+	val BMS_POLL_MS: CommonPreference<Int> =
+		registerIntPreference("ev_bms_bms_poll_ms", DEFAULT_BMS_POLL_MS).makeGlobal().makeShared()
+	val CONTROLLER_POLL_MS: CommonPreference<Int> =
+		registerIntPreference("ev_bms_ctrl_poll_ms", DEFAULT_CTRL_POLL_MS).makeGlobal().makeShared()
+	val RECORD_INTERVAL_MS: CommonPreference<Int> =
+		registerIntPreference("ev_bms_record_interval_ms", DEFAULT_RECORD_INTERVAL_MS).makeGlobal().makeShared()
 	val RECORD_TELEMETRY: CommonPreference<Boolean> =
 		registerBooleanPreference("ev_bms_record_telemetry", false).makeGlobal().makeShared()
 	val RECORD_GPX: CommonPreference<Boolean> =
@@ -292,6 +307,11 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private var lastBmsRxMs = 0L
 	private var lastCtrlRxMs = 0L
 	private var pollCellsNext = false
+	private var lastBmsPollMs = 0L
+	private var lastCtrlPollMs = 0L
+	private var lastRangeSampleMs = 0L
+	private var lastChartSampleMs = 0L
+	private var lastRecordMs = 0L
 	private var jbdPasswordSentMs = 0L
 	private var jbdPasswordToastMs = 0L
 	private var jbdPasswordRejected = false
@@ -313,39 +333,50 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				return
 			}
 			ensureBleLinks()
-			if (bmsClient?.connected == true) {
-				if (preferAntProtocol()) {
-					bmsClient?.write(AntBmsProtocol.statusRequest())
-				} else if (advanceJbdAuth()) {
-					// BLE-module unlock and UART password before telemetry reads.
-				} else if (pollCellsNext) {
-					bmsClient?.write(JbdBmsProtocol.readCellVoltages())
-					pollCellsNext = false
-				} else {
-					bmsClient?.write(JbdBmsProtocol.readBasicInfo())
-					pollCellsNext = true
-				}
+			val now = android.os.SystemClock.uptimeMillis()
+			if (bmsClient?.connected == true && now - lastBmsPollMs >= activeBmsPollMs()) {
+				lastBmsPollMs = now
+				pollBms()
 			}
-			if (controllerClient?.connected == true) {
-				val unknown = controllerClient?.detectedControllerKind ==
-						EvBleUartClient.ControllerKind.UNKNOWN
-				if (preferVescProtocol() || (!preferFarProtocol() && unknown)) {
-					if (vescSnapshot.hwName == null && vescSnapshot.fwMajor == null) {
-						controllerClient?.write(VescProtocol.fwVersion())
-					} else if (vescPollSetup) {
-						controllerClient?.write(VescProtocol.getValuesSetup())
-					} else {
-						controllerClient?.write(VescProtocol.getValues())
-					}
-					vescPollSetup = !vescPollSetup
-				}
-				if (!farStatusStarted && (preferFarProtocol() || (!preferVescProtocol() && unknown))) {
-					controllerClient?.write(FarDriverProtocol.startStatusCommand())
-					farStatusStarted = true
-				}
+			if (controllerClient?.connected == true && now - lastCtrlPollMs >= activeCtrlPollMs()) {
+				lastCtrlPollMs = now
+				pollController()
 			}
 			publishSample()
-			handler.postDelayed(this, activePollIntervalMs())
+			handler.postDelayed(this, activeTickMs())
+		}
+	}
+
+	private fun pollBms() {
+		if (preferAntProtocol()) {
+			bmsClient?.write(AntBmsProtocol.statusRequest())
+		} else if (advanceJbdAuth()) {
+			// BLE-module unlock and UART password before telemetry reads.
+		} else if (pollCellsNext) {
+			bmsClient?.write(JbdBmsProtocol.readCellVoltages())
+			pollCellsNext = false
+		} else {
+			bmsClient?.write(JbdBmsProtocol.readBasicInfo())
+			pollCellsNext = true
+		}
+	}
+
+	private fun pollController() {
+		val unknown = controllerClient?.detectedControllerKind ==
+				EvBleUartClient.ControllerKind.UNKNOWN
+		if (preferVescProtocol() || (!preferFarProtocol() && unknown)) {
+			if (vescSnapshot.hwName == null && vescSnapshot.fwMajor == null) {
+				controllerClient?.write(VescProtocol.fwVersion())
+			} else if (vescPollSetup) {
+				controllerClient?.write(VescProtocol.getValuesSetup())
+			} else {
+				controllerClient?.write(VescProtocol.getValues())
+			}
+			vescPollSetup = !vescPollSetup
+		}
+		if (!farStatusStarted && (preferFarProtocol() || (!preferVescProtocol() && unknown))) {
+			controllerClient?.write(FarDriverProtocol.startStatusCommand())
+			farStatusStarted = true
 		}
 	}
 
@@ -384,6 +415,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		}
 		voice.init()
 		socCalibrator.decode(SOC_CAL_STORE.get())
+		migratePollPreferences()
 		restoreSessions()
 		restoreTelemetrySession()
 		return true
@@ -1401,12 +1433,12 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 
 	fun isBmsFresh(): Boolean {
 		return isBmsConnected() && lastBmsRxMs > 0L &&
-				System.currentTimeMillis() - lastBmsRxMs <= DATA_STALE_MS
+				System.currentTimeMillis() - lastBmsRxMs <= dataStaleMs(activeBmsPollMs())
 	}
 
 	fun isControllerFresh(): Boolean {
 		return isControllerConnected() && lastCtrlRxMs > 0L &&
-				System.currentTimeMillis() - lastCtrlRxMs <= DATA_STALE_MS
+				System.currentTimeMillis() - lastCtrlRxMs <= dataStaleMs(activeCtrlPollMs())
 	}
 
 	fun connectSavedDevices(activity: Activity) {
@@ -1427,6 +1459,14 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			return
 		}
 		pollRunning = true
+		handler.removeCallbacks(pollRunnable)
+		handler.post(pollRunnable)
+	}
+
+	fun reschedulePolling() {
+		if (!pollRunning) {
+			return
+		}
 		handler.removeCallbacks(pollRunnable)
 		handler.post(pollRunnable)
 	}
@@ -1493,10 +1533,13 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		}
 		if (client.connected) {
 			val now = System.currentTimeMillis()
+			val deadMs = linkDeadMs(
+				if (client.role == EvBleUartClient.Role.BMS) activeBmsPollMs() else activeCtrlPollMs()
+			)
 			val dead = if (lastRxMs == 0L) {
-				client.millisSinceConnected() > LINK_DEAD_MS
+				client.millisSinceConnected() > deadMs
 			} else {
-				now - lastRxMs > LINK_DEAD_MS
+				now - lastRxMs > deadMs
 			}
 			if (dead) {
 				journal.w("link", "${client.role} stale ${now - lastRxMs}ms, forceReconnect")
@@ -1883,21 +1926,25 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		if (socCalibrator.flushDue(System.currentTimeMillis())) {
 			persistSocCal()
 		}
-		rangeEstimator.add(
-			System.currentTimeMillis(),
-			remainingAh,
-			bms?.voltageV ?: ctrlVoltageV(),
-			restPackVoltageV,
-			loc,
-			ctrlOdometerKm(),
-			minCellVoltageV,
-			bms?.temperaturesC?.minOrNull()?.toDouble(),
-			bms?.fullMah?.div(1000.0),
-			ctrlAvgWhPerKm(),
-			remainingRouteElevation(),
-			USE_ROUTE_PROFILE.get(),
-			totalMassKg()
-		)
+		val nowMs = System.currentTimeMillis()
+		if (lastRangeSampleMs == 0L || nowMs - lastRangeSampleMs >= RANGE_SAMPLE_MIN_MS) {
+			lastRangeSampleMs = nowMs
+			rangeEstimator.add(
+				nowMs,
+				remainingAh,
+				bms?.voltageV ?: ctrlVoltageV(),
+				restPackVoltageV,
+				loc,
+				ctrlOdometerKm(),
+				minCellVoltageV,
+				bms?.temperaturesC?.minOrNull()?.toDouble(),
+				bms?.fullMah?.div(1000.0),
+				ctrlAvgWhPerKm(),
+				remainingRouteElevation(),
+				USE_ROUTE_PROFILE.get(),
+				totalMassKg()
+			)
+		}
 		tickSpeedCalibration(loc)
 		val sample = EvTelemetry(
 			lat = loc?.latitude,
@@ -1946,10 +1993,14 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			)
 		}
 		if (isChartsLive()) {
-			synchronized(chartLock) {
-				chartHistory.addLast(sample)
-				while (chartHistory.size > CHART_HISTORY_MAX) {
-					chartHistory.removeFirst()
+			val chartNow = sample.timeMs
+			if (lastChartSampleMs == 0L || chartNow - lastChartSampleMs >= CHART_SAMPLE_MIN_MS) {
+				lastChartSampleMs = chartNow
+				synchronized(chartLock) {
+					chartHistory.addLast(sample)
+					while (chartHistory.size > CHART_HISTORY_MAX) {
+						chartHistory.removeFirst()
+					}
 				}
 			}
 		}
@@ -1958,8 +2009,13 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		if (recorder.isRecording) {
 			recorder.setWriteGpx(RECORD_GPX.get() && !isTripRecording())
 			if (events.isEmpty()) {
-				recorder.append(sample)
+				val recIv = activeRecordIntervalMs()
+				if (lastRecordMs == 0L || sample.timeMs - lastRecordMs >= recIv) {
+					lastRecordMs = sample.timeMs
+					recorder.append(sample)
+				}
 			} else {
+				lastRecordMs = sample.timeMs
 				for ((name, desc) in events) {
 					recorder.appendNamedPoint(sample, name, desc)
 				}
@@ -2575,14 +2631,43 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		app.showToastMessage(app.getString(R.string.ev_bms_cal_done, factor))
 	}
 
-	private fun activePollIntervalMs(): Long {
-		val poll = POLL_INTERVAL_MS.get().toLong().coerceAtLeast(500L)
+	private fun migratePollPreferences() {
+		if (!POLL_INTERVAL_MS.isSet()) {
+			return
+		}
+		val old = POLL_INTERVAL_MS.get().coerceAtLeast(MIN_POLL_MS)
+		if (!BMS_POLL_MS.isSet()) {
+			BMS_POLL_MS.set(old)
+		}
+		if (!CONTROLLER_POLL_MS.isSet()) {
+			CONTROLLER_POLL_MS.set(old)
+		}
+	}
+
+	private fun activeBmsPollMs(): Long = coercePollMs(BMS_POLL_MS.get())
+
+	private fun activeCtrlPollMs(): Long = coercePollMs(CONTROLLER_POLL_MS.get())
+
+	private fun activeTickMs(): Long = minOf(activeBmsPollMs(), activeCtrlPollMs())
+
+	private fun coercePollMs(raw: Int): Long {
+		val poll = raw.toLong().coerceAtLeast(MIN_POLL_MS.toLong())
 		return if (isHikeMode()) {
 			poll.coerceAtLeast(HikeModeController.HIKE_POLL_MS.toLong())
 		} else {
 			poll
 		}
 	}
+
+	private fun activeRecordIntervalMs(): Long {
+		val rec = RECORD_INTERVAL_MS.get().toLong()
+		val poll = activeTickMs()
+		return if (rec <= RECORD_INTERVAL_SAME) poll else rec.coerceAtLeast(poll)
+	}
+
+	private fun dataStaleMs(pollMs: Long): Long = maxOf(DATA_STALE_MS, pollMs * 3)
+
+	private fun linkDeadMs(pollMs: Long): Long = maxOf(LINK_DEAD_MS, pollMs * 4)
 
 	override fun registerOptionsMenuItems(mapActivity: MapActivity, helper: ContextMenuAdapter) {
 		if (isActive) {

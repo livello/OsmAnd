@@ -974,6 +974,8 @@ You will be able to pair this scanner again at any time.</string>
 • ⏳ Charge: time to full, elapsed time, watt-hours into the pack.<br/>
 • 🛵 Controller trip, motor power, motor temperature, controller / MOSFET temperature.<br/>
 • 🥾 Hike — lightens the map and slows BLE polling to 5 s; telemetry keeps writing.<br/><br/>
+<b>⏱️ Polling</b><br/>
+BMS (JBD/ANT) and controller (VESC/FarDriver) have separate poll frequencies, from 200 ms (5 Hz, BLE UART maximum) to 10 s. Range still uses about 1 s samples so GPS jitter does not inflate distance. CSV/GPX default to 1 s; unchanged rows are skipped. Same-as-poll at 5 Hz makes large files without helping range.<br/><br/>
 <b>☑️ Fields</b><br/>
 Choose which values go into CSV, GPX and live charts, including range reserve and stop time. Select-all / deselect scroll with the list so the fields use the full height of the tab. Live values sit beside each field.<br/><br/>
 <b>📊 Charts</b><br/>
@@ -985,7 +987,7 @@ A new charge cannot start until you have ridden and used battery past the thresh
 <b>🔌 Distance on charge</b><br/>
 Counts as soon as the vehicle starts moving with telemetry recording on. GPS, controller odometer or OsmAnd trip recording supply the distance. The counter resets to zero when a real charge cycle starts (standstill plus charge current, so regen and towing do not reset it). While charging it stays at 0. A dash means recording is off or motion has not started yet.<br/><br/>
 <b>📏 Remaining range</b><br/>
-Energy used versus distance over a rolling 5-minute window. Distance prefers GPS. If GPS jumps, accuracy is worse than 40 m, or implied speed is above 160 km/h, the controller odometer is used instead.<br/>
+Energy used versus distance over a rolling 5-minute window. Distance prefers GPS. If GPS jumps, accuracy is worse than 40 m, or implied speed is above 160 km/h, the controller odometer is used instead. Range samples about once a second even when BLE is polled faster.<br/>
 Coverage Wh/km is the most conservative of: the 5-minute window, the trip average, controller average Wh/km, and the 80th percentile of recent segments. Remaining energy is remaining Ah × rest pack voltage, then reduced by:<br/>
 • Weak cell: rest min cell between 3.00 V (cutoff) and 3.50 V, compared with remaining Ah.<br/>
 • Temperature: full above 20 °C, down to about 50 percent in frost.<br/>
@@ -1005,13 +1007,14 @@ Remaining range minus remaining navigation distance. Speak the current value whe
 • 📡 Link loss and restore for BMS and controller, after a short hold so brief drop-outs do not chatter.<br/>
 Temperature and cell alerts speak only while that BLE link is up and telemetry is fresh (a few seconds). Stale values after a drop-out are ignored.<br/><br/>
 <b>💾 CSV / GPX</b><br/>
-Semicolon CSV and optional GPX 1.1 with the selected fields. Unchanged samples are not written again. While OsmAnd trip recording is on, EV-Telemetry does not write a second GPX: charge start/end, distance-on-charge and Wh/km go into that track. Open it in My Places for waypoints, charts and coloring by consumption.<br/>
+Semicolon CSV and optional GPX 1.1 with the selected fields. The record interval (default 1 s) is independent of BLE poll. Unchanged samples are not written again. While OsmAnd trip recording is on, EV-Telemetry does not write a second GPX: charge start/end, distance-on-charge and Wh/km go into that track. Open it in My Places for waypoints, charts and coloring by consumption.<br/>
 Controller speed and distance can be auto-calibrated against a GPS ride; the factor is editable.<br/><br/>
 <b>📜 Journal</b><br/>
 Optional DEBUG log of plugin and BLE actions, including TX/RX hex. Export or clear from the journal tab.<br/><br/>
 <b>🥾 Hike mode</b><br/>
 Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+• Separate BMS and controller BLE poll frequencies, down to 200 ms (5 Hz); CSV/GPX default to 1 s so max poll does not inflate logs<br/>
 • JBD / Xiaoxiang password unlocks the BLE dongle (FF AA) before UART reads, matching the official app<br/>
 • Nightly builds unlock OsmAnd Pro features (no free-version limits)<br/>
 • Deleting a charge or ride history row asks for confirmation first<br/>
@@ -1089,6 +1092,14 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_recording">Recording</string>
     <string name="ev_bms_voice">Voice</string>
     <string name="ev_bms_poll_interval">Telemetry interval</string>
+    <string name="ev_bms_bms_poll">BMS poll frequency</string>
+    <string name="ev_bms_bms_poll_desc">JBD and ANT are request-response over BLE UART. 200 ms (5 Hz) is the safe maximum; faster requests overlap and drop frames. JBD alternates pack data and cells, so a full cell snapshot takes two polls.</string>
+    <string name="ev_bms_ctrl_poll">Controller poll frequency</string>
+    <string name="ev_bms_ctrl_poll_desc">VESC is polled over BLE UART; 200 ms (5 Hz) is the safe maximum. FarDriver streams status after one start command — this interval is how often those values are sampled.</string>
+    <string name="ev_bms_record_interval">Telemetry record interval</string>
+    <string name="ev_bms_record_interval_same">Same as poll</string>
+    <string name="ev_bms_record_interval_desc">How often CSV/GPX rows are written. Unchanged samples are still skipped. 1 s is enough for trips; same-as-poll at 200 ms makes large files without helping range.</string>
+    <string name="ev_bms_n_ms">%1$d ms</string>
     <string name="ev_bms_record_telemetry">Write telemetry CSV</string>
     <string name="ev_bms_record_gpx">Write telemetry GPX</string>
     <string name="ev_bms_record_gpx_desc">A separate GPX is written only when OsmAnd trip recording is off. While a trip is recording, EV telemetry is stored in that track: charge waypoints, charts and coloring by Wh/km.</string>

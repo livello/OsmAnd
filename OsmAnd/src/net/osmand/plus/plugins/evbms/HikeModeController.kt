@@ -45,6 +45,7 @@ class HikeModeController(
 			app.showToastMessage(app.getString(R.string.ev_bms_hike_on))
 		}
 		plugin.applyHikeTelemetryState()
+		plugin.reschedulePolling()
 	}
 
 	private fun capture(): JSONObject {
@@ -65,6 +66,9 @@ class HikeModeController(
 		json.put("debugRendering", settings.DEBUG_RENDERING_INFO.get())
 		json.put("recordTelemetry", plugin.RECORD_TELEMETRY.get())
 		json.put("pollInterval", plugin.POLL_INTERVAL_MS.get())
+		json.put("bmsPoll", plugin.BMS_POLL_MS.get())
+		json.put("ctrlPoll", plugin.CONTROLLER_POLL_MS.get())
+		json.put("recordInterval", plugin.RECORD_INTERVAL_MS.get())
 		json.put("saveTrackInterval", settings.SAVE_TRACK_INTERVAL.get())
 		json.put("magneticCompass", settings.USE_MAGNETIC_FIELD_SENSOR_COMPASS.get())
 		json.put("coordinatesGrid", settings.SHOW_COORDINATES_GRID.get())
@@ -122,6 +126,12 @@ class HikeModeController(
 		if (settings.SAVE_TRACK_INTERVAL.get() < HIKE_TRACK_INTERVAL_MS) {
 			settings.SAVE_TRACK_INTERVAL.set(HIKE_TRACK_INTERVAL_MS)
 		}
+		if (plugin.BMS_POLL_MS.get() < HIKE_POLL_MS) {
+			plugin.BMS_POLL_MS.set(HIKE_POLL_MS)
+		}
+		if (plugin.CONTROLLER_POLL_MS.get() < HIKE_POLL_MS) {
+			plugin.CONTROLLER_POLL_MS.set(HIKE_POLL_MS)
+		}
 		if (plugin.POLL_INTERVAL_MS.get() < HIKE_POLL_MS) {
 			plugin.POLL_INTERVAL_MS.set(HIKE_POLL_MS)
 		}
@@ -165,7 +175,13 @@ class HikeModeController(
 		settings.SHOW_COORDINATES_GRID.set(json.optBoolean("coordinatesGrid", false))
 		settings.SAVE_TRACK_INTERVAL.set(json.optInt("saveTrackInterval", 5000))
 		plugin.RECORD_TELEMETRY.set(json.optBoolean("recordTelemetry", true))
-		plugin.POLL_INTERVAL_MS.set(json.optInt("pollInterval", EvBmsPlugin.DEFAULT_POLL_MS))
+		val oldPoll = json.optInt("pollInterval", EvBmsPlugin.DEFAULT_POLL_MS)
+		plugin.POLL_INTERVAL_MS.set(oldPoll)
+		plugin.BMS_POLL_MS.set(json.optInt("bmsPoll", oldPoll))
+		plugin.CONTROLLER_POLL_MS.set(json.optInt("ctrlPoll", oldPoll))
+		plugin.RECORD_INTERVAL_MS.set(
+			json.optInt("recordInterval", EvBmsPlugin.DEFAULT_RECORD_INTERVAL_MS)
+		)
 		val rotate = json.optInt("rotateMap", settings.ROTATE_MAP.get())
 		app.mapViewTrackingUtilities.switchCompassModeTo(CompassMode.getByValue(rotate))
 		if (json.has("elevation")) {
