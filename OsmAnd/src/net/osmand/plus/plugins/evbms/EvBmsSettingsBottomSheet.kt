@@ -5,7 +5,9 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.text.method.LinkMovementMethod
+import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.widget.CheckBox
 import android.widget.LinearLayout
@@ -44,6 +46,7 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	companion object {
 		val TAG: String = EvBmsSettingsBottomSheet::class.java.simpleName
 		private const val SETTINGS_TAG = "ev_bms_settings_embedded"
+		private const val CHART_LONG_PRESS_MS = 900L
 
 		fun showInstance(fragmentManager: FragmentManager) {
 			if (AndroidUtils.isFragmentCanBeAdded(fragmentManager, TAG)) {
@@ -66,6 +69,7 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	private var fieldsBound = false
 	private var aboutBound = false
 	private var journalBound = false
+	private val chartLongPressRunnables = ArrayList<Runnable>()
 
 	private data class ChartRow(
 		val field: TelemetryField,
@@ -138,6 +142,7 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 
 	override fun onDestroyView() {
 		uiHandler.removeCallbacks(liveTick)
+		cancelChartLongPresses()
 		super.onDestroyView()
 	}
 
@@ -368,6 +373,7 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		chartsKey = key
 		list.removeAllViews()
 		chartRows.clear()
+		cancelChartLongPresses()
 		if (fields.isEmpty()) {
 			list.addView(emptyHint(getString(R.string.ev_bms_charts_no_fields)))
 			return
@@ -382,13 +388,10 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			title.text = "${field.emoji} ${getString(field.titleRes)}"
 			value.text = field.liveValue(ctx, plugin.latestTelemetry)
 			styleChart(chart)
+			chart.isClickable = false
+			chart.isLongClickable = false
 			chartRows.add(ChartRow(field, chart, value))
-			val openMenu = View.OnLongClickListener {
-				showChartMenu(it, field)
-				true
-			}
-			row.setOnLongClickListener(openMenu)
-			chart.setOnLongClickListener(openMenu)
+			attachChartLongPress(row, chart, field)
 			list.addView(row)
 		}
 		refreshCharts()
@@ -414,6 +417,49 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 				uiHandler.removeCallbacks(liveTick)
 			}
 		}
+	}
+
+	private fun cancelChartLongPresses() {
+		for (pending in chartLongPressRunnables) {
+			uiHandler.removeCallbacks(pending)
+		}
+		chartLongPressRunnables.clear()
+	}
+
+	private fun attachChartLongPress(row: View, chart: View, field: TelemetryField) {
+		val slop = ViewConfiguration.get(row.context).scaledTouchSlop
+		val delayMs = maxOf(CHART_LONG_PRESS_MS, ViewConfiguration.getLongPressTimeout().toLong() * 2)
+		var downX = 0f
+		var downY = 0f
+		val pending = Runnable {
+			if (row.isAttachedToWindow) {
+				showChartMenu(row, field)
+			}
+		}
+		chartLongPressRunnables.add(pending)
+		val listener = View.OnTouchListener { _, event ->
+			when (event.actionMasked) {
+				MotionEvent.ACTION_DOWN -> {
+					uiHandler.removeCallbacks(pending)
+					downX = event.rawX
+					downY = event.rawY
+					uiHandler.postDelayed(pending, delayMs)
+				}
+				MotionEvent.ACTION_MOVE -> {
+					val dx = event.rawX - downX
+					val dy = event.rawY - downY
+					if (dx * dx + dy * dy > slop * slop) {
+						uiHandler.removeCallbacks(pending)
+					}
+				}
+				MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_UP -> {
+					uiHandler.removeCallbacks(pending)
+				}
+			}
+			false
+		}
+		row.setOnTouchListener(listener)
+		chart.setOnTouchListener(listener)
 	}
 
 	private fun showChartMenu(anchor: View, field: TelemetryField) {
@@ -553,7 +599,8 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 					item,
 					EvHistoryChartStore.KIND_CHARGE,
 					row.startMs,
-					row.endMs
+					row.endMs,
+					R.string.ev_bms_delete_charge_q
 				) {
 					plugin.deleteChargeRecord(row.startMs, row.endMs)
 					settingsFragment()?.refreshHistoryPrefs()
@@ -583,7 +630,8 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 					item,
 					EvHistoryChartStore.KIND_TRIP,
 					row.startMs,
-					row.endMs
+					row.endMs,
+					R.string.ev_bms_delete_trip_q
 				) {
 					plugin.deleteTripRecord(row.startMs, row.endMs)
 					settingsFragment()?.refreshHistoryPrefs()
@@ -594,11 +642,22 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		}
 	}
 
+	private fun confirmDelete(messageRes: Int, onConfirm: () -> Unit) {
+		val themed = UiUtilities.getThemedContext(requireContext(), nightMode)
+		AlertDialog.Builder(themed)
+			.setTitle(R.string.shared_string_delete)
+			.setMessage(messageRes)
+			.setNegativeButton(R.string.shared_string_cancel, null)
+			.setPositiveButton(R.string.shared_string_delete) { _, _ -> onConfirm() }
+			.show()
+	}
+
 	private fun wireHistoryChart(
 		item: View,
 		kind: String,
 		startMs: Long,
 		endMs: Long,
+		deleteMessageRes: Int,
 		onDelete: () -> Unit
 	) {
 		val chart = item.findViewById<LineChart>(R.id.history_chart)
@@ -607,7 +666,9 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		styleChart(chart)
 		chart.axisLeft.setDrawLabels(false)
 		chart.axisLeft.setLabelCount(2, true)
-		item.findViewById<View>(R.id.delete_btn).setOnClickListener { onDelete() }
+		item.findViewById<View>(R.id.delete_btn).setOnClickListener {
+			confirmDelete(deleteMessageRes, onDelete)
+		}
 		expand.setOnClickListener {
 			val show = chart.visibility != View.VISIBLE
 			if (show) {

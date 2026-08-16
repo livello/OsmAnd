@@ -1012,6 +1012,8 @@ Optional DEBUG log of plugin and BLE actions, including TX/RX hex. Export or cle
 <b>🥾 Hike mode</b><br/>
 Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+• Deleting a charge or ride history row asks for confirmation first<br/>
+• Live-chart action menu waits for a longer still press so scrolling does not open it<br/>
 • Range reserve = remaining range minus remaining route; fields for range reserve and stop time<br/>
 • Long-press a live chart: Up, Down, To start, To end, Pause, Resume<br/>
 • Charge history: weak-cell voltage at start/end and stop time from park until motion and discharge after charge end<br/>
@@ -1285,6 +1287,8 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_log_meta">%1$s · %2$s · %3$s</string>
     <string name="ev_bms_log_in_use">Stop recording before deleting this log</string>
     <string name="ev_bms_delete_log">Delete %1$s?</string>
+    <string name="ev_bms_delete_charge_q">Delete this charge record?</string>
+    <string name="ev_bms_delete_trip_q">Delete this ride record?</string>
     <string name="ev_bms_calibration">Speed and distance calibration</string>
     <string name="ev_bms_cal_distance">Auto-calibration distance</string>
     <string name="ev_bms_cal_factor">Calibration factor</string>
