@@ -780,10 +780,9 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			}
 		}
 		content.findViewById<TextView>(R.id.reset).apply {
-			contentDescription = getString(R.string.shared_string_reset)
+			contentDescription = getString(R.string.shared_string_deselect_all)
 			setOnClickListener {
 				selected.clear()
-				selected.addAll(TelemetryField.parse(TelemetryField.DEFAULT_IDS))
 				bindChecks()
 			}
 		}

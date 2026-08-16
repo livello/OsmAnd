@@ -9,6 +9,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.CheckBox
 import android.widget.LinearLayout
+import android.widget.PopupMenu
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.SwitchCompat
@@ -263,10 +264,11 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		val inflater = layoutInflater
 		val content = inflater.inflate(R.layout.ev_bms_telemetry_fields_dialog, container, false)
 		content.fitsSystemWindows = false
-		content.findViewById<View>(R.id.fields_toolbar).visibility = View.GONE
+		content.findViewById<View>(R.id.title).visibility = View.GONE
 		content.findViewById<View>(R.id.fields_actions).visibility = View.GONE
 		container.addView(content)
 		val selected = plugin.selectedTelemetryFields().toMutableSet()
+		val boxes = ArrayList<Pair<TelemetryField, CheckBox>>()
 		val list = content.findViewById<LinearLayout>(R.id.fields_list)
 		fun persist() {
 			val chosen = TelemetryField.entries.filter { it in selected }
@@ -277,6 +279,28 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			plugin.setTelemetryFields(chosen)
 			settingsFragment()?.refreshTelemetryFieldsPref()
 			chartsKey = ""
+		}
+		fun bindChecks() {
+			for ((field, box) in boxes) {
+				box.isChecked = field in selected
+			}
+		}
+		content.findViewById<TextView>(R.id.select_all).apply {
+			contentDescription = getString(R.string.shared_string_select_all)
+			setOnClickListener {
+				selected.clear()
+				selected.addAll(TelemetryField.entries)
+				bindChecks()
+				persist()
+			}
+		}
+		content.findViewById<TextView>(R.id.reset).apply {
+			contentDescription = getString(R.string.shared_string_deselect_all)
+			setOnClickListener {
+				selected.clear()
+				bindChecks()
+				app.showToastMessage(R.string.ev_bms_telemetry_fields_empty)
+			}
 		}
 		for ((groupRes, fields) in TelemetryField.grouped()) {
 			list.addView(telemetryGroupHeader(themed, groupRes))
@@ -295,6 +319,7 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 					persist()
 				}
 				fieldValueViews.add(field to value)
+				boxes.add(field to box)
 				list.addView(row)
 			}
 		}
@@ -334,7 +359,7 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	private fun bindCharts(force: Boolean) {
 		bindChartsToolbar()
 		val list = view?.findViewById<LinearLayout>(R.id.ev_bms_charts_list) ?: return
-		val fields = plugin.selectedTelemetryFields().filter { it.isChartable() }
+		val fields = plugin.chartFields()
 		val key = fields.joinToString(",") { it.id }
 		if (!force && key == chartsKey && chartRows.isNotEmpty()) {
 			refreshCharts()
@@ -358,6 +383,12 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			value.text = field.liveValue(ctx, plugin.latestTelemetry)
 			styleChart(chart)
 			chartRows.add(ChartRow(field, chart, value))
+			val openMenu = View.OnLongClickListener {
+				showChartMenu(it, field)
+				true
+			}
+			row.setOnLongClickListener(openMenu)
+			chart.setOnLongClickListener(openMenu)
 			list.addView(row)
 		}
 		refreshCharts()
@@ -383,6 +414,39 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 				uiHandler.removeCallbacks(liveTick)
 			}
 		}
+	}
+
+	private fun showChartMenu(anchor: View, field: TelemetryField) {
+		val popup = PopupMenu(requireContext(), anchor)
+		popup.menu.add(0, 1, 0, R.string.ev_bms_chart_move_up)
+		popup.menu.add(0, 2, 1, R.string.ev_bms_chart_move_down)
+		popup.menu.add(0, 3, 2, R.string.ev_bms_chart_move_start)
+		popup.menu.add(0, 4, 3, R.string.ev_bms_chart_move_end)
+		popup.menu.add(0, 5, 4, R.string.ev_bms_charts_pause)
+		popup.menu.add(0, 6, 5, R.string.ev_bms_charts_resume)
+		popup.setOnMenuItemClickListener { item ->
+			when (item.itemId) {
+				1 -> plugin.moveChart(field.id, EvBmsPlugin.ChartMove.UP)
+				2 -> plugin.moveChart(field.id, EvBmsPlugin.ChartMove.DOWN)
+				3 -> plugin.moveChart(field.id, EvBmsPlugin.ChartMove.START)
+				4 -> plugin.moveChart(field.id, EvBmsPlugin.ChartMove.END)
+				5 -> plugin.setChartPaused(field.id, true)
+				6 -> {
+					plugin.setChartPaused(field.id, false)
+					if (!plugin.isChartsLive()) {
+						plugin.setChartsLive(true)
+						bindChartsToolbar()
+						uiHandler.removeCallbacks(liveTick)
+						uiHandler.post(liveTick)
+					}
+				}
+			}
+			if (item.itemId in 1..4) {
+				bindCharts(force = true)
+			}
+			true
+		}
+		popup.show()
 	}
 
 	private fun styleChart(chart: LineChart) {
@@ -424,6 +488,9 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		val sample = plugin.latestTelemetry
 		for (row in chartRows) {
 			row.value.text = row.field.liveValue(ctx, sample)
+			if (!plugin.isChartsLive() || plugin.isChartPaused(row.field.id)) {
+				continue
+			}
 			val entries = ArrayList<Entry>()
 			val t0 = history.firstOrNull()?.timeMs ?: 0L
 			for (item in history) {
@@ -477,6 +544,10 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 					append(getString(R.string.ev_bms_history_charged_ah, n(row.chargedAh)))
 					append('\n')
 					append(getString(R.string.ev_bms_history_temp, nTemp(row.startTempC), nTemp(row.endTempC)))
+					append('\n')
+					append(getString(R.string.ev_bms_history_min_cell_range, nVolt(row.startMinCellV), nVolt(row.endMinCellV)))
+					append('\n')
+					append(getString(R.string.ev_bms_history_stop_time, row.stopMs?.let { fmtDuration(it) } ?: getString(R.string.ev_bms_value_none)))
 				}
 				wireHistoryChart(
 					item,
@@ -678,6 +749,13 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			return getString(R.string.ev_bms_value_none)
 		}
 		return String.format(Locale.getDefault(), "%.0f", v)
+	}
+
+	private fun nVolt(v: Double?): String {
+		if (v == null || v.isNaN() || v.isInfinite()) {
+			return getString(R.string.ev_bms_value_none)
+		}
+		return String.format(Locale.getDefault(), "%.3f", v)
 	}
 
 	private fun bindJournal() {

@@ -32,7 +32,9 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 	CTRL_SPEED("controller_speed_kmh", R.string.ev_bms_field_ctrl_speed, R.string.ev_bms_field_group_controller, "🚀"),
 	CONSUMPTION("consumption_wh_km", R.string.ev_bms_widget_consumption, R.string.ev_bms_field_group_ride, "📊"),
 	COVERAGE("coverage_wh_km", R.string.ev_bms_field_coverage, R.string.ev_bms_field_group_ride, "📊"),
-	CHARGE_TRIP("charge_trip_km", R.string.ev_bms_widget_charge_trip, R.string.ev_bms_field_group_ride, "🔌");
+	CHARGE_TRIP("charge_trip_km", R.string.ev_bms_widget_charge_trip, R.string.ev_bms_field_group_ride, "🔌"),
+	RANGE_RESERVE("range_reserve_km", R.string.ev_bms_widget_range_reserve, R.string.ev_bms_field_group_ride, "🛣️"),
+	STOP_TIME("stop_time_ms", R.string.ev_bms_field_stop_time, R.string.ev_bms_field_group_ride, "⏸️");
 
 	fun csvValue(sample: EvTelemetry): String {
 		return when (this) {
@@ -62,6 +64,8 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 			FAR_TRIP -> n(sample.farTripKm, "%.3f")
 			CHARGE_TRIP -> n(sample.chargeTripKm, "%.3f")
 			CTRL_SPEED -> n(sample.farSpeedKmh, "%.2f")
+			RANGE_RESERVE -> n(sample.rangeReserveKm, "%.2f")
+			STOP_TIME -> sample.stopTimeMs?.toString().orEmpty()
 		}
 	}
 
@@ -97,6 +101,8 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 			FAR_TRIP -> unit(sample.farTripKm, "%.2f", "km", empty)
 			CHARGE_TRIP -> unit(sample.chargeTripKm, "%.2f", "km", empty)
 			CTRL_SPEED -> unit(sample.farSpeedKmh, "%.1f", "km/h", empty)
+			RANGE_RESERVE -> unit(sample.rangeReserveKm, "%.1f", "km", empty)
+			STOP_TIME -> formatDuration(sample.stopTimeMs, empty)
 		}
 	}
 
@@ -139,6 +145,8 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 			CONSUMPTION -> sample.consumptionWhPerKm
 			COVERAGE -> sample.coverageWhPerKm
 			CHARGE_TRIP -> sample.chargeTripKm
+			RANGE_RESERVE -> sample.rangeReserveKm
+			STOP_TIME -> sample.stopTimeMs?.div(1000.0)
 		}
 		return if (raw == null || raw.isNaN() || raw.isInfinite()) null else raw
 	}
@@ -184,6 +192,20 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 		private fun unit(v: Double?, fmt: String, suffix: String, empty: String): String {
 			val raw = n(v, fmt)
 			return if (raw.isEmpty()) empty else "$raw $suffix"
+		}
+
+		private fun formatDuration(ms: Long?, empty: String): String {
+			if (ms == null || ms < 0L) {
+				return empty
+			}
+			val totalSec = (ms / 1000L).toInt()
+			val h = totalSec / 3600
+			val m = (totalSec % 3600) / 60
+			val s = totalSec % 60
+			return when {
+				h > 0 -> String.format(Locale.US, "%d:%02d:%02d", h, m, s)
+				else -> String.format(Locale.US, "%d:%02d", m, s)
+			}
 		}
 	}
 }

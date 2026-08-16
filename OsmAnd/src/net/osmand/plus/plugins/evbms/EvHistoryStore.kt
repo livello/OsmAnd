@@ -29,6 +29,9 @@ class EvHistoryStore(private val app: OsmandApplication) {
 		val startTempC: Double?,
 		val endTempC: Double?,
 		val chargedAh: Double?,
+		val startMinCellV: Double? = null,
+		val endMinCellV: Double? = null,
+		val stopMs: Long? = null,
 		val startLat: Double?,
 		val startLon: Double?,
 		val endLat: Double?,
@@ -43,6 +46,9 @@ class EvHistoryStore(private val app: OsmandApplication) {
 				.putOpt("startTempC", startTempC)
 				.putOpt("endTempC", endTempC)
 				.putOpt("chargedAh", chargedAh)
+				.putOpt("startMinCellV", startMinCellV)
+				.putOpt("endMinCellV", endMinCellV)
+				.putOpt("stopMs", stopMs)
 				.putOpt("startLat", startLat)
 				.putOpt("startLon", startLon)
 				.putOpt("endLat", endLat)
@@ -57,6 +63,9 @@ class EvHistoryStore(private val app: OsmandApplication) {
 					startTempC = json.optNullableDouble("startTempC"),
 					endTempC = json.optNullableDouble("endTempC"),
 					chargedAh = json.optNullableDouble("chargedAh"),
+					startMinCellV = json.optNullableDouble("startMinCellV"),
+					endMinCellV = json.optNullableDouble("endMinCellV"),
+					stopMs = if (json.has("stopMs") && !json.isNull("stopMs")) json.optLong("stopMs") else null,
 					startLat = json.optNullableDouble("startLat"),
 					startLon = json.optNullableDouble("startLon"),
 					endLat = json.optNullableDouble("endLat"),

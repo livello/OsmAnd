@@ -969,17 +969,17 @@ You will be able to pair this scanner again at any time.</string>
 <b>📊 Widgets</b><br/>
 • 🔋 SOC (auto-calibrated from min cell voltage per BMS MAC), pack voltage, pack current, min cell, battery temperature.<br/>
 • 📏 Remaining range and ⚡ consumption (Wh/km, 5-minute window).<br/>
-• 🛣️ Range reserve — remaining route minus remaining range. Positive means a shortfall.<br/>
+• 🛣️ Range reserve — remaining range minus remaining route. Positive means extra kilometers.<br/>
 • 🔌 Distance on charge — starts with motion while telemetry recording is on, resets when a real charge begins.<br/>
 • ⏳ Charge: time to full, elapsed time, watt-hours into the pack.<br/>
 • 🛵 Controller trip, motor power, motor temperature, controller / MOSFET temperature.<br/>
 • 🥾 Hike — lightens the map and slows BLE polling to 5 s; telemetry keeps writing.<br/><br/>
 <b>☑️ Fields</b><br/>
-Choose which values go into CSV, GPX and live charts. The hub list uses the full height of the tab, with live values beside each field.<br/><br/>
+Choose which values go into CSV, GPX and live charts, including range reserve and stop time. Select-all / deselect scroll with the list so the fields use the full height of the tab. Live values sit beside each field.<br/><br/>
 <b>📊 Charts</b><br/>
-A line graph for every selected numeric field. ⏸️ / ▶️ pauses drawing and stops buffering in the background.<br/><br/>
+A line graph for every selected numeric field. ⏸️ / ▶️ pauses drawing and stops buffering in the background. Long-press a chart for Up / Down / To start / To end / Pause / Resume.<br/><br/>
 <b>📋 History</b><br/>
-Charge sessions: duration, Ah from the BMS, start/end battery temperature. 📈 opens a collapsed chart of charge current, temperature, min and max cell voltage — computed once from recorded telemetry and stored.<br/>
+Charge sessions: duration, Ah from the BMS, start/end battery temperature, weak-cell voltage at start and end, and stop time (from motion stop until motion and discharge after the charge actually ended). 📈 opens a collapsed chart of charge current, temperature, min and max cell voltage — computed once from recorded telemetry and stored.<br/>
 Distance-on-charge rides: distance, moving and total time, battery and motor temperatures. 📈 opens power, Wh/km, motor temperature and min cell voltage. 🗑️ deletes a row and its chart.<br/>
 A new charge cannot start until you have ridden and used battery past the thresholds in settings; BLE drop-outs no longer split one charge into many.<br/><br/>
 <b>🔌 Distance on charge</b><br/>
@@ -991,7 +991,7 @@ Coverage Wh/km is the most conservative of: the 5-minute window, the trip averag
 • Temperature: full above 20 °C, down to about 50 percent in frost.<br/>
 Optional route profile adds climb energy and credits 55 percent of descent regen for the combined vehicle and driver mass from settings.<br/><br/>
 <b>🛣️ Range reserve</b><br/>
-Remaining navigation distance minus remaining range. Speak the current value when stopped. Small and low shortfall alerts use thresholds (default 5 km and 15 km) and only the worse level is spoken, with hysteresis.<br/><br/>
+Remaining range minus remaining navigation distance. Speak the current value when stopped. Small and low shortfall alerts use thresholds (default 5 km and 15 km short) and only the worse level is spoken, with hysteresis.<br/><br/>
 <b>🗣️ Voice alerts</b> (plugin settings)<br/>
 • 🔋 Battery charge on pack voltage steps (or SOC percent while charging).<br/>
 • 📏 Remaining range when stopped, plus temps and min cell; optional current range reserve.<br/>
@@ -1012,7 +1012,10 @@ Optional DEBUG log of plugin and BLE actions, including TX/RX hex. Export or cle
 <b>🥾 Hike mode</b><br/>
 Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
-• Fields tab: no sticky title or select-all / reset row, so the list uses the full height<br/>
+• Range reserve = remaining range minus remaining route; fields for range reserve and stop time<br/>
+• Long-press a live chart: Up, Down, To start, To end, Pause, Resume<br/>
+• Charge history: weak-cell voltage at start/end and stop time from park until motion and discharge after charge end<br/>
+• Fields tab: select-all / deselect scroll with the list instead of sticking under the hub title<br/>
 • Charts tab: ⏸️ / ▶️ pause so live graphs stop drawing and stop buffering in the background<br/>
 • Charge history shows start/end battery temperature and a collapsed chart of current, temperature, min and max cell voltage (computed once from telemetry)<br/>
 • Distance-on-charge history shows battery and motor temperatures and a collapsed chart of power, Wh/km, motor temperature and min cell voltage<br/>
@@ -1087,6 +1090,7 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_record_gpx_desc">A separate GPX is written only when OsmAnd trip recording is off. While a trip is recording, EV telemetry is stored in that track: charge waypoints, charts and coloring by Wh/km.</string>
     <string name="ev_bms_telemetry_fields">Telemetry fields</string>
     <string name="ev_bms_select_all_emoji">✅</string>
+    <string name="ev_bms_deselect_emoji">⬜</string>
     <string name="ev_bms_reset_emoji">↩️</string>
     <string name="ev_bms_coloring_consumption">Consumption</string>
     <string name="ev_bms_telemetry_fields_summary">%1$d of %2$d selected</string>
@@ -1141,6 +1145,8 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_history_ride">Moving %1$s, total %2$s</string>
     <string name="ev_bms_history_voltage">Voltage %1$s → %2$s V</string>
     <string name="ev_bms_history_min_cell">Min cell %1$s V</string>
+    <string name="ev_bms_history_min_cell_range">Weak cell %1$s → %2$s V</string>
+    <string name="ev_bms_history_stop_time">Stop time %1$s</string>
     <string name="ev_bms_gpx_charge_start">Charge start</string>
     <string name="ev_bms_gpx_charge_end">Charge end</string>
     <string name="ev_bms_gpx_charge_trip">Distance on charge</string>
@@ -1183,7 +1189,12 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_widget_range">Remaining range</string>
     <string name="ev_bms_widget_range_desc">Estimated remaining range from GPS or controller distance and 5-minute average Wh/km</string>
     <string name="ev_bms_widget_range_reserve">Range reserve</string>
-    <string name="ev_bms_widget_range_reserve_desc">Remaining route distance minus remaining range. Positive means a shortfall</string>
+    <string name="ev_bms_widget_range_reserve_desc">Remaining range minus remaining route. Positive means extra kilometers</string>
+    <string name="ev_bms_field_stop_time">Stop time</string>
+    <string name="ev_bms_chart_move_up">Move up</string>
+    <string name="ev_bms_chart_move_down">Move down</string>
+    <string name="ev_bms_chart_move_start">Move to start</string>
+    <string name="ev_bms_chart_move_end">Move to end</string>
     <string name="ev_bms_widget_consumption">Consumption</string>
     <string name="ev_bms_widget_consumption_desc">Average energy use in Wh/km over the last 5 minutes</string>
     <string name="ev_bms_widget_far_trip">Controller trip</string>

@@ -139,6 +139,12 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerIntPreference("ev_bms_range_reserve_low_km", DEFAULT_RESERVE_LOW_KM).makeGlobal().makeShared()
 	val CHARTS_LIVE: CommonPreference<Boolean> =
 		registerBooleanPreference("ev_bms_charts_live", true).makeGlobal().makeShared()
+	val CHART_ORDER: CommonPreference<String> =
+		registerStringPreference("ev_bms_chart_order", "").makeGlobal().makeShared()
+	val CHART_PAUSED: CommonPreference<String> =
+		registerStringPreference("ev_bms_chart_paused", "").makeGlobal().makeShared()
+	val CHARGE_STOP_PENDING: CommonPreference<String> =
+		registerStringPreference("ev_bms_charge_stop_pending", "").makeGlobal().makeShared()
 	val CONTROLLER_PROTOCOL: CommonPreference<String> =
 		registerStringPreference("ev_controller_protocol", "auto").makeGlobal().makeShared()
 	val ANNOUNCE_CELL_VOLTAGE: CommonPreference<Boolean> =
@@ -241,6 +247,11 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private var chargeStartMs = 0L
 	private var chargeStartAh: Double? = null
 	private var chargeStartTempC: Double? = null
+	private var chargeStartMinCellV: Double? = null
+	private var chargeParkedSinceMs = 0L
+	private var pendingStopRecordStartMs = 0L
+	private var pendingStopParkedSinceMs = 0L
+	private var lastStopMs: Long? = null
 	private var chargeStartLat: Double? = null
 	private var chargeStartLon: Double? = null
 	private var chargeFrozenCurrentA: Double? = null
@@ -529,6 +540,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		val now = System.currentTimeMillis()
 		val moving = isVehicleMoving()
 		if (moving) {
+			stillSinceMs?.let { lastStopMs = (now - it).coerceAtLeast(0L) }
 			stillSinceMs = null
 		} else if (stillSinceMs == null) {
 			stillSinceMs = now
@@ -620,6 +632,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			updateTripSession(now, moving, voltageV, tempC, minCellV)
 			tickChargeRearm(remainingAh, loc)
 		}
+		maybeCloseChargeStop(now, moving, remainingAh, currentA)
 		if (remainingAh != null) {
 			lastChargeAh = remainingAh
 		}
@@ -644,6 +657,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		chargeStartMs = now
 		chargeStartAh = remainingAh
 		chargeStartTempC = tempC
+		chargeStartMinCellV = minCellVoltageV
+		chargeParkedSinceMs = stillSinceMs ?: now
 		chargeStartLat = loc?.latitude
 		chargeStartLon = loc?.longitude
 		chargeFrozenCurrentA = currentA.takeIf { it >= 0.4 }
@@ -666,18 +681,31 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		} else {
 			null
 		}
+		val parkedSince = chargeParkedSinceMs.takeIf { it > 0L } ?: (if (chargeStartMs > 0L) chargeStartMs else now)
+		val moving = isVehicleMoving()
 		val record = EvHistoryStore.ChargeRecord(
 			startMs = if (chargeStartMs > 0L) chargeStartMs else now,
 			endMs = now,
 			startTempC = chargeStartTempC,
 			endTempC = tempC,
 			chargedAh = chargedAh,
+			startMinCellV = chargeStartMinCellV,
+			endMinCellV = minCellVoltageV,
+			stopMs = (now - parkedSince).coerceAtLeast(0L),
 			startLat = chargeStartLat,
 			startLon = chargeStartLon,
 			endLat = loc?.latitude,
 			endLon = loc?.longitude
 		)
 		saveChargeRecord(record)
+		if (!moving) {
+			pendingStopRecordStartMs = record.startMs
+			pendingStopParkedSinceMs = parkedSince
+			persistChargeStopPending()
+		} else {
+			lastStopMs = record.stopMs
+			clearChargeStopPending()
+		}
 		historyCharts.save(EvHistoryChartStore.KIND_CHARGE, record.startMs, record.endMs, ArrayList(historySamples))
 		historySamples.clear()
 		historySampleLastMs = 0L
@@ -832,6 +860,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		chargeStartMs = 0L
 		chargeStartAh = null
 		chargeStartTempC = null
+		chargeStartMinCellV = null
+		chargeParkedSinceMs = 0L
 		chargeStartLat = null
 		chargeStartLon = null
 		chargeFrozenCurrentA = null
@@ -850,6 +880,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		json.put("startMs", chargeStartMs)
 		json.putD("startAh", chargeStartAh)
 		json.putD("startTempC", chargeStartTempC)
+		json.putD("startMinCellV", chargeStartMinCellV)
+		json.put("parkedSinceMs", chargeParkedSinceMs)
 		json.putD("startLat", chargeStartLat)
 		json.putD("startLon", chargeStartLon)
 		json.putD("currentA", chargeFrozenCurrentA)
@@ -890,6 +922,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				chargeStartMs = json.optLong("startMs")
 				chargeStartAh = json.optNullableDouble("startAh")
 				chargeStartTempC = json.optNullableDouble("startTempC")
+				chargeStartMinCellV = json.optNullableDouble("startMinCellV")
+				chargeParkedSinceMs = json.optLong("parkedSinceMs")
 				chargeStartLat = json.optNullableDouble("startLat")
 				chargeStartLon = json.optNullableDouble("startLon")
 				chargeFrozenCurrentA = json.optNullableDouble("currentA")
@@ -926,6 +960,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			}
 		}
 		restoreChargeRearm()
+		restoreChargeStopPending()
 	}
 
 	private fun persistSocCal() {
@@ -1055,6 +1090,63 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		} catch (_: Exception) {
 			rearmReady = true
 		}
+	}
+
+	private fun maybeCloseChargeStop(now: Long, moving: Boolean, remainingAh: Double?, currentA: Double?) {
+		if (pendingStopRecordStartMs <= 0L || pendingStopParkedSinceMs <= 0L) {
+			return
+		}
+		if (charging || !moving) {
+			return
+		}
+		val discharging = remainingAh != null && lastChargeAh != null &&
+				lastChargeAh!! - remainingAh >= 0.02
+		val currentOut = currentA != null && currentA < -0.3
+		if (!discharging && !currentOut) {
+			return
+		}
+		val stopMs = (now - pendingStopParkedSinceMs).coerceAtLeast(0L)
+		lastStopMs = stopMs
+		updateChargeStopMs(pendingStopRecordStartMs, stopMs)
+		clearChargeStopPending()
+	}
+
+	private fun updateChargeStopMs(startMs: Long, stopMs: Long) {
+		val rows = chargeHistory().map { row ->
+			if (row.startMs == startMs) row.copy(stopMs = stopMs) else row
+		}
+		CHARGE_HISTORY.set(historyStore.encodeCharges(rows))
+	}
+
+	private fun persistChargeStopPending() {
+		if (pendingStopRecordStartMs <= 0L) {
+			CHARGE_STOP_PENDING.set("")
+			return
+		}
+		val json = JSONObject()
+		json.put("startMs", pendingStopRecordStartMs)
+		json.put("parkedSinceMs", pendingStopParkedSinceMs)
+		CHARGE_STOP_PENDING.set(json.toString())
+	}
+
+	private fun restoreChargeStopPending() {
+		val raw = CHARGE_STOP_PENDING.get()
+		if (raw.isNullOrBlank()) {
+			return
+		}
+		try {
+			val json = JSONObject(raw)
+			pendingStopRecordStartMs = json.optLong("startMs")
+			pendingStopParkedSinceMs = json.optLong("parkedSinceMs")
+		} catch (_: Exception) {
+			clearChargeStopPending()
+		}
+	}
+
+	private fun clearChargeStopPending() {
+		pendingStopRecordStartMs = 0L
+		pendingStopParkedSinceMs = 0L
+		CHARGE_STOP_PENDING.set("")
 	}
 
 	private fun saveChargeRecord(row: EvHistoryStore.ChargeRecord) {
@@ -1196,8 +1288,69 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	fun rangeReserveKm(): Double? {
 		val route = getRouteLeftKm() ?: return null
 		val range = rangeEstimator.remainingRangeKm ?: latestTelemetry?.remainingRangeKm ?: return null
-		return route - range
+		return range - route
 	}
+
+	fun stopTimeMs(): Long? {
+		val still = stillSinceMs
+		if (still != null) {
+			return (System.currentTimeMillis() - still).coerceAtLeast(0L)
+		}
+		val pending = pendingStopParkedSinceMs
+		if (pending > 0L) {
+			return (System.currentTimeMillis() - pending).coerceAtLeast(0L)
+		}
+		return lastStopMs
+	}
+
+	enum class ChartMove { UP, DOWN, START, END }
+
+	fun chartFields(): List<TelemetryField> {
+		val selected = selectedTelemetryFields().filter { it.isChartable() }
+		val order = CHART_ORDER.get().orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }
+		val byId = selected.associateBy { it.id }
+		val ordered = order.mapNotNull { byId[it] }
+		val rest = selected.filter { it.id !in order.toSet() }
+		return ordered + rest
+	}
+
+	fun moveChart(id: String, move: ChartMove) {
+		val list = chartFields().map { it.id }.toMutableList()
+		val i = list.indexOf(id)
+		if (i < 0) {
+			return
+		}
+		when (move) {
+			ChartMove.UP -> if (i > 0) {
+				list[i] = list[i - 1].also { list[i - 1] = id }
+			}
+			ChartMove.DOWN -> if (i < list.lastIndex) {
+				list[i] = list[i + 1].also { list[i + 1] = id }
+			}
+			ChartMove.START -> {
+				list.removeAt(i)
+				list.add(0, id)
+			}
+			ChartMove.END -> {
+				list.removeAt(i)
+				list.add(id)
+			}
+		}
+		CHART_ORDER.set(list.joinToString(","))
+	}
+
+	fun isChartPaused(id: String): Boolean {
+		return id in chartPausedIds()
+	}
+
+	fun setChartPaused(id: String, paused: Boolean) {
+		val set = chartPausedIds().toMutableSet()
+		if (paused) set.add(id) else set.remove(id)
+		CHART_PAUSED.set(set.joinToString(","))
+	}
+
+	private fun chartPausedIds(): Set<String> =
+		CHART_PAUSED.get().orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
 
 	fun startBmsScan(activity: Activity) {
 		bmsClient?.startScan(activity)
@@ -1656,7 +1809,9 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			farSpeedKmh = ctrlSpeedKmh(),
 			farAvgWhPerKm = ctrlAvgWhPerKm(),
 			gpsUnreliable = rangeEstimator.gpsUnreliable,
-			usedFarDriverDistance = rangeEstimator.usedFarDriverDistance
+			usedFarDriverDistance = rangeEstimator.usedFarDriverDistance,
+			rangeReserveKm = rangeReserveKm(),
+			stopTimeMs = stopTimeMs()
 		)
 		val bmsFreshAfter = isBmsFresh()
 		val ctrlFreshAfter = isControllerFresh()
@@ -1713,7 +1868,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			ANNOUNCE_RANGE_VS_ROUTE.get() && bmsFresh
 		)
 		voice.onRangeReserve(
-			if (bmsFresh) rangeReserveKm() else null,
+			if (bmsFresh) rangeReserveKm()?.let { -it } else null,
 			RANGE_RESERVE_SMALL_KM.get().toDouble(),
 			RANGE_RESERVE_LOW_KM.get().toDouble(),
 			ANNOUNCE_RANGE_RESERVE_SMALL.get() && bmsFresh,
@@ -2020,6 +2175,11 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			return
 		}
 		TELEMETRY_FIELDS.set(selected.joinToString(",") { it.id })
+		val keep = selected.map { it.id }.toSet()
+		val order = CHART_ORDER.get().orEmpty().split(',').map { it.trim() }.filter { it in keep }
+		CHART_ORDER.set(order.joinToString(","))
+		val paused = chartPausedIds().filter { it in keep }
+		CHART_PAUSED.set(paused.joinToString(","))
 		applyHikeTelemetryState()
 	}
 
