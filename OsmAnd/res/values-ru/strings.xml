@@ -4463,9 +4463,10 @@
     <string name="ev_bms_plugin_name">EV-Телеметрия</string>
     <string name="ev_bms_plugin_description"><![CDATA[🔋 <b>EV-Телеметрия</b> — живая телеметрия батареи и мотора по Bluetooth LE. Нажатие по виджету плагина открывает модалку на всю высоту: ⚙️ настройки, ☑️ поля, 📊 графики, 📋 история, 📜 журнал, ℹ️ о плагине. Последняя вкладка запоминается. Виджеты добавляются в «Настроить экран» → «EV-Телеметрия». Текст виджета <font color="#000000">чёрный</font>, пока есть связь по BLE, и <font color="#c62828">красный</font>, если связь потеряна. Виджеты BMS следят за батареей, виджеты контроллера — за моторным контроллером. Долгое нажатие по числовому виджету переключает компактные числа и подписи.<br/><br/>
 <b>📡 Устройства</b><br/>
-• BMS: JBD / Xiaoxiang (сервис FF00) или ANT (FFE0 / FFE1). Протокол Авто / JBD / ANT. Пароль JBD из 6 цифр открывает запароленный пакет.<br/>
+• BMS: JBD / Xiaoxiang (сервис FF00) или ANT (FFE0 / FFE1). Протокол Авто / JBD / ANT. Пароль JBD из 6 цифр открывает BLE-модуль Xiaoxiang (appkey 0x21 / старый 0x15), затем UART.<br/>
 • Контроллер: FarDriver (FFE0 / FFEC) или VESC по Nordic UART. Протокол Авто / FarDriver / VESC. Тип показывается по имени прошивки и железа.<br/>
-• После обрыва обе BLE-связи переподключаются сами (повтор с паузой, поиск по MAC, контроль «мёртвого» канала).<br/><br/>
+• В настройках: 🟢 / 🔴, имя, MAC, RSSI и счётчики ↑TX / ↓RX — обновление каждую секунду.<br/>
+• После обрыва обе BLE-связи переподключаются сами (повтор с паузой, поиск по MAC). Живой GATT к BMS больше не рвётся из‑за тишины UART.<br/><br/>
 <b>📊 Виджеты</b><br/>
 • 🔋 SOC (калибровка по минимуму ячейки отдельно для каждого MAC BMS), напряжение и ток пакета, минимум ячейки, температура батареи.<br/>
 • 📏 Запас хода и ⚡ расход (Вт·ч/км, окно 5 минут).<br/>
@@ -4514,6 +4515,8 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
 <b>🥾 Режим «Поход»</b><br/>
 Оставляет запас хода, GPS и телеметрию раз в 5 с, замедляет опрос BLE не реже 5 с, отключает тяжёлые слои карты, 3D, погоду, онлайн-тайлы и лишние Bluetooth-плагины.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Список изменений</b> · %1$s<br/>
+• 📶 В настройках у BMS и контроллера: 🟢 / 🔴, имя, MAC, RSSI и счётчики ↑TX / ↓RX — обновление каждую секунду<br/>
+• 🔓 Xiaoxiang: сначала appkey 0x21 / старый 0x15, затем UART; живой GATT к BMS больше не рвётся из‑за тишины телеметрии<br/>
 • Раздельные частоты опроса BMS и контроллера, до 200 мс (5 Гц); CSV/GPX по умолчанию раз в 1 с, чтобы максимальный опрос не раздувал логи<br/>
 • Пароль JBD / Xiaoxiang сначала разблокирует BLE-модуль (FF AA), как в официальном приложении, и только потом идут чтения UART<br/>
 • Nightly-сборки открывают функции OsmAnd Pro без ограничений бесплатной версии<br/>
@@ -4628,7 +4631,7 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
     <string name="ev_bms_field_ctrl_current">Ток контроллера</string>
     <string name="ev_bms_field_rpm">Обороты</string>
     <string name="ev_bms_field_gear">Передача</string>
-    <string name="ev_bms_field_coverage">Расход Вт·ч/км</string>
+    <string name="ev_bms_field_coverage">Удельный расход</string>
     <string name="ev_bms_field_range">Запас хода</string>
     <string name="ev_bms_field_group_gps">GPS</string>
     <string name="ev_bms_field_group_battery">Батарея</string>
@@ -4662,6 +4665,10 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
     <string name="ev_bms_history_min_cell">Минимум ячейки %1$s В</string>
     <string name="ev_bms_history_min_cell_range">Слабая ячейка %1$s → %2$s В</string>
     <string name="ev_bms_history_stop_time">Время остановки %1$s</string>
+    <string name="ev_bms_history_energy_wh">Полный расход %1$s Вт·ч</string>
+    <string name="ev_bms_history_specific_whkm">Удельный расход %1$s Вт·ч/км</string>
+    <string name="ev_bms_history_avg_speed">Средняя скорость в движении %1$s км/ч</string>
+    <string name="ev_bms_history_avg_charge_a">Средний ток заряда %1$s А</string>
     <string name="ev_bms_gpx_charge_start">Начало зарядки</string>
     <string name="ev_bms_gpx_charge_end">Конец зарядки</string>
     <string name="ev_bms_gpx_charge_trip">Пробег на заряде</string>
@@ -4682,12 +4689,15 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
     <string name="ev_bms_n_kg">%1$s кг</string>
     <string name="ev_bms_status_connected">🟢 %1$s</string>
     <string name="ev_bms_status_disconnected">🔴 %1$s</string>
+    <string name="ev_bms_status_ble_stats">%1$s  ↑%2$d ↓%3$d</string>
     <string name="ev_bms_status_saved">Сохранено: %1$s (нажмите, чтобы сканировать снова)</string>
     <string name="ev_bms_status_not_selected">Нажмите, чтобы найти и подключить</string>
     <string name="ev_bms_scanning">Поиск Bluetooth LE…</string>
     <string name="ev_bms_nothing_found">Подходящие устройства не найдены. Включите Bluetooth и геолокацию, разбудите BMS/контроллер и повторите поиск. Сопряжённые устройства тоже попадают в список.</string>
     <string name="ev_bms_location_off">Включите геолокацию. Android использует её для поиска Bluetooth LE.</string>
     <string name="ev_bms_select_device">Выберите устройство</string>
+    <string name="ev_bms_ble_rssi">📶 %1$d дБм</string>
+    <string name="ev_bms_ble_rssi_unknown">📶 сопряжено</string>
     <string name="ev_bms_connected">Подключено к %1$s</string>
     <string name="ev_bms_disconnected">Отключено от %1$s</string>
     <string name="ev_bms_voice_soc">Заряд батареи %1$s вольт</string>
@@ -4712,8 +4722,8 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
     <string name="ev_bms_chart_move_start">В начало</string>
     <string name="ev_bms_chart_move_end">В конец</string>
     <string name="ev_bms_chart_actions">Действия графика: %1$s</string>
-    <string name="ev_bms_widget_consumption">Расход</string>
-    <string name="ev_bms_widget_consumption_desc">Средний расход Вт·ч/км за последние 5 минут</string>
+    <string name="ev_bms_widget_consumption">Полный расход</string>
+    <string name="ev_bms_widget_consumption_desc">Энергия данного пробега на заряде, ватт-часы</string>
     <string name="ev_bms_widget_far_trip">Пробег контроллера</string>
     <string name="ev_bms_widget_far_trip_desc">Пробег сессии по одометру моторного контроллера</string>
     <string name="ev_bms_widget_charge_trip">Пробег на заряде</string>
@@ -4726,7 +4736,7 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
     <string name="ev_bms_widget_min_cell">Минимум ячейки</string>
     <string name="ev_bms_widget_min_cell_desc">Минимальное напряжение ячейки по BMS</string>
     <string name="ev_bms_widget_current">Ток пакета</string>
-    <string name="ev_bms_widget_current_desc">Ток батареи по BMS</string>
+    <string name="ev_bms_widget_current_desc">Ток пакета по BMS. Плюс — заряд в батарею, минус — разряд.</string>
     <string name="ev_bms_widget_power">Мощность мотора</string>
     <string name="ev_bms_widget_power_desc">Мощность по шине контроллера</string>
     <string name="ev_bms_widget_motor_temp">Температура мотора</string>
@@ -4815,6 +4825,9 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
     <string name="ev_bms_cal_failed">Калибровка не удалась. Нужны GPS и связь с контроллером.</string>
     <string name="ev_bms_cal_started">Автокалибровка начата. Проедьте %1$s при устойчивом GPS.</string>
     <string name="ev_bms_cal_cancelled">Автокалибровка отменена</string>
+    <string name="ev_bms_filter_ctrl_odo">Фильтровать «пробег по контроллеру»</string>
+    <string name="ev_bms_filter_ctrl_odo_desc">GPS-пробег не может быть больше одометра контроллера с учётом коэффициента калибровки.</string>
+    <string name="ev_bms_ctrl_odo_excess">Превышение пробега контроллера</string>
     <string name="ev_bms_cal_factor_invalid">Введите коэффициент от 0.500 до 2.000</string>
     <string name="map_rendering_engine_v2_unavailable">Версия 2 (OpenGL) в этой сборке не входит. Nightly собран с движком Version 1 (legacy). Чтобы включить OpenGL, нужна сборка flavor opengl, а не legacy.</string>
     <string name="unknown_bt_device">Неизвестное устройство</string>

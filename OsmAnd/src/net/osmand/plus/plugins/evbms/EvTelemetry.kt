@@ -25,6 +25,7 @@ data class EvTelemetry(
 	val controllerTempC: Double? = null,
 	val remainingRangeKm: Double? = null,
 	val consumptionAhPerKm: Double? = null,
+	val energyWh: Double? = null,
 	val consumptionWhPerKm: Double? = null,
 	val coverageWhPerKm: Double? = null,
 	val weakCellFactor: Double? = null,

@@ -73,6 +73,18 @@
 		android:persistent="false"
 		android:title="@string/ev_bms_cal_start" />
 
+	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
+		android:key="ev_bms_filter_ctrl_odo"
+		android:layout="@layout/ev_bms_preference_switch"
+		android:summaryOff="@string/shared_string_disabled"
+		android:summaryOn="@string/shared_string_enabled"
+		android:title="@string/ev_bms_filter_ctrl_odo" />
+
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="ev_bms_ctrl_odo_excess_percent"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:title="@string/ev_bms_ctrl_odo_excess" />
+
 	<PreferenceCategory
 		android:key="ev_bms_recording"
 		android:layout="@layout/ev_bms_preference_category_divider"

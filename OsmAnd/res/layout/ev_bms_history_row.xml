@@ -40,7 +40,7 @@
 				android:layout_width="match_parent"
 				android:layout_height="wrap_content"
 				android:ellipsize="end"
-				android:maxLines="6"
+				android:maxLines="12"
 				tools:text="Charged 12.4 Ah" />
 		</LinearLayout>
 

@@ -125,6 +125,16 @@ class RangeEstimator(
 	}
 
 	@Synchronized
+	fun tripEnergyWh(): Double? = tripWh.takeIf { it > 0.01 }
+
+	@Synchronized
+	fun markTripBoundary() {
+		tripDistanceKm = 0.0
+		tripWh = 0.0
+		lastTripAh = null
+	}
+
+	@Synchronized
 	fun reset() {
 		samples.clear()
 		segmentWhPerKm.clear()

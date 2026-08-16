@@ -85,7 +85,7 @@ class EvBmsTextWidget(
 			Field.SOC -> sample?.socPercent?.toString() ?: NO_VALUE
 			Field.RANGE -> formatMetricKm(sample?.remainingRangeKm)
 			Field.RANGE_RESERVE -> formatMetricKm(plugin.rangeReserveKm())
-			Field.CONSUMPTION -> sample?.consumptionWhPerKm?.let { String.format(Locale.US, "%.0f", it) } ?: NO_VALUE
+			Field.CONSUMPTION -> sample?.energyWh?.let { String.format(Locale.US, "%.0f", it) } ?: NO_VALUE
 			Field.FAR_TRIP -> formatMetricKm(sample?.farTripKm)
 			Field.CHARGE_TRIP -> formatMetricKm(sample?.chargeTripKm)
 			Field.CHARGE_ETA -> {

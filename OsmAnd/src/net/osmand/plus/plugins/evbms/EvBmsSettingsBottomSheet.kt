@@ -4,6 +4,7 @@ import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.text.TextUtils
 import android.text.method.LinkMovementMethod
 import android.view.View
 import android.view.ViewGroup
@@ -529,74 +530,126 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		val list = view?.findViewById<LinearLayout>(R.id.ev_bms_history_list) ?: return
 		list.removeAllViews()
 		val inflater = layoutInflater
-		val themed = UiUtilities.getThemedContext(requireContext(), nightMode)
-		val charges = plugin.chargeHistory().asReversed()
-		val trips = plugin.tripHistory().asReversed()
-		list.addView(telemetryGroupHeader(themed, R.string.ev_bms_charge_history))
-		if (charges.isEmpty()) {
+		val charges = plugin.chargeHistory()
+		val trips = plugin.tripHistory()
+		if (charges.isEmpty() && trips.isEmpty()) {
 			list.addView(emptyHint(getString(R.string.ev_bms_history_empty)))
-		} else {
-			for (row in charges) {
-				val item = inflater.inflate(R.layout.ev_bms_history_row, list, false)
-				item.findViewById<TextView>(R.id.title).text =
-					"${fmtDateTime(row.startMs)} → ${fmtTime(row.endMs)}"
-				item.findViewById<TextView>(R.id.description).text = buildString {
-					append(getString(R.string.ev_bms_history_duration, fmtDuration(row.durationMs())))
-					append(" · ")
-					append(getString(R.string.ev_bms_history_charged_ah, n(row.chargedAh)))
-					append('\n')
-					append(getString(R.string.ev_bms_history_temp, nTemp(row.startTempC), nTemp(row.endTempC)))
-					append('\n')
-					append(getString(R.string.ev_bms_history_min_cell_range, nVolt(row.startMinCellV), nVolt(row.endMinCellV)))
-					append('\n')
-					append(getString(R.string.ev_bms_history_stop_time, row.stopMs?.let { fmtDuration(it) } ?: getString(R.string.ev_bms_value_none)))
-				}
-				wireHistoryChart(
-					item,
-					EvHistoryChartStore.KIND_CHARGE,
-					row.startMs,
-					row.endMs,
-					R.string.ev_bms_delete_charge_q
-				) {
-					plugin.deleteChargeRecord(row.startMs, row.endMs)
-					settingsFragment()?.refreshHistoryPrefs()
-					bindHistory()
-				}
-				list.addView(item)
-			}
+			return
 		}
-		list.addView(telemetryGroupHeader(themed, R.string.ev_bms_trip_history))
-		if (trips.isEmpty()) {
-			list.addView(emptyHint(getString(R.string.ev_bms_history_empty)))
-		} else {
-			for (row in trips) {
-				val item = inflater.inflate(R.layout.ev_bms_history_row, list, false)
-				item.findViewById<TextView>(R.id.title).text =
-					"${fmtDateTime(row.startMs)} → ${fmtTime(row.endMs)}"
-				item.findViewById<TextView>(R.id.description).text = buildString {
-					append(getString(R.string.ev_bms_history_distance, n(row.distanceKm)))
-					append(" · ")
-					append(getString(R.string.ev_bms_history_ride, fmtDuration(row.movingMs), fmtDuration(row.durationMs())))
-					append('\n')
-					append(getString(R.string.ev_bms_history_temp, nTemp(row.startTempC), nTemp(row.endTempC)))
-					append('\n')
-					append(getString(R.string.ev_bms_history_motor_temp, nTemp(row.startMotorTempC), nTemp(row.endMotorTempC)))
-				}
-				wireHistoryChart(
-					item,
-					EvHistoryChartStore.KIND_TRIP,
-					row.startMs,
-					row.endMs,
-					R.string.ev_bms_delete_trip_q
-				) {
-					plugin.deleteTripRecord(row.startMs, row.endMs)
-					settingsFragment()?.refreshHistoryPrefs()
-					bindHistory()
-				}
-				list.addView(item)
+		val merged = ArrayList<HistoryRow>(charges.size + trips.size)
+		charges.forEach { merged.add(HistoryRow.Charge(it)) }
+		trips.forEach { merged.add(HistoryRow.Trip(it)) }
+		merged.sortByDescending { it.sortMs }
+		for (row in merged) {
+			when (row) {
+				is HistoryRow.Charge -> list.addView(bindChargeHistoryRow(inflater, list, row.record))
+				is HistoryRow.Trip -> list.addView(bindTripHistoryRow(inflater, list, row.record))
 			}
 		}
 	}
+
+	private sealed class HistoryRow(val sortMs: Long) {
+		class Charge(val record: EvHistoryStore.ChargeRecord) : HistoryRow(record.startMs)
+		class Trip(val record: EvHistoryStore.ChargeTripRecord) : HistoryRow(record.startMs)
+	}
+
+	private fun bindChargeHistoryRow(
+		inflater: android.view.LayoutInflater,
+		list: LinearLayout,
+		row: EvHistoryStore.ChargeRecord
+	): View {
+		val item = inflater.inflate(R.layout.ev_bms_history_row, list, false)
+		item.findViewById<TextView>(R.id.title).text = historyHtml(
+			"🔌 ${fmtDateTime(row.startMs)} → ${fmtTime(row.endMs)}"
+		)
+		item.findViewById<TextView>(R.id.description).text = historyHtml(
+			buildString {
+				append("⏱️ ").append(getString(R.string.ev_bms_history_duration, bNum(fmtDuration(row.durationMs()))))
+				append(" · 🔋 ").append(getString(R.string.ev_bms_history_charged_ah, bNum(n(row.chargedAh))))
+				if (row.avgCurrentA != null) {
+					append(" · 🔌 ").append(getString(R.string.ev_bms_history_avg_charge_a, bNum(n(row.avgCurrentA))))
+				}
+				append('\n')
+				append("🌡️ ").append(getString(R.string.ev_bms_history_temp, bNum(nTemp(row.startTempC)), bNum(nTemp(row.endTempC))))
+				append('\n')
+				append("🔻 ").append(getString(R.string.ev_bms_history_min_cell_range, bNum(nVolt(row.startMinCellV)), bNum(nVolt(row.endMinCellV))))
+				append('\n')
+				append("⏸️ ").append(
+					getString(
+						R.string.ev_bms_history_stop_time,
+						bNum(row.stopMs?.let { fmtDuration(it) } ?: getString(R.string.ev_bms_value_none))
+					)
+				)
+			}
+		)
+		wireHistoryChart(
+			item,
+			EvHistoryChartStore.KIND_CHARGE,
+			row.startMs,
+			row.endMs,
+			R.string.ev_bms_delete_charge_q
+		) {
+			plugin.deleteChargeRecord(row.startMs, row.endMs)
+			settingsFragment()?.refreshHistoryPrefs()
+			bindHistory()
+		}
+		return item
+	}
+
+	private fun bindTripHistoryRow(
+		inflater: android.view.LayoutInflater,
+		list: LinearLayout,
+		row: EvHistoryStore.ChargeTripRecord
+	): View {
+		val item = inflater.inflate(R.layout.ev_bms_history_row, list, false)
+		item.findViewById<TextView>(R.id.title).text = historyHtml(
+			"🛵 ${fmtDateTime(row.startMs)} → ${fmtTime(row.endMs)}"
+		)
+		item.findViewById<TextView>(R.id.description).text = historyHtml(
+			buildString {
+				append("🛣️ ").append(getString(R.string.ev_bms_history_distance, bNum(n(row.distanceKm))))
+				append(" · 🕒 ").append(
+					getString(R.string.ev_bms_history_ride, bNum(fmtDuration(row.movingMs)), bNum(fmtDuration(row.durationMs())))
+				)
+				append('\n')
+				append("⚡ ").append(
+					getString(R.string.ev_bms_history_voltage, bNum(n(row.startVoltageV)), bNum(n(row.endVoltageV)))
+				)
+				append('\n')
+				append("📊 ").append(getString(R.string.ev_bms_history_energy_wh, bNum(n0(row.energyWh))))
+				append(" · 📈 ").append(getString(R.string.ev_bms_history_specific_whkm, bNum(n0(row.specificWhKm))))
+				append('\n')
+				append("🚀 ").append(getString(R.string.ev_bms_history_avg_speed, bNum(n(row.avgMovingKmh))))
+				append(" · ⏸️ ").append(
+					getString(
+						R.string.ev_bms_history_stop_time,
+						bNum(row.stopMs?.let { fmtDuration(it) } ?: getString(R.string.ev_bms_value_none))
+					)
+				)
+				append('\n')
+				append("🌡️ ").append(getString(R.string.ev_bms_history_temp, bNum(nTemp(row.startTempC)), bNum(nTemp(row.endTempC))))
+				append('\n')
+				append("🔥 ").append(getString(R.string.ev_bms_history_motor_temp, bNum(nTemp(row.startMotorTempC)), bNum(nTemp(row.endMotorTempC))))
+			}
+		)
+		wireHistoryChart(
+			item,
+			EvHistoryChartStore.KIND_TRIP,
+			row.startMs,
+			row.endMs,
+			R.string.ev_bms_delete_trip_q
+		) {
+			plugin.deleteTripRecord(row.startMs, row.endMs)
+			settingsFragment()?.refreshHistoryPrefs()
+			bindHistory()
+		}
+		return item
+	}
+
+	private fun historyHtml(text: String): CharSequence =
+		HtmlCompat.fromHtml(text.replace("\n", "<br>"), HtmlCompat.FROM_HTML_MODE_LEGACY)
+
+	private fun bNum(value: String): String = "<b>${TextUtils.htmlEncode(value)}</b>"
 
 	private fun confirmDelete(messageRes: Int, onConfirm: () -> Unit) {
 		val themed = UiUtilities.getThemedContext(requireContext(), nightMode)
@@ -773,6 +826,13 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			return getString(R.string.ev_bms_value_none)
 		}
 		return String.format(Locale.getDefault(), "%.3f", v)
+	}
+
+	private fun n0(v: Double?): String {
+		if (v == null || v.isNaN() || v.isInfinite()) {
+			return getString(R.string.ev_bms_value_none)
+		}
+		return String.format(Locale.getDefault(), "%.0f", v)
 	}
 
 	private fun bindJournal() {

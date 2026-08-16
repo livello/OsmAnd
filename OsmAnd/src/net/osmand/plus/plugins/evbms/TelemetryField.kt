@@ -58,8 +58,8 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 			MOTOR_TEMP -> n(sample.motorTempC, "%.1f")
 			CTRL_TEMP -> n(sample.controllerTempC, "%.1f")
 			RANGE -> n(sample.remainingRangeKm, "%.2f")
-			CONSUMPTION -> n(sample.consumptionWhPerKm, "%.1f")
-			COVERAGE -> n(sample.coverageWhPerKm, "%.1f")
+			CONSUMPTION -> n(sample.energyWh, "%.1f")
+			COVERAGE -> n(sample.consumptionWhPerKm ?: sample.coverageWhPerKm, "%.1f")
 			ODOMETER -> n(sample.farOdometerKm, "%.3f")
 			FAR_TRIP -> n(sample.farTripKm, "%.3f")
 			CHARGE_TRIP -> n(sample.chargeTripKm, "%.3f")
@@ -95,8 +95,8 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 			MOTOR_TEMP -> unit(sample.motorTempC, "%.1f", "°C", empty)
 			CTRL_TEMP -> unit(sample.controllerTempC, "%.1f", "°C", empty)
 			RANGE -> unit(sample.remainingRangeKm, "%.1f", "km", empty)
-			CONSUMPTION -> unit(sample.consumptionWhPerKm, "%.0f", "Wh/km", empty)
-			COVERAGE -> unit(sample.coverageWhPerKm, "%.0f", "Wh/km", empty)
+			CONSUMPTION -> unit(sample.energyWh, "%.0f", "Wh", empty)
+			COVERAGE -> unit(sample.consumptionWhPerKm ?: sample.coverageWhPerKm, "%.0f", "Wh/km", empty)
 			ODOMETER -> unit(sample.farOdometerKm, "%.2f", "km", empty)
 			FAR_TRIP -> unit(sample.farTripKm, "%.2f", "km", empty)
 			CHARGE_TRIP -> unit(sample.chargeTripKm, "%.2f", "km", empty)
@@ -142,8 +142,8 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 			ODOMETER -> sample.farOdometerKm
 			FAR_TRIP -> sample.farTripKm
 			CTRL_SPEED -> sample.farSpeedKmh
-			CONSUMPTION -> sample.consumptionWhPerKm
-			COVERAGE -> sample.coverageWhPerKm
+			CONSUMPTION -> sample.energyWh
+			COVERAGE -> sample.consumptionWhPerKm ?: sample.coverageWhPerKm
 			CHARGE_TRIP -> sample.chargeTripKm
 			RANGE_RESERVE -> sample.rangeReserveKm
 			STOP_TIME -> sample.stopTimeMs?.div(1000.0)

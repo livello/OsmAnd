@@ -2,6 +2,7 @@ package net.osmand.plus.plugins.evbms
 
 import android.app.Activity
 import android.app.Dialog
+import android.content.Context
 import android.content.Intent
 import android.graphics.drawable.ColorDrawable
 import android.location.LocationManager
@@ -10,6 +11,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -25,6 +27,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
+import androidx.core.text.HtmlCompat
 import androidx.fragment.app.FragmentManager
 import androidx.preference.Preference
 import androidx.recyclerview.widget.RecyclerView
@@ -52,11 +55,11 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 	}
 
 	private val plugin = PluginsHelper.requirePlugin(EvBmsPlugin::class.java)
-	private val found = ArrayList<Pair<String, String>>()
+	private val found = ArrayList<ScannedBle>()
 	private var scanningRole: EvBleUartClient.Role? = null
 	private var pendingScanRole: EvBleUartClient.Role? = null
 	private var picker: AlertDialog? = null
-	private var pickerAdapter: ArrayAdapter<String>? = null
+	private var pickerAdapter: BleDeviceAdapter? = null
 	private val uiHandler = Handler(Looper.getMainLooper())
 	private val fieldValueViews = ArrayList<Pair<TelemetryField, TextView>>()
 	private val refreshFieldValues = object : Runnable {
@@ -75,6 +78,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			if (view == null) {
 				return
 			}
+			setupDevicePrefs()
 			refreshCalibrationPref()
 			(parentFragment as? EvBmsSettingsBottomSheet)?.onCalibrationTick()
 			uiHandler.postDelayed(this, 1000)
@@ -152,6 +156,8 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		setupCalDistance()
 		setupCalFactor()
 		setupCalAction()
+		setupFilterCtrlOdo()
+		setupCtrlOdoExcess()
 		setupPollInterval()
 		setupRecordInterval()
 		setupSwitch(plugin.RECORD_TELEMETRY.id)
@@ -219,6 +225,8 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		decorate(plugin.SPEED_CAL_DISTANCE_M.id, "📏", R.drawable.ic_action_distance)
 		decorate(plugin.SPEED_CAL_FACTOR.id, "✖️", R.drawable.ic_action_speed)
 		decorate("ev_bms_cal_start", "▶️", R.drawable.ic_action_play_dark)
+		decorate(plugin.FILTER_CTRL_ODO.id, "🛣️", R.drawable.ic_action_distance)
+		decorate(plugin.CTRL_ODO_EXCESS_PERCENT.id, "📏", R.drawable.ic_action_speed)
 		decorate(plugin.BMS_POLL_MS.id, "🔋", R.drawable.ic_action_time)
 		decorate(plugin.CONTROLLER_POLL_MS.id, "🛵", R.drawable.ic_action_time)
 		decorate(plugin.RECORD_INTERVAL_MS.id, "💾", R.drawable.ic_action_time_span)
@@ -311,11 +319,27 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 	private fun setupDevicePref(key: String, name: String?, address: String?, connected: Boolean) {
 		val pref = findPreference<Preference>(key) ?: return
 		val label = deviceSummaryLabel(name, address)
-		pref.summary = when {
+		val role = if (key == plugin.BMS_ADDRESS.id) {
+			EvBleUartClient.Role.BMS
+		} else {
+			EvBleUartClient.Role.CONTROLLER
+		}
+		val stats = plugin.bleLinkStats(role)
+		val status = when {
 			connected -> getString(R.string.ev_bms_status_connected, label)
 			!address.isNullOrEmpty() -> getString(R.string.ev_bms_status_disconnected, label)
 			else -> getString(R.string.ev_bms_status_not_selected)
 		}
+		pref.summary = if (stats != null && !address.isNullOrEmpty()) {
+			"$status\n${bleStatsLine(stats)}"
+		} else {
+			status
+		}
+	}
+
+	private fun bleStatsLine(stats: EvBleUartClient.LinkStats): String {
+		val rssi = stats.rssiDbm?.let { "$it dBm" } ?: "— dBm"
+		return getString(R.string.ev_bms_status_ble_stats, rssi, stats.txPackets, stats.rxPackets)
 	}
 
 	private fun deviceSummaryLabel(name: String?, address: String?): String {
@@ -440,6 +464,21 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			pref.title = getString(R.string.ev_bms_cal_start)
 			pref.summary = getString(R.string.ev_bms_cal_factor_desc)
 		}
+	}
+
+	private fun setupFilterCtrlOdo() {
+		val pref = findPreference<SwitchPreferenceEx>(plugin.FILTER_CTRL_ODO.id) ?: return
+		pref.setDescription(R.string.ev_bms_filter_ctrl_odo_desc)
+		setupCtrlOdoExcess()
+	}
+
+	private fun setupCtrlOdoExcess() {
+		val pref = findPreference<ListPreferenceEx>(plugin.CTRL_ODO_EXCESS_PERCENT.id) ?: return
+		val values = arrayOf(100, 110, 120, 130, 140, 150)
+		pref.setEntries(values.map { getString(R.string.ev_bms_n_percent, it) }.toTypedArray())
+		pref.setEntryValues(values.map { it as Any }.toTypedArray())
+		pref.setValue(plugin.CTRL_ODO_EXCESS_PERCENT.get())
+		pref.isEnabled = plugin.FILTER_CTRL_ODO.get()
 	}
 
 	private fun setupChargeVoltStep() {
@@ -625,11 +664,12 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 
 	private fun setupHistoryPrefs() {
 		val charges = plugin.chargeHistory().size
-		findPreference<Preference>("ev_bms_charge_history")?.summary =
-			getString(R.string.ev_bms_history_count, charges)
 		val trips = plugin.tripHistory().size
+		val total = charges + trips
+		findPreference<Preference>("ev_bms_charge_history")?.summary =
+			getString(R.string.ev_bms_history_count, total)
 		findPreference<Preference>("ev_bms_trip_history")?.summary =
-			getString(R.string.ev_bms_history_count, trips)
+			getString(R.string.ev_bms_history_count, total)
 	}
 
 	private fun setupSwitch(key: String) {
@@ -685,6 +725,12 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			plugin.onJbdPasswordChanged()
 			setupJbdPassword()
 			return true
+		}
+		if (preference.key == plugin.FILTER_CTRL_ODO.id) {
+			val result = super.onPreferenceChange(preference, newValue)
+			findPreference<ListPreferenceEx>(plugin.CTRL_ODO_EXCESS_PERCENT.id)?.isEnabled =
+				newValue as? Boolean ?: plugin.FILTER_CTRL_ODO.get()
+			return result
 		}
 		return super.onPreferenceChange(preference, newValue)
 	}
@@ -1100,18 +1146,18 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 	private fun showPicker(activity: Activity) {
 		dismissPicker()
 		val themed = UiUtilities.getThemedContext(activity, isNightMode())
-		val adapter = ArrayAdapter(themed, android.R.layout.simple_list_item_1, ArrayList<String>())
+		val adapter = BleDeviceAdapter(themed, found)
 		pickerAdapter = adapter
 		picker = AlertDialog.Builder(themed)
-			.setTitle(R.string.ev_bms_scanning)
+			.setTitle(R.string.ev_bms_select_device)
 			.setAdapter(adapter) { _, which ->
 				if (which in found.indices) {
 					val selected = found[which]
 					val role = scanningRole
 					if (role == EvBleUartClient.Role.BMS) {
-						plugin.connectBms(activity, selected.first, selected.second)
+						plugin.connectBms(activity, selected.name, selected.address)
 					} else if (role == EvBleUartClient.Role.CONTROLLER) {
-						plugin.connectController(activity, selected.first, selected.second)
+						plugin.connectController(activity, selected.name, selected.address)
 					}
 					setupPreferences()
 				}
@@ -1132,19 +1178,35 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		pickerAdapter = null
 	}
 
-	override fun onDeviceFound(role: EvBleUartClient.Role, name: String, address: String) {
+	override fun onDeviceFound(
+		role: EvBleUartClient.Role,
+		name: String,
+		address: String,
+		rssi: Int?,
+		serviceLabel: String
+	) {
 		if (role != scanningRole) {
 			return
 		}
-		if (found.any { it.second == address }) {
-			return
+		val existing = found.indexOfFirst { it.address.equals(address, ignoreCase = true) }
+		if (existing >= 0) {
+			val row = found[existing]
+			if (rssi != null) {
+				row.rssi = rssi
+			}
+			if (serviceLabel.isNotBlank()) {
+				row.serviceLabel = serviceLabel
+			}
+		} else {
+			found.add(ScannedBle(name = name, address = address, rssi = rssi, serviceLabel = serviceLabel))
 		}
-		found.add(Pair(name, address))
+		found.sortWith(compareByDescending<ScannedBle> { it.rssi ?: Int.MIN_VALUE }.thenBy { it.displayName.lowercase(Locale.US) })
 		val activity = activity ?: return
 		if (picker == null) {
 			showPicker(activity)
+		} else {
+			pickerAdapter?.notifyDataSetChanged()
 		}
-		pickerAdapter?.add("$name\n$address")
 		picker?.setTitle(R.string.ev_bms_select_device)
 	}
 
@@ -1191,5 +1253,42 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			}
 		}
 		show()
+	}
+
+	private class ScannedBle(
+		val name: String,
+		val address: String,
+		var rssi: Int?,
+		var serviceLabel: String
+	) {
+		val displayName: String
+			get() = name.ifBlank { address }
+	}
+
+	private class BleDeviceAdapter(
+		context: Context,
+		items: List<ScannedBle>
+	) : ArrayAdapter<ScannedBle>(context, android.R.layout.simple_list_item_2, android.R.id.text1, items) {
+
+		override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+			val view = super.getView(position, convertView, parent)
+			val item = getItem(position) ?: return view
+			val title = view.findViewById<TextView>(android.R.id.text1)
+			val subtitle = view.findViewById<TextView>(android.R.id.text2)
+			val emoji = when {
+				item.serviceLabel.contains("JBD") || item.serviceLabel.contains("ANT") -> "🔋"
+				item.serviceLabel.contains("Far") -> "🛵"
+				item.serviceLabel.contains("VESC") -> "⚡"
+				else -> "📡"
+			}
+			title.text = HtmlCompat.fromHtml(
+				"$emoji <b>${TextUtils.htmlEncode(item.displayName)}</b>",
+				HtmlCompat.FROM_HTML_MODE_LEGACY
+			)
+			val rssiPart = item.rssi?.let { context.getString(R.string.ev_bms_ble_rssi, it) }
+				?: context.getString(R.string.ev_bms_ble_rssi_unknown)
+			subtitle.text = "$rssiPart · ${item.serviceLabel}"
+			return view
+		}
 	}
 }

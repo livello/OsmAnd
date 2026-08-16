@@ -72,7 +72,7 @@ class EvBleUartClient(
 	interface Listener {
 		fun onConnectionChanged(role: Role, connected: Boolean, name: String?)
 		fun onBytes(role: Role, data: ByteArray)
-		fun onDeviceFound(role: Role, name: String, address: String)
+		fun onDeviceFound(role: Role, name: String, address: String, rssi: Int?, serviceLabel: String)
 		fun onScanFinished(role: Role)
 		fun onNotifyReady(role: Role) {}
 	}
@@ -139,6 +139,17 @@ class EvBleUartClient(
 		fun matchesControllerName(name: String?): Boolean {
 			return matchesFarDriverName(name) || matchesVescName(name)
 		}
+
+		fun describeBleServices(name: String?, serviceUuids: List<UUID>?, role: Role): String {
+			val ids = serviceUuids ?: emptyList()
+			return when {
+				ids.contains(JBD_SERVICE) || (role == Role.BMS && matchesBmsName(name) && !matchesAntName(name)) -> "JBD"
+				matchesAntName(name) -> "ANT BMS"
+				ids.contains(NUS_SERVICE) || matchesVescName(name) -> "VESC"
+				ids.contains(FAR_SERVICE) || matchesFarDriverName(name) -> "FarDriver"
+				else -> "BLE UART"
+			}
+		}
 	}
 
 	private val mainHandler = Handler(Looper.getMainLooper())
@@ -155,6 +166,23 @@ class EvBleUartClient(
 	var deviceAddress: String? = null
 		private set
 	@Volatile
+	var rssiDbm: Int? = null
+		private set
+	@Volatile
+	var txPackets: Long = 0
+		private set
+	@Volatile
+	var rxPackets: Long = 0
+		private set
+
+	data class LinkStats(val rssiDbm: Int?, val txPackets: Long, val rxPackets: Long)
+
+	private data class FoundScan(val name: String, var rssi: Int?, var serviceLabel: String)
+
+	fun linkStats(): LinkStats = LinkStats(rssiDbm, txPackets, rxPackets)
+
+	private var writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+	@Volatile
 	var notifyReady: Boolean = false
 		private set
 
@@ -168,7 +196,7 @@ class EvBleUartClient(
 	private var usingAutoConnect = false
 	private var connectedAtMs = 0L
 
-	private val found = ConcurrentHashMap<String, String>()
+	private val found = ConcurrentHashMap<String, FoundScan>()
 	private var scanning = false
 
 	private val reconnectRunnable = Runnable {
@@ -186,10 +214,23 @@ class EvBleUartClient(
 		scheduleReconnect()
 	}
 
-	private val notifyReadyFallback = Runnable {
-		if (wantConnected && connected && !notifyReady) {
-			markNotifyReady()
+	private val rssiPollRunnable = object : Runnable {
+		@SuppressLint("MissingPermission")
+		override fun run() {
+			if (!wantConnected || !connected) {
+				return
+			}
+			try {
+				gatt?.readRemoteRssi()
+			} catch (_: Exception) {
+			}
+			mainHandler.postDelayed(this, 2_000L)
 		}
+	}
+
+	private val notifyReadyFallback = Runnable {
+		jw("notify ready fallback (CCCD write not confirmed)")
+		markNotifyReady()
 	}
 
 	private val reconnectScanTimeout = Runnable {
@@ -226,7 +267,8 @@ class EvBleUartClient(
 			if (!wantConnected || device.address != deviceAddress) {
 				return
 			}
-			jd("found advertising device, connecting")
+			jd("found advertising device rssi=${result.rssi}, connecting")
+			rssiDbm = result.rssi
 			stopReconnectScan()
 			openGatt(device, autoConnect = false)
 		}
@@ -257,6 +299,8 @@ class EvBleUartClient(
 				reconnectAttempt = 0
 				connected = true
 				connectedAtMs = System.currentTimeMillis()
+				mainHandler.removeCallbacks(rssiPollRunnable)
+				mainHandler.post(rssiPollRunnable)
 				deviceName = gatt.device?.name
 				deviceAddress = gatt.device?.address
 				mainHandler.removeCallbacks(connectTimeoutRunnable)
@@ -292,6 +336,7 @@ class EvBleUartClient(
 				connectedAtMs = 0L
 				notifyReady = false
 				mainHandler.removeCallbacks(notifyReadyFallback)
+				mainHandler.removeCallbacks(rssiPollRunnable)
 				detectedBmsKind = BmsKind.UNKNOWN
 				detectedControllerKind = ControllerKind.UNKNOWN
 				writeCharacteristic = null
@@ -410,8 +455,9 @@ class EvBleUartClient(
 				}
 			}
 			writeCharacteristic = write
+			writeType = writeTypeOf(write)
 			notifyReady = false
-			jd("services notify=${notify?.uuid} write=${write?.uuid} bms=$detectedBmsKind ctrl=$detectedControllerKind")
+			jd("services notify=${notify?.uuid} write=${write?.uuid} writeType=$writeType bms=$detectedBmsKind ctrl=$detectedControllerKind")
 			if (notify != null) {
 				gatt.setCharacteristicNotification(notify, true)
 				val cccd = notify.getDescriptor(GattAttributes.UUID_CHARACTERISTIC_CLIENT_CONFIG)
@@ -423,7 +469,7 @@ class EvBleUartClient(
 						gatt.writeDescriptor(cccd)
 					}
 					mainHandler.removeCallbacks(notifyReadyFallback)
-					mainHandler.postDelayed(notifyReadyFallback, 500L)
+					mainHandler.postDelayed(notifyReadyFallback, 2_000L)
 				} else {
 					markNotifyReady()
 				}
@@ -464,9 +510,17 @@ class EvBleUartClient(
 
 		private fun deliverRx(value: ByteArray) {
 			if (value.isNotEmpty()) {
+				rxPackets++
 				jd("RX ${value.size}B ${EvDebugJournal.hex(value)}")
 				listener.onBytes(role, value)
 			}
+		}
+
+		override fun onReadRemoteRssi(gatt: BluetoothGatt, rssi: Int, status: Int) {
+			if (gatt != this@EvBleUartClient.gatt || status != BluetoothGatt.GATT_SUCCESS) {
+				return
+			}
+			rssiDbm = rssi
 		}
 	}
 
@@ -474,10 +528,10 @@ class EvBleUartClient(
 	private fun handleScanResult(result: ScanResult) {
 		val device = result.device ?: return
 		val name = device.name ?: result.scanRecord?.deviceName
-		offerDevice(name, device.address, result.scanRecord?.serviceUuids?.map { it.uuid })
+		offerDevice(name, device.address, result.scanRecord?.serviceUuids?.map { it.uuid }, result.rssi)
 	}
 
-	private fun offerDevice(name: String?, address: String?, serviceUuids: List<UUID>? = null) {
+	private fun offerDevice(name: String?, address: String?, serviceUuids: List<UUID>? = null, rssi: Int? = null) {
 		if (address.isNullOrBlank()) {
 			return
 		}
@@ -497,8 +551,24 @@ class EvBleUartClient(
 			return
 		}
 		val label = name?.takeIf { it.isNotBlank() } ?: address
-		if (found.putIfAbsent(address, label) == null) {
-			listener.onDeviceFound(role, label, address)
+		val serviceLabel = describeBleServices(name, serviceUuids, role)
+		val prev = found[address]
+		if (prev == null) {
+			found[address] = FoundScan(label, rssi, serviceLabel)
+			listener.onDeviceFound(role, label, address, rssi, serviceLabel)
+			return
+		}
+		var changed = false
+		if (rssi != null && (prev.rssi == null || rssi > prev.rssi!!)) {
+			prev.rssi = rssi
+			changed = true
+		}
+		if (serviceLabel != "BLE UART" && prev.serviceLabel == "BLE UART") {
+			prev.serviceLabel = serviceLabel
+			changed = true
+		}
+		if (changed) {
+			listener.onDeviceFound(role, prev.name, address, prev.rssi, prev.serviceLabel)
 		}
 	}
 
@@ -604,6 +674,9 @@ class EvBleUartClient(
 		connecting = false
 		connected = false
 		connectedAtMs = 0L
+		notifyReady = false
+		mainHandler.removeCallbacks(notifyReadyFallback)
+		mainHandler.removeCallbacks(rssiPollRunnable)
 		writeCharacteristic = null
 		cancelReconnect()
 		closeGatt()
@@ -778,6 +851,7 @@ class EvBleUartClient(
 	private fun closeGatt() {
 		val current = gatt
 		gatt = null
+		notifyReady = false
 		writeCharacteristic = null
 		try {
 			current?.disconnect()
@@ -795,6 +869,7 @@ class EvBleUartClient(
 		connectedAtMs = 0L
 		notifyReady = false
 		mainHandler.removeCallbacks(notifyReadyFallback)
+		mainHandler.removeCallbacks(rssiPollRunnable)
 		connecting = false
 		detectedBmsKind = BmsKind.UNKNOWN
 		detectedControllerKind = ControllerKind.UNKNOWN
@@ -813,15 +888,36 @@ class EvBleUartClient(
 			return false
 		}
 		val ok = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-			g.writeCharacteristic(ch, bytes, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE) ==
-					android.bluetooth.BluetoothStatusCodes.SUCCESS
+			val status = g.writeCharacteristic(ch, bytes, writeType)
+			if (status != android.bluetooth.BluetoothStatusCodes.SUCCESS) {
+				jd("TX fail status=$status type=$writeType ${bytes.size}B ${EvDebugJournal.hex(bytes)}")
+				return false
+			}
+			true
 		} else {
 			ch.value = bytes
-			ch.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+			ch.writeType = writeType
 			g.writeCharacteristic(ch)
+		}
+		if (ok) {
+			txPackets++
 		}
 		jd("TX ${bytes.size}B ${EvDebugJournal.hex(bytes)} ok=$ok")
 		return ok
+	}
+
+	private fun writeTypeOf(ch: BluetoothGattCharacteristic?): Int {
+		if (ch == null) {
+			return BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+		}
+		val props = ch.properties
+		return if (props and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE != 0 &&
+			props and BluetoothGattCharacteristic.PROPERTY_WRITE == 0
+		) {
+			BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+		} else {
+			BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+		}
 	}
 
 	private fun markNotifyReady() {

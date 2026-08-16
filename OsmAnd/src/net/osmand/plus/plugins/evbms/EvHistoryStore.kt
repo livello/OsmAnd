@@ -18,9 +18,9 @@ class EvHistoryStore(private val app: OsmandApplication) {
 		private const val CHARGE_FILE = "charge_history.csv"
 		private const val TRIP_FILE = "charge_trip_history.csv"
 		private const val CHARGE_HEADER =
-			"start_time;end_time;duration_min;start_temp_c;end_temp_c;charged_ah;start_lat;start_lon;end_lat;end_lon"
+			"start_time;end_time;duration_min;start_temp_c;end_temp_c;charged_ah;avg_current_a;start_lat;start_lon;end_lat;end_lon"
 		private const val TRIP_HEADER =
-			"start_time;end_time;date;duration_min;moving_min;distance_km;start_voltage_v;end_voltage_v;min_cell_v;start_temp_c;end_temp_c;start_lat;start_lon;end_lat;end_lon"
+			"start_time;end_time;date;duration_min;moving_min;stop_min;distance_km;energy_wh;wh_per_km;avg_moving_kmh;start_voltage_v;end_voltage_v;min_cell_v;start_temp_c;end_temp_c;start_lat;start_lon;end_lat;end_lon"
 	}
 
 	data class ChargeRecord(
@@ -29,6 +29,7 @@ class EvHistoryStore(private val app: OsmandApplication) {
 		val startTempC: Double?,
 		val endTempC: Double?,
 		val chargedAh: Double?,
+		val avgCurrentA: Double? = null,
 		val startMinCellV: Double? = null,
 		val endMinCellV: Double? = null,
 		val stopMs: Long? = null,
@@ -46,6 +47,7 @@ class EvHistoryStore(private val app: OsmandApplication) {
 				.putOpt("startTempC", startTempC)
 				.putOpt("endTempC", endTempC)
 				.putOpt("chargedAh", chargedAh)
+				.putOpt("avgCurrentA", avgCurrentA)
 				.putOpt("startMinCellV", startMinCellV)
 				.putOpt("endMinCellV", endMinCellV)
 				.putOpt("stopMs", stopMs)
@@ -63,6 +65,7 @@ class EvHistoryStore(private val app: OsmandApplication) {
 					startTempC = json.optNullableDouble("startTempC"),
 					endTempC = json.optNullableDouble("endTempC"),
 					chargedAh = json.optNullableDouble("chargedAh"),
+					avgCurrentA = json.optNullableDouble("avgCurrentA"),
 					startMinCellV = json.optNullableDouble("startMinCellV"),
 					endMinCellV = json.optNullableDouble("endMinCellV"),
 					stopMs = if (json.has("stopMs") && !json.isNull("stopMs")) json.optLong("stopMs") else null,
@@ -87,6 +90,10 @@ class EvHistoryStore(private val app: OsmandApplication) {
 		val endMotorTempC: Double? = null,
 		val distanceKm: Double?,
 		val movingMs: Long,
+		val energyWh: Double? = null,
+		val specificWhKm: Double? = null,
+		val avgMovingKmh: Double? = null,
+		val stopMs: Long? = null,
 		val startLat: Double?,
 		val startLon: Double?,
 		val endLat: Double?,
@@ -107,6 +114,10 @@ class EvHistoryStore(private val app: OsmandApplication) {
 				.putOpt("endMotorTempC", endMotorTempC)
 				.putOpt("distanceKm", distanceKm)
 				.put("movingMs", movingMs)
+				.putOpt("energyWh", energyWh)
+				.putOpt("specificWhKm", specificWhKm)
+				.putOpt("avgMovingKmh", avgMovingKmh)
+				.putOpt("stopMs", stopMs)
 				.putOpt("startLat", startLat)
 				.putOpt("startLon", startLon)
 				.putOpt("endLat", endLat)
@@ -127,6 +138,10 @@ class EvHistoryStore(private val app: OsmandApplication) {
 					endMotorTempC = json.optNullableDouble("endMotorTempC"),
 					distanceKm = json.optNullableDouble("distanceKm"),
 					movingMs = json.optLong("movingMs"),
+					energyWh = json.optNullableDouble("energyWh"),
+					specificWhKm = json.optNullableDouble("specificWhKm"),
+					avgMovingKmh = json.optNullableDouble("avgMovingKmh"),
+					stopMs = if (json.has("stopMs") && !json.isNull("stopMs")) json.optLong("stopMs") else null,
 					startLat = json.optNullableDouble("startLat"),
 					startLon = json.optNullableDouble("startLon"),
 					endLat = json.optNullableDouble("endLat"),
@@ -163,6 +178,7 @@ class EvHistoryStore(private val app: OsmandApplication) {
 				n(row.startTempC, "%.1f"),
 				n(row.endTempC, "%.1f"),
 				n(row.chargedAh, "%.3f"),
+				n(row.avgCurrentA, "%.2f"),
 				n(row.startLat, "%.8f"),
 				n(row.startLon, "%.8f"),
 				n(row.endLat, "%.8f"),
@@ -181,7 +197,11 @@ class EvHistoryStore(private val app: OsmandApplication) {
 				fmtDate(row.startMs),
 				n(row.durationMs() / 60000.0, "%.1f"),
 				n(row.movingMs / 60000.0, "%.1f"),
+				n(row.stopMs?.div(60000.0), "%.1f"),
 				n(row.distanceKm, "%.3f"),
+				n(row.energyWh, "%.1f"),
+				n(row.specificWhKm, "%.1f"),
+				n(row.avgMovingKmh, "%.1f"),
 				n(row.startVoltageV, "%.2f"),
 				n(row.endVoltageV, "%.2f"),
 				n(row.minCellV, "%.3f"),

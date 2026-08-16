@@ -62,13 +62,16 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		const val CHARGE_HOLD_SAMPLES = 3
 		const val DATA_STALE_MS = 5000L
 		private const val LINK_DEAD_MS = 12_000L
-		private const val JBD_MODULE_RANDOM_WAIT_MS = 800L
-		private const val JBD_MODULE_VERIFY_WAIT_MS = 1_200L
+		private const val JBD_MODULE_RANDOM_WAIT_MS = 1_200L
+		private const val JBD_MODULE_VERIFY_WAIT_MS = 1_500L
+		private const val JBD_MODULE_RANDOM_TRIES = 3
+		private val JBD_APPKEYS = arrayOf("000000", "765890")
 		const val DEFAULT_CHARGE_STILL_SEC = 20
 		const val DEFAULT_CHARGE_STILL_KMH = 5
 		const val DEFAULT_CHARGE_CURRENT_A = 2
 		const val DEFAULT_CHARGE_REARM_M = 200
 		const val DEFAULT_CHARGE_REARM_MAH = 300
+		private const val CONTROLLER_CHARGE_IDLE_A = 0.8
 		private const val TAG = "EvBms"
 		private const val CHART_HISTORY_MAX = 480
 		private const val CHART_SAMPLE_MIN_MS = 500L
@@ -77,6 +80,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		const val DEFAULT_CHARGE_VOLT_STEP_MV = 1000
 		const val DEFAULT_STOP_ANNOUNCE_REPEATS = 2
 		const val DEFAULT_SPEED_CAL_DISTANCE_M = 1000
+		const val DEFAULT_CTRL_ODO_EXCESS_PERCENT = 120
 		const val DEFAULT_VEHICLE_MASS_KG = 200f
 		const val DEFAULT_DRIVER_MASS_KG = 80f
 		const val DEFAULT_RESERVE_SMALL_KM = 5
@@ -197,6 +201,10 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerIntPreference("ev_bms_speed_cal_distance_m", DEFAULT_SPEED_CAL_DISTANCE_M).makeGlobal().makeShared()
 	val SPEED_CAL_FACTOR: CommonPreference<Float> =
 		registerFloatPreference("ev_bms_speed_cal_factor", 1f).makeGlobal().makeShared()
+	val FILTER_CTRL_ODO: CommonPreference<Boolean> =
+		registerBooleanPreference("ev_bms_filter_ctrl_odo", true).makeGlobal().makeShared()
+	val CTRL_ODO_EXCESS_PERCENT: CommonPreference<Int> =
+		registerIntPreference("ev_bms_ctrl_odo_excess_percent", DEFAULT_CTRL_ODO_EXCESS_PERCENT).makeGlobal().makeShared()
 	val VEHICLE_MASS_KG: CommonPreference<Float> =
 		registerFloatPreference("ev_bms_vehicle_mass_kg", DEFAULT_VEHICLE_MASS_KG).makeGlobal().makeShared()
 	val DRIVER_MASS_KG: CommonPreference<Float> =
@@ -278,6 +286,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private var chargeLastAhMs = 0L
 	private var chargeEnergyWhAcc = 0.0
 	private var chargeEnergyLastMs = 0L
+	private var chargeCurrentIntegralAms = 0.0
+	private var chargeCurrentDurationMs = 0L
 	private val socCalibrator = SocCalibrator()
 	private var calibratedSocPercent: Int? = null
 	private var tripStartMs = 0L
@@ -317,7 +327,10 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private var jbdPasswordRejected = false
 	private var jbdModuleAuth = JbdModuleAuth.IDLE
 	private var jbdModuleAuthMs = 0L
-	private var jbdModuleTriedNewKey = false
+	private var jbdModuleRandomTries = 0
+	private var jbdModuleUsedNewKey = false
+	private var jbdTriedOldAppKey = false
+	private var jbdAppKeyIndex = 0
 	@Volatile
 	var latestTelemetry: EvTelemetry? = null
 		private set
@@ -413,6 +426,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		if (journal.enabled) {
 			journal.i("plugin", "init hash=${EvBmsRevision.GIT_HASH}")
 		}
+		Log.i(TAG, "plugin init hash=${EvBmsRevision.GIT_HASH} journal=${journal.enabled}")
 		voice.init()
 		socCalibrator.decode(SOC_CAL_STORE.get())
 		migratePollPreferences()
@@ -434,7 +448,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 
 	override fun mapActivityResume(activity: MapActivity) {
 		mapActivity = activity
-		journal.i("plugin", "map resume, reconnect saved devices")
+		journal.enabled = DEBUG_JOURNAL.get()
+		journal.i("plugin", "map resume hash=${EvBmsRevision.GIT_HASH}, reconnect saved devices")
 		connectSavedDevices(activity)
 		startPolling()
 		applyHikeTelemetryState()
@@ -548,7 +563,12 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		val odoKm = chargeTripStartOdoKm?.let { start ->
 			ctrlOdometerKm()?.let { now -> (now - start).coerceAtLeast(0.0) }
 		} ?: 0.0
-		return maxOf(trackKm.toDouble(), chargeTripGpsKm, odoKm)
+		val raw = maxOf(trackKm.toDouble(), chargeTripGpsKm, odoKm)
+		if (!FILTER_CTRL_ODO.get() || odoKm <= 0.001) {
+			return raw
+		}
+		val excess = CTRL_ODO_EXCESS_PERCENT.get().coerceIn(100, 150) / 100.0
+		return minOf(raw, odoKm * excess)
 	}
 
 	private fun isVehicleMoving(): Boolean {
@@ -566,14 +586,16 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	}
 
 	private fun updateChargeCycle(
-		currentA: Double?,
+		bmsCurrentA: Double?,
+		ctrlCurrentA: Double?,
 		remainingAh: Double?,
 		fullAh: Double?,
 		voltageV: Double?,
 		tempC: Double?,
 		minCellV: Double?,
 		loc: Location?,
-		bmsFresh: Boolean
+		bmsFresh: Boolean,
+		ctrlFresh: Boolean
 	) {
 		val now = System.currentTimeMillis()
 		val moving = isVehicleMoving()
@@ -585,32 +607,32 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		}
 		val stillMs = CHARGE_STILL_SEC.get().toLong().coerceAtLeast(10L) * 1000L
 		val minA = CHARGE_CURRENT_A.get().toDouble().coerceAtLeast(0.5)
-		val bmsAbs = currentA?.let { kotlin.math.abs(it) } ?: 0.0
-		val ctrlAbs = if (isControllerFresh()) ctrlCurrentA()?.let { kotlin.math.abs(it) } ?: 0.0 else 0.0
-		val absI = maxOf(bmsAbs, ctrlAbs)
+		val packI = if (bmsFresh) bmsCurrentA else null
+		val ctrlI = if (ctrlFresh) ctrlCurrentA else null
+		val ctrlIdle = ctrlI == null || kotlin.math.abs(ctrlI) < CONTROLLER_CHARGE_IDLE_A
+		val packing = packI != null && packI >= minA
 		val ahRising = remainingAh != null && lastChargeAh != null && remainingAh - lastChargeAh!! >= 0.03
-		val stillNeeded = if (absI >= minA || ahRising) {
+		val stillNeeded = if (packing || ahRising) {
 			minOf(stillMs, 15_000L).coerceAtLeast(8_000L)
 		} else {
 			stillMs
 		}
 		val stillLongEnough = stillSinceMs != null && now - stillSinceMs!! >= stillNeeded
-		val intoPack = (bmsFresh || (isControllerFresh() && ctrlAbs >= minA)) &&
-				(absI >= minA || ahRising) &&
+		val intoPack = packing && ctrlIdle &&
 				(lastChargeAh == null || remainingAh == null || remainingAh >= lastChargeAh!! - 0.05)
 		val chargeLike = !moving && stillLongEnough && intoPack
-		if (chargeLike || charging || absI >= 0.4) {
+		if (chargeLike || charging || (packI != null && kotlin.math.abs(packI) >= 0.4)) {
 			Log.i(
 				TAG,
 				"charge detect moving=$moving still=${stillSinceMs?.let { now - it }}ms " +
-						"bmsI=${currentA} ctrlI=${ctrlCurrentA()} absI=$absI minA=$minA " +
+						"bmsI=$packI ctrlI=$ctrlI ctrlIdle=$ctrlIdle packing=$packing minA=$minA " +
 						"ah=$remainingAh lastAh=$lastChargeAh rising=$ahRising like=$chargeLike " +
 						"charging=$charging hold=$chargeHold fresh=$bmsFresh"
 			)
 			journal.d(
 				"charge",
 				"detect moving=$moving still=${stillSinceMs?.let { now - it }}ms " +
-						"bmsI=$currentA ctrlI=${ctrlCurrentA()} absI=$absI minA=$minA " +
+						"bmsI=$packI ctrlI=$ctrlI ctrlIdle=$ctrlIdle packing=$packing minA=$minA " +
 						"ah=$remainingAh lastAh=$lastChargeAh rising=$ahRising like=$chargeLike " +
 						"charging=$charging hold=$chargeHold fresh=$bmsFresh rearm=$rearmReady"
 			)
@@ -619,16 +641,17 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			chargeHold++
 			chargeExitHold = 0
 			if (!charging && chargeHold >= CHARGE_HOLD_SAMPLES && canStartNextCharge()) {
-				beginCharge(now, remainingAh, fullAh, absI, tempC, loc)
+				beginCharge(now, remainingAh, fullAh, packI ?: minA, tempC, loc)
 			}
 		} else if (charging) {
 			chargeHold = 0
 			if (bmsFresh) {
-				val idle = currentA == null || absI < minA * 0.4
+				val idle = packI == null || packI < minA * 0.4
 				val discharging = remainingAh != null && lastChargeAh != null &&
 						lastChargeAh!! - remainingAh >= 0.02
 				val full = remainingAh != null && fullAh != null && remainingAh >= fullAh - 0.05
-				if (idle || discharging || moving || full) {
+				val ctrlActive = !ctrlIdle
+				if (idle || discharging || moving || full || ctrlActive) {
 					chargeExitHold++
 					if (chargeExitHold >= CHARGE_HOLD_SAMPLES) {
 						finishCharge(now, remainingAh, tempC, loc)
@@ -649,17 +672,20 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 					chargeLastAh = remainingAh
 					chargeLastAhMs = now
 				}
-				if (absI >= 0.4) {
-					chargeFrozenCurrentA = absI
+				if (packI != null && packI >= 0.4) {
+					chargeFrozenCurrentA = packI
 				}
 				if (fullAh != null && fullAh > 0) {
 					chargeFullAh = fullAh
 				}
 			}
-			val energyA = if (absI >= 0.15) absI else chargeFrozenCurrentA ?: 0.0
+			val energyA = if (packI != null && packI >= 0.15) packI else chargeFrozenCurrentA ?: 0.0
 			if (voltageV != null && voltageV > 0 && energyA >= 0.15 && chargeEnergyLastMs > 0L) {
-				val hours = (now - chargeEnergyLastMs).coerceAtLeast(0L) / 3_600_000.0
+				val dtMs = (now - chargeEnergyLastMs).coerceAtLeast(0L)
+				val hours = dtMs / 3_600_000.0
 				chargeEnergyWhAcc += voltageV * energyA * hours
+				chargeCurrentIntegralAms += energyA * dtMs
+				chargeCurrentDurationMs += dtMs
 			}
 			chargeEnergyLastMs = now
 			persistChargeSession()
@@ -670,7 +696,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			updateTripSession(now, moving, voltageV, tempC, minCellV)
 			tickChargeRearm(remainingAh, loc)
 		}
-		maybeCloseChargeStop(now, moving, remainingAh, currentA)
+		maybeCloseChargeStop(now, moving, remainingAh, packI)
 		if (remainingAh != null) {
 			lastChargeAh = remainingAh
 		}
@@ -705,6 +731,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		chargeLastAhMs = now
 		chargeEnergyWhAcc = 0.0
 		chargeEnergyLastMs = now
+		chargeCurrentIntegralAms = 0.0
+		chargeCurrentDurationMs = 0L
 		persistChargeSession()
 		markGpxEvent(
 			app.getString(R.string.ev_bms_gpx_charge_start),
@@ -721,12 +749,18 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		}
 		val parkedSince = chargeParkedSinceMs.takeIf { it > 0L } ?: (if (chargeStartMs > 0L) chargeStartMs else now)
 		val moving = isVehicleMoving()
+		val avgCurrentA = if (chargeCurrentDurationMs > 0L) {
+			chargeCurrentIntegralAms / chargeCurrentDurationMs
+		} else {
+			chargeFrozenCurrentA
+		}
 		val record = EvHistoryStore.ChargeRecord(
 			startMs = if (chargeStartMs > 0L) chargeStartMs else now,
 			endMs = now,
 			startTempC = chargeStartTempC,
 			endTempC = tempC,
 			chargedAh = chargedAh,
+			avgCurrentA = avgCurrentA,
 			startMinCellV = chargeStartMinCellV,
 			endMinCellV = minCellVoltageV,
 			stopMs = (now - parkedSince).coerceAtLeast(0L),
@@ -789,6 +823,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		historySamples.clear()
 		historySampleLastMs = 0L
 		CHARGE_END_TRACK_M.set(app.savingTrackHelper.distance.toInt().coerceAtLeast(0))
+		rangeEstimator.markTripBoundary()
 		persistTripSession()
 	}
 
@@ -832,6 +867,19 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			return
 		}
 		val start = if (tripStartMs > 0L) tripStartMs else now
+		val distanceKm = chargeTripKm()
+		val energyWh = rangeEstimator.tripEnergyWh()
+		val specificWhKm = if (energyWh != null && distanceKm != null && distanceKm > 0.05) {
+			energyWh / distanceKm
+		} else {
+			null
+		}
+		val avgMovingKmh = if (tripMovingMs > 5_000L && distanceKm != null && distanceKm > 0.02) {
+			distanceKm / (tripMovingMs / 3_600_000.0)
+		} else {
+			null
+		}
+		val stopMs = (now - start - tripMovingMs).coerceAtLeast(0L)
 		val record = EvHistoryStore.ChargeTripRecord(
 			startMs = start,
 			endMs = now,
@@ -842,8 +890,12 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			endTempC = tripLastTempC ?: batteryAnnounceTempC(),
 			startMotorTempC = tripStartMotorTempC,
 			endMotorTempC = tripLastMotorTempC ?: ctrlMotorTempC(),
-			distanceKm = chargeTripKm(),
+			distanceKm = distanceKm,
 			movingMs = tripMovingMs,
+			energyWh = energyWh,
+			specificWhKm = specificWhKm,
+			avgMovingKmh = avgMovingKmh,
+			stopMs = stopMs,
 			startLat = tripStartLat,
 			startLon = tripStartLon,
 			endLat = loc?.latitude,
@@ -908,6 +960,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		chargeLastAhMs = 0L
 		chargeEnergyWhAcc = 0.0
 		chargeEnergyLastMs = 0L
+		chargeCurrentIntegralAms = 0.0
+		chargeCurrentDurationMs = 0L
 	}
 
 	private fun persistChargeSession() {
@@ -928,6 +982,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		json.put("lastAhMs", chargeLastAhMs)
 		json.put("energyWh", chargeEnergyWhAcc)
 		json.put("energyLastMs", chargeEnergyLastMs)
+		json.put("currentIntegralAms", chargeCurrentIntegralAms)
+		json.put("currentDurationMs", chargeCurrentDurationMs)
 		CHARGE_SESSION.set(json.toString())
 	}
 
@@ -970,6 +1026,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				chargeLastAhMs = json.optLong("lastAhMs")
 				chargeEnergyWhAcc = json.optDouble("energyWh", 0.0).coerceAtLeast(0.0)
 				chargeEnergyLastMs = json.optLong("energyLastMs")
+				chargeCurrentIntegralAms = json.optDouble("currentIntegralAms", 0.0).coerceAtLeast(0.0)
+				chargeCurrentDurationMs = json.optLong("currentDurationMs").coerceAtLeast(0L)
 				if (chargeStartMs > 0L) {
 					charging = true
 					CHARGE_CYCLE_ACTIVE.set(false)
@@ -1233,6 +1291,12 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		if (row.distanceKm != null) {
 			parts.add(String.format(Locale.US, "%.2f km", row.distanceKm))
 		}
+		if (row.energyWh != null) {
+			parts.add(String.format(Locale.US, "%.0f Wh", row.energyWh))
+		}
+		if (row.specificWhKm != null) {
+			parts.add(String.format(Locale.US, "%.0f Wh/km", row.specificWhKm))
+		}
 		if (row.movingMs > 0L) {
 			parts.add(OsmAndFormatter.getFormattedDurationShort((row.movingMs / 1000L).toInt()))
 		}
@@ -1427,6 +1491,18 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		controllerClient?.disconnect()
 	}
 
+	private fun isJbdAuthInProgress(): Boolean {
+		return !preferAntProtocol() &&
+				!jbdPasswordRejected &&
+				JbdBmsProtocol.normalizePassword(BMS_PASSWORD.get()) != null &&
+				jbdModuleAuth != JbdModuleAuth.DONE
+	}
+
+	fun bleLinkStats(role: EvBleUartClient.Role): EvBleUartClient.LinkStats? {
+		val client = if (role == EvBleUartClient.Role.BMS) bmsClient else controllerClient
+		return client?.linkStats()
+	}
+
 	fun isBmsConnected(): Boolean = bmsClient?.connected == true
 
 	fun isControllerConnected(): Boolean = controllerClient?.connected == true
@@ -1532,6 +1608,21 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			return
 		}
 		if (client.connected) {
+			if (!client.notifyReady) {
+				val deadMs = linkDeadMs(
+					if (client.role == EvBleUartClient.Role.BMS) activeBmsPollMs() else activeCtrlPollMs()
+				)
+				if (client.millisSinceConnected() > deadMs) {
+					journal.w("link", "${client.role} no notify ${client.millisSinceConnected()}ms, forceReconnect")
+					clearRx()
+					client.forceReconnect("no-notify")
+				}
+				return
+			}
+			if (client.role == EvBleUartClient.Role.BMS) {
+				// Module still answers FF AA 17; UART silence is not a dead radio.
+				return
+			}
 			val now = System.currentTimeMillis()
 			val deadMs = linkDeadMs(
 				if (client.role == EvBleUartClient.Role.BMS) activeBmsPollMs() else activeCtrlPollMs()
@@ -1734,7 +1825,10 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		jbdPasswordRejected = false
 		jbdModuleAuth = JbdModuleAuth.IDLE
 		jbdModuleAuthMs = 0L
-		jbdModuleTriedNewKey = false
+		jbdModuleRandomTries = 0
+		jbdModuleUsedNewKey = false
+		jbdTriedOldAppKey = false
+		jbdAppKeyIndex = 0
 	}
 
 	override fun onNotifyReady(role: EvBleUartClient.Role) {
@@ -1742,6 +1836,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			return
 		}
 		journal.i("link", "BMS notify ready, unlocking module")
+		Log.i(TAG, "BMS notify ready, unlocking module")
 		advanceJbdAuth()
 	}
 
@@ -1759,25 +1854,41 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		val now = System.currentTimeMillis()
 		when (jbdModuleAuth) {
 			JbdModuleAuth.IDLE -> {
-				bmsClient?.write(JbdBleModuleProtocol.randomRequest())
-				jbdModuleAuth = JbdModuleAuth.WAIT_RANDOM
-				jbdModuleAuthMs = now
+				return if (!jbdModuleUsedNewKey) {
+					sendJbdAppKeyVerify()
+				} else if (!jbdTriedOldAppKey) {
+					sendJbdOldAppKey()
+				} else {
+					sendJbdModuleRandom()
+				}
+			}
+			JbdModuleAuth.WAIT_APPKEY -> {
+				if (now - jbdModuleAuthMs >= JBD_MODULE_VERIFY_WAIT_MS) {
+					jbdAppKeyIndex++
+					return if (!jbdModuleUsedNewKey) {
+						journal.w("link", "BLE appkey 0x21 timed out, next key")
+						sendJbdAppKeyVerify()
+					} else {
+						journal.w("link", "BLE appkey 0x15 timed out, next key")
+						sendJbdOldAppKey()
+					}
+				}
 				return true
 			}
 			JbdModuleAuth.WAIT_RANDOM -> {
 				if (now - jbdModuleAuthMs >= JBD_MODULE_RANDOM_WAIT_MS) {
-					sendJbdModuleVerify(password, (1..99).random(), newAppKey = true)
+					journal.w("link", "BLE module random timed out, retry ${jbdModuleRandomTries}")
+					return sendJbdModuleRandom()
 				}
 				return true
 			}
 			JbdModuleAuth.WAIT_VERIFY -> {
 				if (now - jbdModuleAuthMs >= JBD_MODULE_VERIFY_WAIT_MS) {
-					if (!jbdModuleTriedNewKey) {
-						sendJbdModuleVerify(password, (1..99).random(), newAppKey = true)
+					journal.w("link", "BLE module verify timed out, retry ${jbdModuleRandomTries}")
+					return if (!jbdModuleUsedNewKey) {
+						sendJbdNewAppKeyVerify(password)
 					} else {
-						journal.w("link", "BLE module verify timed out, falling back to UART password")
-						jbdModuleAuth = JbdModuleAuth.DONE
-						return sendJbdPasswordIfNeeded()
+						sendJbdModuleRandom()
 					}
 				}
 				return true
@@ -1786,23 +1897,161 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		}
 	}
 
-	private fun sendJbdModuleVerify(password: String, random: Int, newAppKey: Boolean) {
+	private fun jbdAppKeys(): List<String> {
+		val keys = ArrayList<String>()
+		for (key in JBD_APPKEYS) {
+			keys.add(key)
+		}
+		val password = JbdBmsProtocol.normalizePassword(BMS_PASSWORD.get())
+		if (password != null && !keys.contains(password)) {
+			keys.add(password)
+		}
+		return keys
+	}
+
+	private fun sendJbdAppKeyVerify(): Boolean {
+		val keys = jbdAppKeys()
+		if (jbdAppKeyIndex >= keys.size) {
+			journal.w("link", "appkey 0x21 failed, trying old 0x15")
+			Log.w(TAG, "appkey 0x21 failed, trying old 0x15")
+			jbdModuleUsedNewKey = true
+			jbdAppKeyIndex = 0
+			jbdModuleRandomTries = 0
+			jbdModuleAuth = JbdModuleAuth.IDLE
+			return sendJbdOldAppKey()
+		}
+		val key = keys[jbdAppKeyIndex]
+		val random = (1..99).random()
+		sendJbdModuleVerify(key, random, newAppKey = true, cmd = JbdBleModuleProtocol.CMD_APPKEY_VERIFY)
+		if (jbdModuleAuth == JbdModuleAuth.WAIT_VERIFY) {
+			jbdModuleAuth = JbdModuleAuth.WAIT_APPKEY
+			journal.d("link", "BLE appkey 0x21 try=${jbdAppKeyIndex + 1}/${keys.size} key=$key random=$random")
+			Log.i(TAG, "BLE appkey 0x21 try=${jbdAppKeyIndex + 1} key=$key")
+		}
+		return true
+	}
+
+	private fun sendJbdOldAppKey(): Boolean {
+		val keys = jbdAppKeys()
+		if (jbdAppKeyIndex >= keys.size) {
+			journal.w("link", "appkey 0x15 failed, falling back to 0x17")
+			Log.w(TAG, "appkey 0x15 failed, falling back to 0x17")
+			jbdTriedOldAppKey = true
+			jbdModuleRandomTries = 0
+			jbdModuleAuth = JbdModuleAuth.IDLE
+			return sendJbdModuleRandom()
+		}
+		val key = keys[jbdAppKeyIndex]
+		val command = JbdBleModuleProtocol.oldAppKey(key)
+		if (command == null || bmsClient?.write(command) != true) {
+			journal.w("link", "BLE appkey 0x15 TX failed key=$key")
+			jbdModuleAuth = JbdModuleAuth.IDLE
+			return true
+		}
+		jbdModuleAuth = JbdModuleAuth.WAIT_APPKEY
+		jbdModuleAuthMs = System.currentTimeMillis()
+		journal.d("link", "BLE appkey 0x15 try=${jbdAppKeyIndex + 1}/${keys.size} key=$key")
+		Log.i(TAG, "BLE appkey 0x15 try=${jbdAppKeyIndex + 1} key=$key")
+		return true
+	}
+
+	private fun sendJbdNewAppKeyVerify(password: String): Boolean {
+		if (jbdModuleRandomTries >= JBD_MODULE_RANDOM_TRIES) {
+			journal.w("link", "new appkey verify failed, falling back to UART password")
+			jbdModuleAuth = JbdModuleAuth.DONE
+			return sendJbdPasswordIfNeeded()
+		}
+		val random = (1..99).random()
+		sendJbdModuleVerify(password, random, newAppKey = true)
+		if (jbdModuleAuth == JbdModuleAuth.WAIT_VERIFY) {
+			jbdModuleRandomTries++
+		}
+		return true
+	}
+
+	private fun sendJbdModuleRandom(): Boolean {
+		if (jbdModuleRandomTries >= JBD_MODULE_RANDOM_TRIES) {
+			journal.w("link", "BLE module random failed, falling back to UART password")
+			jbdModuleAuth = JbdModuleAuth.DONE
+			return sendJbdPasswordIfNeeded()
+		}
+		val ok = bmsClient?.write(JbdBleModuleProtocol.randomRequest()) == true
+		if (!ok) {
+			journal.w("link", "BLE module random TX failed, will retry")
+			jbdModuleAuth = JbdModuleAuth.IDLE
+			return true
+		}
+		jbdModuleRandomTries++
+		jbdModuleAuth = JbdModuleAuth.WAIT_RANDOM
+		jbdModuleAuthMs = System.currentTimeMillis()
+		journal.d("link", "BLE module random request try=$jbdModuleRandomTries")
+		return true
+	}
+
+	private fun sendJbdModuleVerify(
+		password: String,
+		random: Int,
+		newAppKey: Boolean,
+		cmd: Int = JbdBleModuleProtocol.CMD_VERIFY
+	) {
 		val mac = bmsClient?.deviceAddress
-		val command = JbdBleModuleProtocol.verifyPassword(mac, password, random, newAppKey)
+		val command = JbdBleModuleProtocol.verifyPassword(mac, password, random, newAppKey, cmd)
 		if (command == null) {
-			journal.w("link", "cannot build BLE module verify, mac=$mac")
+			journal.w("link", "cannot build BLE module verify, mac=$mac cmd=$cmd")
 			jbdModuleAuth = JbdModuleAuth.DONE
 			return
 		}
-		jbdModuleTriedNewKey = jbdModuleTriedNewKey || newAppKey
-		bmsClient?.write(command)
+		if (bmsClient?.write(command) != true) {
+			journal.w("link", "BLE module verify TX failed cmd=${cmd.toString(16)}")
+			jbdModuleAuth = JbdModuleAuth.IDLE
+			return
+		}
 		jbdModuleAuth = JbdModuleAuth.WAIT_VERIFY
 		jbdModuleAuthMs = System.currentTimeMillis()
-		journal.d("link", "BLE module verify newKey=$newAppKey random=$random")
+		journal.d("link", "BLE module verify cmd=${cmd.toString(16)} newKey=$newAppKey random=$random")
 	}
 
 	private fun handleJbdModuleFrame(frame: JbdBleModuleProtocol.Frame) {
 		when (frame.cmd) {
+			JbdBleModuleProtocol.CMD_OLD_APPKEY -> {
+				val status = frame.payload.lastOrNull()?.toInt()?.and(0xFF)
+				journal.i("link", "BLE appkey 0x15 status=$status")
+				Log.i(TAG, "BLE appkey 0x15 status=$status")
+				jbdTriedOldAppKey = true
+				jbdModuleRandomTries = 0
+				if (status == 0) {
+					val password = JbdBmsProtocol.normalizePassword(BMS_PASSWORD.get())
+					if (password == null) {
+						jbdModuleAuth = JbdModuleAuth.DONE
+						sendJbdPasswordIfNeeded()
+					} else {
+						sendJbdModuleRandom()
+					}
+				} else {
+					jbdModuleAuth = JbdModuleAuth.DONE
+					sendJbdPasswordIfNeeded()
+				}
+			}
+			JbdBleModuleProtocol.CMD_APPKEY_VERIFY -> {
+				if (JbdBleModuleProtocol.verifyAccepted(frame)) {
+					journal.i("link", "BLE appkey 0x21 accepted")
+					Log.i(TAG, "BLE appkey 0x21 accepted")
+					jbdModuleUsedNewKey = false
+					jbdModuleRandomTries = 0
+					val password = JbdBmsProtocol.normalizePassword(BMS_PASSWORD.get())
+					if (password == null) {
+						jbdModuleAuth = JbdModuleAuth.DONE
+						sendJbdPasswordIfNeeded()
+					} else {
+						sendJbdNewAppKeyVerify(password)
+					}
+				} else {
+					journal.w("link", "BLE appkey 0x21 rejected, next key")
+					jbdAppKeyIndex++
+					jbdModuleAuth = JbdModuleAuth.IDLE
+					sendJbdAppKeyVerify()
+				}
+			}
 			JbdBleModuleProtocol.CMD_RANDOM -> {
 				val random = JbdBleModuleProtocol.randomFrom(frame) ?: return
 				val password = JbdBmsProtocol.normalizePassword(BMS_PASSWORD.get()) ?: return
@@ -1812,6 +2061,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			JbdBleModuleProtocol.CMD_VERIFY, JbdBleModuleProtocol.CMD_VERIFY_SECONDARY -> {
 				if (JbdBleModuleProtocol.verifyAccepted(frame)) {
 					journal.i("link", "BLE module unlocked")
+					Log.i(TAG, "BLE module unlocked")
 					jbdModuleAuth = JbdModuleAuth.DONE
 					sendJbdPasswordIfNeeded()
 				} else {
@@ -1824,7 +2074,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	}
 
 	private enum class JbdModuleAuth {
-		IDLE, WAIT_RANDOM, WAIT_VERIFY, DONE
+		IDLE, WAIT_APPKEY, WAIT_RANDOM, WAIT_VERIFY, DONE
 	}
 
 	private fun sendJbdPasswordIfNeeded(): Boolean {
@@ -1875,14 +2125,26 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	}
 
 	interface DeviceScanListener {
-		fun onDeviceFound(role: EvBleUartClient.Role, name: String, address: String)
+		fun onDeviceFound(
+			role: EvBleUartClient.Role,
+			name: String,
+			address: String,
+			rssi: Int?,
+			serviceLabel: String
+		)
 		fun onScanFinished(role: EvBleUartClient.Role)
 	}
 
 	var scanListener: DeviceScanListener? = null
 
-	override fun onDeviceFound(role: EvBleUartClient.Role, name: String, address: String) {
-		handler.post { scanListener?.onDeviceFound(role, name, address) }
+	override fun onDeviceFound(
+		role: EvBleUartClient.Role,
+		name: String,
+		address: String,
+		rssi: Int?,
+		serviceLabel: String
+	) {
+		handler.post { scanListener?.onDeviceFound(role, name, address, rssi, serviceLabel) }
 	}
 
 	override fun onScanFinished(role: EvBleUartClient.Role) {
@@ -1907,14 +2169,16 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			else -> bms?.currentA
 		}
 		updateChargeCycle(
-			currentA = packCurrentA,
+			bmsCurrentA = bms?.currentA,
+			ctrlCurrentA = ctrlCurrentA(),
 			remainingAh = remainingAh,
 			fullAh = bms?.fullMah?.div(1000.0),
 			voltageV = bms?.voltageV ?: ctrlVoltageV(),
 			tempC = batteryAnnounceTempC(),
 			minCellV = minCellVoltageV,
 			loc = loc,
-			bmsFresh = bmsFresh || (ctrlFresh && packCurrentA != null)
+			bmsFresh = bmsFresh,
+			ctrlFresh = ctrlFresh
 		)
 		calibratedSocPercent = socCalibrator.tick(
 			BMS_ADDRESS.get(),
@@ -1927,7 +2191,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			persistSocCal()
 		}
 		val nowMs = System.currentTimeMillis()
-		if (lastRangeSampleMs == 0L || nowMs - lastRangeSampleMs >= RANGE_SAMPLE_MIN_MS) {
+		if (!charging && (lastRangeSampleMs == 0L || nowMs - lastRangeSampleMs >= RANGE_SAMPLE_MIN_MS)) {
 			lastRangeSampleMs = nowMs
 			rangeEstimator.add(
 				nowMs,
@@ -1967,6 +2231,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			controllerTempC = ctrlTempC(),
 			remainingRangeKm = rangeEstimator.remainingRangeKm,
 			consumptionAhPerKm = rangeEstimator.consumptionAhPerKm,
+			energyWh = rangeEstimator.tripEnergyWh(),
 			consumptionWhPerKm = rangeEstimator.consumptionWhPerKm,
 			coverageWhPerKm = rangeEstimator.coverageWhPerKm,
 			weakCellFactor = rangeEstimator.weakCellFactor,

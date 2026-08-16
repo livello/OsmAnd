@@ -50,10 +50,9 @@ object JbdBmsProtocol {
 
 	fun usePassword(password: String?): ByteArray? {
 		val digits = normalizePassword(password) ?: return null
-		val payload = ByteArray(7)
-		payload[0] = 0x06
+		val payload = ByteArray(6)
 		for (i in 0 until 6) {
-			payload[i + 1] = (digits[i] - '0').toByte()
+			payload[i] = (digits[i] - '0').toByte()
 		}
 		return writeCommand(REG_USE_PASSWORD, payload)
 	}
@@ -120,6 +119,7 @@ object JbdBmsProtocol {
 		}
 		val d = frame.copyOfRange(4, 4 + len)
 		val voltageMv = u16(d, 0) * 10
+		// JBD signed current: positive = charge into the pack, negative = discharge.
 		val currentMa = s16(d, 2) * 10
 		val remainMah = u16(d, 4) * 10
 		val fullMah = u16(d, 6) * 10

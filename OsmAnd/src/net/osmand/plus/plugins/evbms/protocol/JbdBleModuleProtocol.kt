@@ -9,19 +9,39 @@ object JbdBleModuleProtocol {
 
 	const val SOF0: Byte = 0xFF.toByte()
 	const val SOF1: Byte = 0xAA.toByte()
+	const val CMD_OLD_APPKEY: Int = 0x15
 	const val CMD_RANDOM: Int = 0x17
 	const val CMD_VERIFY: Int = 0x18
 	const val CMD_VERIFY_SECONDARY: Int = 0x1B
+	const val CMD_BROADCAST: Int = 0x19
+	const val CMD_APPKEY_VERIFY: Int = 0x21
 
 	fun randomRequest(): ByteArray = frame(CMD_RANDOM, ByteArray(0))
+
+	fun broadcastRequest(): ByteArray = frame(CMD_BROADCAST, byteArrayOf(0x01))
+
+	fun oldAppKey(password: String): ByteArray? {
+		if (password.length < 6) {
+			return null
+		}
+		val payload = ByteArray(6)
+		for (i in 0 until 6) {
+			payload[i] = password[i].code.toByte()
+		}
+		return frame(CMD_OLD_APPKEY, payload)
+	}
 
 	fun verifyPassword(
 		mac: String?,
 		password: String,
 		random: Int,
-		newAppKey: Boolean
+		newAppKey: Boolean,
+		cmd: Int = CMD_VERIFY
 	): ByteArray? {
 		val macBytes = parseMac(mac) ?: return null
+		if (password.length < 6) {
+			return null
+		}
 		val pwd = ByteArray(6)
 		for (i in 0 until 6) {
 			pwd[i] = password[i].code.toByte()
@@ -32,7 +52,7 @@ object JbdBleModuleProtocol {
 			coded[i] = mixed.toByte()
 		}
 		val payload = if (newAppKey) coded + byteArrayOf(random.toByte()) else coded
-		return frame(CMD_VERIFY, payload)
+		return frame(cmd, payload)
 	}
 
 	fun frame(cmd: Int, payload: ByteArray): ByteArray {
@@ -101,7 +121,10 @@ object JbdBleModuleProtocol {
 	}
 
 	fun verifyAccepted(frame: Frame): Boolean {
-		if (frame.cmd != CMD_VERIFY && frame.cmd != CMD_VERIFY_SECONDARY) {
+		if (frame.cmd != CMD_VERIFY &&
+			frame.cmd != CMD_VERIFY_SECONDARY &&
+			frame.cmd != CMD_APPKEY_VERIFY
+		) {
 			return false
 		}
 		if (frame.payload.isEmpty()) {

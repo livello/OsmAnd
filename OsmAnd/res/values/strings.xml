@@ -963,9 +963,10 @@ You will be able to pair this scanner again at any time.</string>
     <string name="ev_bms_plugin_name">EV-Telemetry</string>
     <string name="ev_bms_plugin_description"><![CDATA[🔋 <b>EV-Telemetry</b> — live battery and motor telemetry over Bluetooth LE. Tap a plugin widget to open the full-height hub: ⚙️ settings, ☑️ fields, 📊 charts, 📋 history, 📜 journal, ℹ️ about. The last tab is restored. Add widgets from Configure screen → EV-Telemetry. Widget text is <font color="#000000">black</font> while the matching BLE link is up and <font color="#c62828">red</font> when it is lost. BMS widgets follow the battery; controller widgets follow the motor controller. Long-press a numeric widget for compact numbers or labels.<br/><br/>
 <b>📡 Devices</b><br/>
-• BMS: JBD / Xiaoxiang (service FF00) or ANT (FFE0 / FFE1). Protocol Auto / JBD / ANT. A 6-digit JBD password unlocks locked packs.<br/>
+• BMS: JBD / Xiaoxiang (service FF00) or ANT (FFE0 / FFE1). Protocol Auto / JBD / ANT. A 6-digit JBD password unlocks the Xiaoxiang BLE module (appkey 0x21 / legacy 0x15), then UART.<br/>
 • Controller: FarDriver (FFE0 / FFEC) or VESC over Nordic UART. Protocol Auto / FarDriver / VESC. Type is shown from firmware / hardware name.<br/>
-• After a drop, both BLE links retry on their own (backoff, scan-then-connect, stale-link watchdog).<br/><br/>
+• Settings show 🟢 / 🔴, name, MAC, RSSI and ↑TX / ↓RX packet counts, refreshed every second.<br/>
+• After a drop, both BLE links retry on their own (backoff, scan-then-connect). A live BMS GATT is not torn down just because UART telemetry is silent.<br/><br/>
 <b>📊 Widgets</b><br/>
 • 🔋 SOC (auto-calibrated from min cell voltage per BMS MAC), pack voltage, pack current, min cell, battery temperature.<br/>
 • 📏 Remaining range and ⚡ consumption (Wh/km, 5-minute window).<br/>
@@ -1014,6 +1015,8 @@ Optional DEBUG log of plugin and BLE actions, including TX/RX hex. Export or cle
 <b>🥾 Hike mode</b><br/>
 Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+• 📶 Settings link row: 🟢 / 🔴, name, MAC, RSSI and ↑TX / ↓RX counts, refreshed every second<br/>
+• 🔓 Xiaoxiang unlock: appkey 0x21, then legacy 0x15, then UART; a live BMS GATT is no longer dropped because telemetry is silent<br/>
 • Separate BMS and controller BLE poll frequencies, down to 200 ms (5 Hz); CSV/GPX default to 1 s so max poll does not inflate logs<br/>
 • JBD / Xiaoxiang password unlocks the BLE dongle (FF AA) before UART reads, matching the official app<br/>
 • Nightly builds unlock OsmAnd Pro features (no free-version limits)<br/>
@@ -1128,7 +1131,7 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_field_ctrl_current">Controller current</string>
     <string name="ev_bms_field_rpm">RPM</string>
     <string name="ev_bms_field_gear">Gear</string>
-    <string name="ev_bms_field_coverage">Consumption Wh/km</string>
+    <string name="ev_bms_field_coverage">Specific consumption</string>
     <string name="ev_bms_field_range">Remaining range</string>
     <string name="ev_bms_field_group_gps">GPS</string>
     <string name="ev_bms_field_group_battery">Battery</string>
@@ -1162,6 +1165,10 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_history_min_cell">Min cell %1$s V</string>
     <string name="ev_bms_history_min_cell_range">Weak cell %1$s → %2$s V</string>
     <string name="ev_bms_history_stop_time">Stop time %1$s</string>
+    <string name="ev_bms_history_energy_wh">Total consumption %1$s Wh</string>
+    <string name="ev_bms_history_specific_whkm">Specific consumption %1$s Wh/km</string>
+    <string name="ev_bms_history_avg_speed">Average moving speed %1$s km/h</string>
+    <string name="ev_bms_history_avg_charge_a">Average charge current %1$s A</string>
     <string name="ev_bms_gpx_charge_start">Charge start</string>
     <string name="ev_bms_gpx_charge_end">Charge end</string>
     <string name="ev_bms_gpx_charge_trip">Distance on charge</string>
@@ -1182,12 +1189,15 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_n_kg">%1$s kg</string>
     <string name="ev_bms_status_connected">🟢 %1$s</string>
     <string name="ev_bms_status_disconnected">🔴 %1$s</string>
+    <string name="ev_bms_status_ble_stats">%1$s  ↑%2$d ↓%3$d</string>
     <string name="ev_bms_status_saved">Saved: %1$s (tap to rescan)</string>
     <string name="ev_bms_status_not_selected">Tap to scan and connect</string>
     <string name="ev_bms_scanning">Scanning Bluetooth LE…</string>
     <string name="ev_bms_nothing_found">No matching devices found. Turn on Bluetooth and Location, wake the BMS/controller, then try again. Paired devices also appear in the list.</string>
     <string name="ev_bms_location_off">Turn on Location. Android needs it for Bluetooth LE scan.</string>
     <string name="ev_bms_select_device">Select device</string>
+    <string name="ev_bms_ble_rssi">📶 %1$d dBm</string>
+    <string name="ev_bms_ble_rssi_unknown">📶 paired</string>
     <string name="ev_bms_connected">Connected to %1$s</string>
     <string name="ev_bms_disconnected">Disconnected from %1$s</string>
     <string name="ev_bms_voice_soc">Battery charge %1$s volts</string>
@@ -1212,8 +1222,8 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_chart_move_start">Move to start</string>
     <string name="ev_bms_chart_move_end">Move to end</string>
     <string name="ev_bms_chart_actions">Chart actions: %1$s</string>
-    <string name="ev_bms_widget_consumption">Consumption</string>
-    <string name="ev_bms_widget_consumption_desc">Average energy use in Wh/km over the last 5 minutes</string>
+    <string name="ev_bms_widget_consumption">Total consumption</string>
+    <string name="ev_bms_widget_consumption_desc">Energy used on this charge trip, in watt-hours</string>
     <string name="ev_bms_widget_far_trip">Controller trip</string>
     <string name="ev_bms_widget_far_trip_desc">Trip distance from the motor controller odometer</string>
     <string name="ev_bms_widget_charge_trip">Distance on charge</string>
@@ -1226,7 +1236,7 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_widget_min_cell">Min cell voltage</string>
     <string name="ev_bms_widget_min_cell_desc">Lowest cell voltage from the BMS</string>
     <string name="ev_bms_widget_current">Pack current</string>
-    <string name="ev_bms_widget_current_desc">Battery pack current from the BMS</string>
+    <string name="ev_bms_widget_current_desc">Pack current from the BMS. Positive is charge into the pack, negative is discharge.</string>
     <string name="ev_bms_widget_power">Motor power</string>
     <string name="ev_bms_widget_power_desc">Controller bus power</string>
     <string name="ev_bms_widget_motor_temp">Motor temperature</string>
@@ -1316,6 +1326,9 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_cal_failed">Calibration failed. Ride with GPS and a connected controller.</string>
     <string name="ev_bms_cal_started">Auto-calibration started. Ride %1$s with a clear GPS signal.</string>
     <string name="ev_bms_cal_cancelled">Auto-calibration cancelled</string>
+    <string name="ev_bms_filter_ctrl_odo">Filter by controller distance</string>
+    <string name="ev_bms_filter_ctrl_odo_desc">Cap GPS trip distance so it cannot exceed the controller odometer, including the speed calibration factor.</string>
+    <string name="ev_bms_ctrl_odo_excess">Controller distance allowance</string>
     <string name="ev_bms_cal_factor_invalid">Enter a factor between 0.500 and 2.000</string>
     <string name="map_rendering_engine_v2_unavailable">Version 2 (OpenGL) is not included in this APK. This Nightly build uses the legacy renderer. Rebuild with the OpenGL flavor to enable it.</string>
     <string name="background_opacity">Background opacity</string>
