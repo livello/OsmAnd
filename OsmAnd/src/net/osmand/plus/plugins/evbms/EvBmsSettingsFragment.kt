@@ -66,6 +66,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			for ((field, view) in fieldValueViews) {
 				view.text = field.liveValue(ctx, sample)
 			}
+			setupDevicePrefs()
 			uiHandler.postDelayed(this, 1000)
 		}
 	}
@@ -142,18 +143,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 
 	override fun setupPreferences() {
 		findPreference<Preference>("ev_bms_devices")?.isVisible = false
-		setupDevicePref(
-			plugin.BMS_ADDRESS.id,
-			plugin.BMS_NAME.get(),
-			plugin.BMS_ADDRESS.get(),
-			plugin.isBmsConnected()
-		)
-		setupDevicePref(
-			plugin.CONTROLLER_ADDRESS.id,
-			plugin.CONTROLLER_NAME.get(),
-			plugin.CONTROLLER_ADDRESS.get(),
-			plugin.isControllerConnected()
-		)
+		setupDevicePrefs()
 		setupControllerTitle()
 		setupBmsProtocol()
 		setupJbdPassword()
@@ -303,14 +293,40 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		super.onDestroyView()
 	}
 
+	private fun setupDevicePrefs() {
+		setupDevicePref(
+			plugin.BMS_ADDRESS.id,
+			plugin.BMS_NAME.get(),
+			plugin.BMS_ADDRESS.get(),
+			plugin.isBmsConnected()
+		)
+		setupDevicePref(
+			plugin.CONTROLLER_ADDRESS.id,
+			plugin.CONTROLLER_NAME.get(),
+			plugin.CONTROLLER_ADDRESS.get(),
+			plugin.isControllerConnected()
+		)
+	}
+
 	private fun setupDevicePref(key: String, name: String?, address: String?, connected: Boolean) {
 		val pref = findPreference<Preference>(key) ?: return
-		val status = when {
-			connected -> getString(R.string.ev_bms_status_connected)
-			!address.isNullOrEmpty() -> getString(R.string.ev_bms_status_saved, name ?: address)
+		val label = deviceSummaryLabel(name, address)
+		pref.summary = when {
+			connected -> getString(R.string.ev_bms_status_connected, label)
+			!address.isNullOrEmpty() -> getString(R.string.ev_bms_status_disconnected, label)
 			else -> getString(R.string.ev_bms_status_not_selected)
 		}
-		pref.summary = status
+	}
+
+	private fun deviceSummaryLabel(name: String?, address: String?): String {
+		val mac = address?.trim().orEmpty()
+		val title = name?.trim().orEmpty()
+		return when {
+			title.isNotEmpty() && mac.isNotEmpty() && !title.equals(mac, ignoreCase = true) ->
+				"$title  $mac"
+			mac.isNotEmpty() -> mac
+			else -> title
+		}
 	}
 
 	private fun setupControllerTitle() {

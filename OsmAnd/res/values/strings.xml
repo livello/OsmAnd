@@ -1180,7 +1180,8 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_driver_mass_desc">Rider mass added to the vehicle for climb energy and descent regen.</string>
     <string name="ev_bms_mass_invalid">Enter a mass in kilograms in the allowed range</string>
     <string name="ev_bms_n_kg">%1$s kg</string>
-    <string name="ev_bms_status_connected">Connected</string>
+    <string name="ev_bms_status_connected">🟢 %1$s</string>
+    <string name="ev_bms_status_disconnected">🔴 %1$s</string>
     <string name="ev_bms_status_saved">Saved: %1$s (tap to rescan)</string>
     <string name="ev_bms_status_not_selected">Tap to scan and connect</string>
     <string name="ev_bms_scanning">Scanning Bluetooth LE…</string>

@@ -4680,7 +4680,8 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
     <string name="ev_bms_driver_mass_desc">Масса водителя, добавляется к массе ТС для набора высоты и рекуперации.</string>
     <string name="ev_bms_mass_invalid">Введите массу в килограммах в допустимом диапазоне</string>
     <string name="ev_bms_n_kg">%1$s кг</string>
-    <string name="ev_bms_status_connected">Подключено</string>
+    <string name="ev_bms_status_connected">🟢 %1$s</string>
+    <string name="ev_bms_status_disconnected">🔴 %1$s</string>
     <string name="ev_bms_status_saved">Сохранено: %1$s (нажмите, чтобы сканировать снова)</string>
     <string name="ev_bms_status_not_selected">Нажмите, чтобы найти и подключить</string>
     <string name="ev_bms_scanning">Поиск Bluetooth LE…</string>
