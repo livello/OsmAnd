@@ -143,6 +143,7 @@ public enum WidgetType {
 	EV_MOTOR_TEMP("ev_motor_temp", R.string.ev_bms_widget_motor_temp, R.string.ev_bms_widget_motor_temp_desc, R.drawable.widget_obd_temperature_engine_oil_day, R.drawable.widget_obd_temperature_engine_oil_night, 0, EV_BMS, RIGHT),
 	EV_CONTROLLER_TEMP("ev_controller_temp", R.string.ev_bms_widget_controller_temp, R.string.ev_bms_widget_controller_temp_desc, R.drawable.widget_obd_temperature_coolant_day, R.drawable.widget_obd_temperature_coolant_night, 0, EV_BMS, RIGHT),
 	EV_HIKE("ev_hike", R.string.ev_bms_widget_hike, R.string.ev_bms_widget_hike_desc, R.drawable.ic_action_trekking_dark, R.drawable.ic_action_trekking_dark, 0, EV_BMS, RIGHT),
+	EV_SPEEDOMETER("ev_speedometer", R.string.ev_bms_widget_speedometer, R.string.ev_bms_widget_speedometer_desc, R.drawable.widget_obd_speed_day, R.drawable.widget_obd_speed_night, 0, EV_BMS, TOP),
 
 //	OBD_VIN("obd_vin", R.string.obd_vin, R.string.obd_vin_desc, R.drawable.widget_weather_temperature_day, R.drawable.widget_weather_temperature_night, 0, VEHICLE_METRICS, RIGHT),
 //	OBD_FUEL_TYPE("obd_fuel_type", R.string.obd_fuel_type, R.string.obd_fuel_type_desc, R.drawable.widget_weather_temperature_day, R.drawable.widget_weather_temperature_night, 0, VEHICLE_METRICS, RIGHT),
@@ -267,6 +268,9 @@ public enum WidgetType {
 			return !panels.contains(TOP) && !panels.contains(BOTTOM);
 		}
 		if (this == ROUTE_INFO) {
+			return !panels.contains(LEFT) && !panels.contains(RIGHT);
+		}
+		if (this == EV_SPEEDOMETER) {
 			return !panels.contains(LEFT) && !panels.contains(RIGHT);
 		}
 		return true;
@@ -512,7 +516,7 @@ public enum WidgetType {
 	@NonNull
 	public static String[] getComplexWidgetIds() {
 		return new String[] {COORDINATES_MAP_CENTER.id, COORDINATES_CURRENT_LOCATION.id,
-				MARKERS_TOP_BAR.id, ELEVATION_PROFILE.id, STREET_NAME.id, LANES.id};
+				MARKERS_TOP_BAR.id, ELEVATION_PROFILE.id, STREET_NAME.id, LANES.id, EV_SPEEDOMETER.id};
 	}
 
 	@NonNull

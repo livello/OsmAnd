@@ -34,6 +34,7 @@ import androidx.recyclerview.widget.RecyclerView
 import net.osmand.plus.R
 import net.osmand.plus.plugins.PluginsHelper
 import net.osmand.plus.plugins.evbms.ble.EvBleUartClient
+import net.osmand.plus.settings.backend.ApplicationMode
 import net.osmand.plus.settings.bottomsheets.BooleanRadioButtonsBottomSheet
 import net.osmand.plus.settings.fragments.ApplyQueryType
 import net.osmand.plus.settings.fragments.BaseSettingsFragment
@@ -153,6 +154,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		setupJbdPassword()
 		setupControllerProtocol()
 		setupSwitch(plugin.HIKE_MODE.id)
+		setupSpeedProfile()
 		setupCalDistance()
 		setupCalFactor()
 		setupCalAction()
@@ -222,6 +224,10 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		decorate(plugin.CONTROLLER_ADDRESS.id, "🛵", R.drawable.ic_action_car_info)
 		decorate(plugin.CONTROLLER_PROTOCOL.id, "⚙️", R.drawable.ic_action_settings)
 		decorate(plugin.HIKE_MODE.id, "🥾", R.drawable.ic_action_trekking_dark)
+		decorate(plugin.SPEED_PROFILE_AUTO.id, "🏍️", R.drawable.ic_action_speed)
+		decorate(plugin.SPEED_PROFILE_KMH.id, "🎚️", R.drawable.ic_action_speed)
+		decorate(plugin.SPEED_PROFILE_SLOW.id, "🐢", R.drawable.ic_action_map_style)
+		decorate(plugin.SPEED_PROFILE_FAST.id, "🏁", R.drawable.ic_action_map_style)
 		decorate(plugin.SPEED_CAL_DISTANCE_M.id, "📏", R.drawable.ic_action_distance)
 		decorate(plugin.SPEED_CAL_FACTOR.id, "✖️", R.drawable.ic_action_speed)
 		decorate("ev_bms_cal_start", "▶️", R.drawable.ic_action_play_dark)
@@ -435,6 +441,42 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		} else {
 			getString(R.string.ev_bms_n_sec, ms / 1000)
 		}
+	}
+
+	private fun setupSpeedProfile() {
+		val autoPref = findPreference<SwitchPreferenceEx>(plugin.SPEED_PROFILE_AUTO.id) ?: return
+		autoPref.setDescription(R.string.ev_bms_speed_profile_auto_desc)
+
+		val thresholdPref = findPreference<ListPreferenceEx>(plugin.SPEED_PROFILE_KMH.id) ?: return
+		val kmh = arrayOf(10, 15, 20, 25, 30, 35, 40, 50, 60)
+		thresholdPref.setEntries(kmh.map { getString(R.string.ev_bms_n_kmh, it) }.toTypedArray())
+		thresholdPref.setEntryValues(kmh.map { it as Any }.toTypedArray())
+		thresholdPref.setValue(plugin.SPEED_PROFILE_KMH.get())
+		thresholdPref.setDescription(R.string.ev_bms_speed_profile_kmh_desc)
+
+		setupSpeedProfileMode(plugin.SPEED_PROFILE_SLOW.id, plugin.SPEED_PROFILE_SLOW.get())
+		setupSpeedProfileMode(plugin.SPEED_PROFILE_FAST.id, plugin.SPEED_PROFILE_FAST.get())
+	}
+
+	private fun setupSpeedProfileMode(prefId: String, selectedKey: String?) {
+		val pref = findPreference<ListPreferenceEx>(prefId) ?: return
+		val modes = ApplicationMode.values(app)
+		val names = ArrayList<String>(modes.size + 1)
+		val keys = ArrayList<Any>(modes.size + 1)
+		names.add(getString(R.string.ev_bms_value_none))
+		keys.add("")
+		for (mode in modes) {
+			names.add(mode.toHumanString())
+			keys.add(mode.stringKey)
+		}
+		if (!selectedKey.isNullOrEmpty() && keys.none { it == selectedKey }) {
+			val orphan = ApplicationMode.valueOfStringKey(selectedKey, null)
+			names.add(orphan?.toHumanString() ?: selectedKey)
+			keys.add(selectedKey)
+		}
+		pref.setEntries(names.toTypedArray())
+		pref.setEntryValues(keys.toTypedArray())
+		pref.setValue(selectedKey ?: "")
 	}
 
 	private fun setupCalDistance() {
@@ -849,6 +891,13 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 				plugin.connectController(act, name ?: address, address)
 			}
 			setupControllerTitle()
+		}
+		if (prefId == plugin.SPEED_PROFILE_AUTO.id ||
+			prefId == plugin.SPEED_PROFILE_KMH.id ||
+			prefId == plugin.SPEED_PROFILE_SLOW.id ||
+			prefId == plugin.SPEED_PROFILE_FAST.id
+		) {
+			setupSpeedProfile()
 		}
 	}
 

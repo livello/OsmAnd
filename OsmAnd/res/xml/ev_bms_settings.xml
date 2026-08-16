@@ -52,6 +52,33 @@
 		android:title="@string/ev_bms_widget_hike" />
 
 	<PreferenceCategory
+		android:key="ev_bms_speed_profile"
+		android:layout="@layout/ev_bms_preference_category_divider"
+		android:title="@string/ev_bms_speed_profile" />
+
+	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
+		android:key="ev_bms_speed_profile_auto"
+		android:layout="@layout/ev_bms_preference_switch"
+		android:summaryOff="@string/shared_string_disabled"
+		android:summaryOn="@string/shared_string_enabled"
+		android:title="@string/ev_bms_speed_profile_auto" />
+
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="ev_bms_speed_profile_kmh"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:title="@string/ev_bms_speed_profile_kmh" />
+
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="ev_bms_speed_profile_slow"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:title="@string/ev_bms_speed_profile_slow" />
+
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="ev_bms_speed_profile_fast"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:title="@string/ev_bms_speed_profile_fast" />
+
+	<PreferenceCategory
 		android:key="ev_bms_calibration"
 		android:layout="@layout/ev_bms_preference_category_divider"
 		android:title="@string/ev_bms_calibration" />

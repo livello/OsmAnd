@@ -85,6 +85,9 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		const val DEFAULT_DRIVER_MASS_KG = 80f
 		const val DEFAULT_RESERVE_SMALL_KM = 5
 		const val DEFAULT_RESERVE_LOW_KM = 15
+		const val DEFAULT_SPEED_PROFILE_KMH = 25
+		private const val SPEED_PROFILE_HYSTERESIS_KMH = 3.0
+		private const val SPEED_PROFILE_HOLD_MS = 2000L
 		private const val HISTORY_SAMPLE_MIN_MS = 2000L
 		const val SESSION_IDLE = "idle"
 		const val SESSION_RECORDING = "recording"
@@ -205,6 +208,14 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerBooleanPreference("ev_bms_filter_ctrl_odo", true).makeGlobal().makeShared()
 	val CTRL_ODO_EXCESS_PERCENT: CommonPreference<Int> =
 		registerIntPreference("ev_bms_ctrl_odo_excess_percent", DEFAULT_CTRL_ODO_EXCESS_PERCENT).makeGlobal().makeShared()
+	val SPEED_PROFILE_AUTO: CommonPreference<Boolean> =
+		registerBooleanPreference("ev_bms_speed_profile_auto", false).makeGlobal().makeShared()
+	val SPEED_PROFILE_KMH: CommonPreference<Int> =
+		registerIntPreference("ev_bms_speed_profile_kmh", DEFAULT_SPEED_PROFILE_KMH).makeGlobal().makeShared()
+	val SPEED_PROFILE_SLOW: CommonPreference<String> =
+		registerStringPreference("ev_bms_speed_profile_slow", "").makeGlobal().makeShared()
+	val SPEED_PROFILE_FAST: CommonPreference<String> =
+		registerStringPreference("ev_bms_speed_profile_fast", "").makeGlobal().makeShared()
 	val VEHICLE_MASS_KG: CommonPreference<Float> =
 		registerFloatPreference("ev_bms_vehicle_mass_kg", DEFAULT_VEHICLE_MASS_KG).makeGlobal().makeShared()
 	val DRIVER_MASS_KG: CommonPreference<Float> =
@@ -265,6 +276,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private var speedCalCtrlM = 0.0
 	private var speedCalLastLoc: Location? = null
 	private var speedCalLastMs = 0L
+	private var speedProfileWantFast: Boolean? = null
+	private var speedProfileSinceMs = 0L
 	private var lastChargeAh: Double? = null
 	private var stillSinceMs: Long? = null
 	private var charging = false
@@ -2286,6 +2299,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		val bmsFreshAfter = isBmsFresh()
 		val ctrlFreshAfter = isControllerFresh()
 		latestTelemetry = sample
+		tickSpeedProfileSwitch()
 		maybeCollectHistorySample(sample)
 		if (journal.enabled) {
 			journal.d(
@@ -2454,6 +2468,63 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 
 	private fun ctrlSpeedKmh(): Double? = rawCtrlSpeedKmh()?.times(speedCalFactor())
 
+	fun speedometerReading(): SpeedometerReading? {
+		val ctrl = ctrlSpeedKmh()
+		if (isControllerFresh() && ctrl != null) {
+			return SpeedometerReading(ctrl, true)
+		}
+		val gps = lastLocation?.takeIf { it.hasSpeed() }?.speed?.times(3.6)
+		if (gps != null) {
+			return SpeedometerReading(gps, false)
+		}
+		return null
+	}
+
+	private fun tickSpeedProfileSwitch() {
+		if (!SPEED_PROFILE_AUTO.get()) {
+			speedProfileWantFast = null
+			speedProfileSinceMs = 0L
+			return
+		}
+		val slow = ApplicationMode.valueOfStringKey(SPEED_PROFILE_SLOW.get(), null) ?: return
+		val fast = ApplicationMode.valueOfStringKey(SPEED_PROFILE_FAST.get(), null) ?: return
+		if (slow == fast) {
+			return
+		}
+		val current = settings.applicationMode
+		if (current != slow && current != fast) {
+			speedProfileWantFast = null
+			speedProfileSinceMs = 0L
+			return
+		}
+		val speed = speedometerReading()?.kmh ?: 0.0
+		val threshold = SPEED_PROFILE_KMH.get().toDouble()
+		val wantFast = if (current == fast) {
+			speed > threshold - SPEED_PROFILE_HYSTERESIS_KMH
+		} else {
+			speed >= threshold
+		}
+		val now = System.currentTimeMillis()
+		if (wantFast == (current == fast)) {
+			speedProfileWantFast = wantFast
+			speedProfileSinceMs = 0L
+			return
+		}
+		if (speedProfileWantFast != wantFast) {
+			speedProfileWantFast = wantFast
+			speedProfileSinceMs = now
+			return
+		}
+		if (now - speedProfileSinceMs < SPEED_PROFILE_HOLD_MS) {
+			return
+		}
+		val target = if (wantFast) fast else slow
+		if (settings.setApplicationMode(target)) {
+			journal.i("speed-profile", "switch ${current.stringKey} → ${target.stringKey} speed=${"%.0f".format(speed)}")
+		}
+		speedProfileSinceMs = 0L
+	}
+
 	private fun rawCtrlOdometerKm(): Double? = vescSnapshot.odometerKm ?: farSnapshot.odometerKm
 
 	private fun rawCtrlSpeedKmh(): Double? = vescSnapshot.speedKmh ?: farSnapshot.speedKmh
@@ -2484,6 +2555,9 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	): MapWidget? {
 		if (widgetType == WidgetType.EV_HIKE) {
 			return EvHikeWidget(mapActivity, customId, widgetsPanel)
+		}
+		if (widgetType == WidgetType.EV_SPEEDOMETER) {
+			return EvSpeedometerWidget(mapActivity, customId, widgetsPanel)
 		}
 		val field = when (widgetType) {
 			WidgetType.EV_BMS_SOC -> EvBmsTextWidget.Field.SOC
@@ -2987,3 +3061,6 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		}
 	}
 }
+
+data class SpeedometerReading(val kmh: Double, val fromController: Boolean)
+
