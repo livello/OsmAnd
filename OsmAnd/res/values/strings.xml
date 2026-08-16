@@ -1012,6 +1012,7 @@ Optional DEBUG log of plugin and BLE actions, including TX/RX hex. Export or cle
 <b>🥾 Hike mode</b><br/>
 Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+• JBD / Xiaoxiang password unlocks the BLE dongle (FF AA) before UART reads, matching the official app<br/>
 • Deleting a charge or ride history row asks for confirmation first<br/>
 • Live-chart action menu waits for a longer still press so scrolling does not open it<br/>
 • Range reserve = remaining range minus remaining route; fields for range reserve and stop time<br/>
@@ -1227,7 +1228,7 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_protocol_jbd">JBD / Xiaoxiang</string>
     <string name="ev_bms_protocol_ant">ANT BMS</string>
     <string name="ev_bms_jbd_password">BMS password</string>
-    <string name="ev_bms_jbd_password_desc">Six-digit Xiaoxiang / JBD password. Leave empty if the BMS is not locked.</string>
+    <string name="ev_bms_jbd_password_desc">Six-digit Xiaoxiang / JBD password. Unlocks the BLE dongle, then the BMS. Leave empty if the pack is not locked.</string>
     <string name="ev_bms_jbd_password_not_set">Not set</string>
     <string name="ev_bms_jbd_password_invalid">Enter exactly 6 digits, or leave empty</string>
     <string name="ev_bms_jbd_password_wrong">Wrong JBD BMS password</string>

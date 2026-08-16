@@ -74,6 +74,7 @@ class EvBleUartClient(
 		fun onBytes(role: Role, data: ByteArray)
 		fun onDeviceFound(role: Role, name: String, address: String)
 		fun onScanFinished(role: Role)
+		fun onNotifyReady(role: Role) {}
 	}
 
 	companion object {
@@ -153,6 +154,9 @@ class EvBleUartClient(
 	@Volatile
 	var deviceAddress: String? = null
 		private set
+	@Volatile
+	var notifyReady: Boolean = false
+		private set
 
 	@Volatile
 	private var wantConnected = false
@@ -180,6 +184,12 @@ class EvBleUartClient(
 		connecting = false
 		closeGatt()
 		scheduleReconnect()
+	}
+
+	private val notifyReadyFallback = Runnable {
+		if (wantConnected && connected && !notifyReady) {
+			markNotifyReady()
+		}
 	}
 
 	private val reconnectScanTimeout = Runnable {
@@ -280,6 +290,8 @@ class EvBleUartClient(
 				connecting = false
 				connected = false
 				connectedAtMs = 0L
+				notifyReady = false
+				mainHandler.removeCallbacks(notifyReadyFallback)
 				detectedBmsKind = BmsKind.UNKNOWN
 				detectedControllerKind = ControllerKind.UNKNOWN
 				writeCharacteristic = null
@@ -398,6 +410,7 @@ class EvBleUartClient(
 				}
 			}
 			writeCharacteristic = write
+			notifyReady = false
 			jd("services notify=${notify?.uuid} write=${write?.uuid} bms=$detectedBmsKind ctrl=$detectedControllerKind")
 			if (notify != null) {
 				gatt.setCharacteristicNotification(notify, true)
@@ -409,12 +422,47 @@ class EvBleUartClient(
 						cccd.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
 						gatt.writeDescriptor(cccd)
 					}
+					mainHandler.removeCallbacks(notifyReadyFallback)
+					mainHandler.postDelayed(notifyReadyFallback, 500L)
+				} else {
+					markNotifyReady()
 				}
+			} else {
+				markNotifyReady()
+			}
+		}
+
+		override fun onDescriptorWrite(
+			gatt: BluetoothGatt,
+			descriptor: BluetoothGattDescriptor,
+			status: Int
+		) {
+			if (gatt != this@EvBleUartClient.gatt) {
+				return
+			}
+			if (status == BluetoothGatt.GATT_SUCCESS) {
+				markNotifyReady()
+			} else {
+				jw("CCCD write status $status")
+				mainHandler.removeCallbacks(notifyReadyFallback)
+				mainHandler.postDelayed(notifyReadyFallback, 200L)
 			}
 		}
 
 		override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
 			val value = characteristic.value ?: return
+			deliverRx(value)
+		}
+
+		override fun onCharacteristicChanged(
+			gatt: BluetoothGatt,
+			characteristic: BluetoothGattCharacteristic,
+			value: ByteArray
+		) {
+			deliverRx(value)
+		}
+
+		private fun deliverRx(value: ByteArray) {
 			if (value.isNotEmpty()) {
 				jd("RX ${value.size}B ${EvDebugJournal.hex(value)}")
 				listener.onBytes(role, value)
@@ -745,6 +793,8 @@ class EvBleUartClient(
 		stopScanInternal(notify = false)
 		connected = false
 		connectedAtMs = 0L
+		notifyReady = false
+		mainHandler.removeCallbacks(notifyReadyFallback)
 		connecting = false
 		detectedBmsKind = BmsKind.UNKNOWN
 		detectedControllerKind = ControllerKind.UNKNOWN
@@ -772,6 +822,16 @@ class EvBleUartClient(
 		}
 		jd("TX ${bytes.size}B ${EvDebugJournal.hex(bytes)} ok=$ok")
 		return ok
+	}
+
+	private fun markNotifyReady() {
+		if (notifyReady) {
+			return
+		}
+		notifyReady = true
+		mainHandler.removeCallbacks(notifyReadyFallback)
+		jd("notify ready")
+		mainHandler.post { listener.onNotifyReady(role) }
 	}
 
 	private fun jd(msg: String) {

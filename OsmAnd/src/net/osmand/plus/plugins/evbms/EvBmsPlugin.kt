@@ -24,6 +24,7 @@ import net.osmand.plus.plugins.evbms.protocol.AntBmsProtocol
 import net.osmand.plus.plugins.evbms.protocol.BmsSnapshot
 import net.osmand.plus.plugins.evbms.protocol.FarDriverProtocol
 import net.osmand.plus.plugins.evbms.protocol.JbdBmsProtocol
+import net.osmand.plus.plugins.evbms.protocol.JbdBleModuleProtocol
 import net.osmand.plus.plugins.evbms.protocol.VescProtocol
 import net.osmand.plus.settings.backend.ApplicationMode
 import net.osmand.plus.settings.backend.preferences.CommonPreference
@@ -54,6 +55,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		const val CHARGE_HOLD_SAMPLES = 3
 		const val DATA_STALE_MS = 5000L
 		private const val LINK_DEAD_MS = 12_000L
+		private const val JBD_MODULE_RANDOM_WAIT_MS = 800L
+		private const val JBD_MODULE_VERIFY_WAIT_MS = 1_200L
 		const val DEFAULT_CHARGE_STILL_SEC = 20
 		const val DEFAULT_CHARGE_STILL_KMH = 5
 		const val DEFAULT_CHARGE_CURRENT_A = 2
@@ -292,6 +295,9 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private var jbdPasswordSentMs = 0L
 	private var jbdPasswordToastMs = 0L
 	private var jbdPasswordRejected = false
+	private var jbdModuleAuth = JbdModuleAuth.IDLE
+	private var jbdModuleAuthMs = 0L
+	private var jbdModuleTriedNewKey = false
 	@Volatile
 	var latestTelemetry: EvTelemetry? = null
 		private set
@@ -310,8 +316,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			if (bmsClient?.connected == true) {
 				if (preferAntProtocol()) {
 					bmsClient?.write(AntBmsProtocol.statusRequest())
-				} else if (sendJbdPasswordIfNeeded()) {
-					// Wait for the BMS to accept the password before the next read.
+				} else if (advanceJbdAuth()) {
+					// BLE-module unlock and UART password before telemetry reads.
 				} else if (pollCellsNext) {
 					bmsClient?.write(JbdBmsProtocol.readCellVoltages())
 					pollCellsNext = false
@@ -1442,9 +1448,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				vescSnapshot.reset()
 			}
 			if (role == EvBleUartClient.Role.BMS) {
-				jbdPasswordSentMs = 0L
-				jbdPasswordToastMs = 0L
-				jbdPasswordRejected = false
+				resetJbdAuth()
 			}
 			startPolling()
 			applyHikeTelemetryState()
@@ -1559,6 +1563,25 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private fun drainBmsBuffer() {
 		while (bmsBuffer.isNotEmpty()) {
 			val sizeBefore = bmsBuffer.size
+			if (bmsBuffer.size >= 2 &&
+				bmsBuffer[0] == JbdBleModuleProtocol.SOF0 &&
+				bmsBuffer[1] == JbdBleModuleProtocol.SOF1
+			) {
+				val (frames, rest) = JbdBleModuleProtocol.extractFrames(bmsBuffer)
+				bmsBuffer = rest
+				for (raw in frames) {
+					val frame = JbdBleModuleProtocol.parse(raw) ?: continue
+					lastBmsRxMs = System.currentTimeMillis()
+					handleJbdModuleFrame(frame)
+				}
+				if (bmsBuffer.size >= sizeBefore) {
+					if (bmsBuffer.size > 1024) {
+						bmsBuffer = ByteArray(0)
+					}
+					break
+				}
+				continue
+			}
 			val useAnt = when {
 				preferAntProtocol() -> true
 				preferJbdProtocol() -> false
@@ -1656,12 +1679,109 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	}
 
 	fun onJbdPasswordChanged() {
+		resetJbdAuth()
+		if (isBmsConnected() && !preferAntProtocol()) {
+			advanceJbdAuth()
+		}
+	}
+
+	private fun resetJbdAuth() {
 		jbdPasswordSentMs = 0L
 		jbdPasswordToastMs = 0L
 		jbdPasswordRejected = false
-		if (isBmsConnected() && !preferAntProtocol()) {
-			sendJbdPasswordIfNeeded()
+		jbdModuleAuth = JbdModuleAuth.IDLE
+		jbdModuleAuthMs = 0L
+		jbdModuleTriedNewKey = false
+	}
+
+	override fun onNotifyReady(role: EvBleUartClient.Role) {
+		if (role != EvBleUartClient.Role.BMS || preferAntProtocol()) {
+			return
 		}
+		journal.i("link", "BMS notify ready, unlocking module")
+		advanceJbdAuth()
+	}
+
+	private fun advanceJbdAuth(): Boolean {
+		if (preferAntProtocol() || jbdPasswordRejected) {
+			return false
+		}
+		if (bmsClient?.notifyReady != true) {
+			return true
+		}
+		val password = JbdBmsProtocol.normalizePassword(BMS_PASSWORD.get())
+		if (password == null) {
+			return false
+		}
+		val now = System.currentTimeMillis()
+		when (jbdModuleAuth) {
+			JbdModuleAuth.IDLE -> {
+				bmsClient?.write(JbdBleModuleProtocol.randomRequest())
+				jbdModuleAuth = JbdModuleAuth.WAIT_RANDOM
+				jbdModuleAuthMs = now
+				return true
+			}
+			JbdModuleAuth.WAIT_RANDOM -> {
+				if (now - jbdModuleAuthMs >= JBD_MODULE_RANDOM_WAIT_MS) {
+					sendJbdModuleVerify(password, (1..99).random(), newAppKey = true)
+				}
+				return true
+			}
+			JbdModuleAuth.WAIT_VERIFY -> {
+				if (now - jbdModuleAuthMs >= JBD_MODULE_VERIFY_WAIT_MS) {
+					if (!jbdModuleTriedNewKey) {
+						sendJbdModuleVerify(password, (1..99).random(), newAppKey = true)
+					} else {
+						journal.w("link", "BLE module verify timed out, falling back to UART password")
+						jbdModuleAuth = JbdModuleAuth.DONE
+						return sendJbdPasswordIfNeeded()
+					}
+				}
+				return true
+			}
+			JbdModuleAuth.DONE -> return sendJbdPasswordIfNeeded()
+		}
+	}
+
+	private fun sendJbdModuleVerify(password: String, random: Int, newAppKey: Boolean) {
+		val mac = bmsClient?.deviceAddress
+		val command = JbdBleModuleProtocol.verifyPassword(mac, password, random, newAppKey)
+		if (command == null) {
+			journal.w("link", "cannot build BLE module verify, mac=$mac")
+			jbdModuleAuth = JbdModuleAuth.DONE
+			return
+		}
+		jbdModuleTriedNewKey = jbdModuleTriedNewKey || newAppKey
+		bmsClient?.write(command)
+		jbdModuleAuth = JbdModuleAuth.WAIT_VERIFY
+		jbdModuleAuthMs = System.currentTimeMillis()
+		journal.d("link", "BLE module verify newKey=$newAppKey random=$random")
+	}
+
+	private fun handleJbdModuleFrame(frame: JbdBleModuleProtocol.Frame) {
+		when (frame.cmd) {
+			JbdBleModuleProtocol.CMD_RANDOM -> {
+				val random = JbdBleModuleProtocol.randomFrom(frame) ?: return
+				val password = JbdBmsProtocol.normalizePassword(BMS_PASSWORD.get()) ?: return
+				journal.d("link", "BLE module random=$random")
+				sendJbdModuleVerify(password, random, newAppKey = false)
+			}
+			JbdBleModuleProtocol.CMD_VERIFY, JbdBleModuleProtocol.CMD_VERIFY_SECONDARY -> {
+				if (JbdBleModuleProtocol.verifyAccepted(frame)) {
+					journal.i("link", "BLE module unlocked")
+					jbdModuleAuth = JbdModuleAuth.DONE
+					sendJbdPasswordIfNeeded()
+				} else {
+					jbdPasswordRejected = true
+					toastJbdPassword(R.string.ev_bms_jbd_password_wrong)
+					journal.w("link", "BLE module rejected password")
+				}
+			}
+		}
+	}
+
+	private enum class JbdModuleAuth {
+		IDLE, WAIT_RANDOM, WAIT_VERIFY, DONE
 	}
 
 	private fun sendJbdPasswordIfNeeded(): Boolean {

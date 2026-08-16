@@ -4512,6 +4512,7 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
 <b>🥾 Режим «Поход»</b><br/>
 Оставляет запас хода, GPS и телеметрию раз в 5 с, замедляет опрос BLE не реже 5 с, отключает тяжёлые слои карты, 3D, погоду, онлайн-тайлы и лишние Bluetooth-плагины.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Список изменений</b> · %1$s<br/>
+• Пароль JBD / Xiaoxiang сначала разблокирует BLE-модуль (FF AA), как в официальном приложении, и только потом идут чтения UART<br/>
 • Удаление записи в истории зарядок и пробегов спрашивает подтверждение<br/>
 • Меню действий живого графика открывается только после более длинного неподвижного нажатия, обычный скролл его не вызывает<br/>
 • Резерв хода = запас хода минус остаток маршрута; поля «резерв хода» и «время остановки»<br/>
@@ -4727,7 +4728,7 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
     <string name="ev_bms_protocol_jbd">JBD / Xiaoxiang</string>
     <string name="ev_bms_protocol_ant">ANT BMS</string>
     <string name="ev_bms_jbd_password">Пароль BMS</string>
-    <string name="ev_bms_jbd_password_desc">Шестизначный пароль Xiaoxiang / JBD. Оставьте пустым, если BMS не запаролена.</string>
+    <string name="ev_bms_jbd_password_desc">Шестизначный пароль Xiaoxiang / JBD. Сначала открывает BLE-модуль, затем BMS. Оставьте пустым, если пароля нет.</string>
     <string name="ev_bms_jbd_password_not_set">Не задан</string>
     <string name="ev_bms_jbd_password_invalid">Введите ровно 6 цифр или оставьте пустым</string>
     <string name="ev_bms_jbd_password_wrong">Неверный пароль JBD BMS</string>
