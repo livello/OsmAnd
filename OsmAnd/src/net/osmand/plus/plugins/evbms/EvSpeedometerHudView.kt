@@ -73,7 +73,7 @@ class EvSpeedometerHudView @JvmOverloads constructor(
 	}
 	private val arcBounds = RectF()
 	private val badgeBounds = RectF()
-	private val stripeEffect = DashPathEffect(floatArrayOf(28f, 18f), 0f)
+	private val stripeEffect = DashPathEffect(floatArrayOf(84f, 54f), 0f)
 
 	private var speedKmh = 0f
 	private var zone = Zone.GREEN
@@ -124,14 +124,14 @@ class EvSpeedometerHudView @JvmOverloads constructor(
 			return
 		}
 		val color = zoneColor(zone)
-		val maxStroke = min(w, h) * 0.10f
+		val maxStroke = min(w, h) * 0.30f
 		val minStroke = maxStroke * 0.55f
 		val speedRatio = (speedKmh / buffer2Kmh).coerceIn(0f, 1.25f)
 		val stroke = minStroke + (maxStroke - minStroke) * speedRatio.coerceAtMost(1f)
-		val inset = stroke * 0.7f + dp(16f)
+		val inset = stroke * 0.55f + dp(8f)
 		arcBounds.set(inset, inset, w - inset, h - inset)
 
-		haloPaint.strokeWidth = stroke + dp(6f)
+		haloPaint.strokeWidth = stroke + dp(18f)
 		canvas.drawArc(arcBounds, START_ANGLE, SWEEP_ANGLE, false, haloPaint)
 
 		trackPaint.strokeWidth = stroke * 0.72f
@@ -148,7 +148,7 @@ class EvSpeedometerHudView @JvmOverloads constructor(
 		canvas.drawArc(arcBounds, START_ANGLE, fillSweep, false, arcPaint)
 
 		val speedText = speedKmh.roundToInt().toString()
-		val textSize = min(w, h) * 0.13f
+		val textSize = min(w, h) * 0.39f
 		textPaint.textSize = textSize
 		textHaloPaint.textSize = textSize
 		textHaloPaint.strokeWidth = textSize * 0.14f
@@ -157,21 +157,21 @@ class EvSpeedometerHudView @JvmOverloads constructor(
 		unitHaloPaint.strokeWidth = unitPaint.textSize * 0.16f
 
 		val cx = w * 0.5f
-		val baseline = h - dp(136f)
+		val unitY = h - dp(20f)
+		val baseline = unitY - unitPaint.textSize * 1.15f
 		val textWidth = textPaint.measureText(speedText)
-		val badgePadX = dp(22f)
-		val badgeTop = baseline - textSize * 0.82f
-		val badgeBottom = baseline + unitPaint.textSize * 1.55f
+		val badgePadX = dp(28f)
+		val badgeTop = (baseline - textSize * 0.82f).coerceAtLeast(0f)
+		val badgeBottom = (unitY + dp(8f)).coerceAtMost(h)
 		badgeBounds.set(
 			cx - textWidth * 0.5f - badgePadX,
 			badgeTop,
 			cx + textWidth * 0.5f + badgePadX,
 			badgeBottom
 		)
-		canvas.drawRoundRect(badgeBounds, dp(18f), dp(18f), badgePaint)
+		canvas.drawRoundRect(badgeBounds, dp(24f), dp(24f), badgePaint)
 		canvas.drawText(speedText, cx, baseline, textHaloPaint)
 		canvas.drawText(speedText, cx, baseline, textPaint)
-		val unitY = baseline + unitPaint.textSize * 1.2f
 		canvas.drawText("km/h", cx, unitY, unitHaloPaint)
 		canvas.drawText("km/h", cx, unitY, unitPaint)
 	}

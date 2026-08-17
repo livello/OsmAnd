@@ -1028,6 +1028,7 @@ Optional DEBUG log of plugin and BLE actions. Controller RX hex is limited to on
 <b>🥾 Hike mode</b><br/>
 Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+• 🏍️ Speedometer HUD arc and digits are 3× thicker/larger and the overlay is 90% of the screen height<br/>
 • 🏍️ HUD demo in plugin settings: fake 0–90 km/h, 10 s acceleration then 10 s braking<br/>
 • 🏍️ Speedometer HUD uses a high-contrast green arc and a dark speed badge so it stays readable on a light map<br/>
 • 🏍️ Speedometer HUD stays on whenever the widget is enabled on the current profile, including at rest<br/>

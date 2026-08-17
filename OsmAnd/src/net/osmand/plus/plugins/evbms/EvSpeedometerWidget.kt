@@ -22,6 +22,10 @@ class EvSpeedometerWidget(
 	widgetsPanel: WidgetsPanel?
 ) : MapWidget(mapActivity, WidgetType.EV_SPEEDOMETER, customId, widgetsPanel) {
 
+	companion object {
+		private const val HUD_HEIGHT_FRACTION = 0.90f
+	}
+
 	private val plugin = PluginsHelper.requirePlugin(EvBmsPlugin::class.java)
 	private var hudView: EvSpeedometerHudView? = null
 	private var demoAnim: ValueAnimator? = null
@@ -83,6 +87,14 @@ class EvSpeedometerWidget(
 
 	private fun pushHud() {
 		val hud = attachHud() ?: return
+		val host = hud.parent as? ViewGroup
+		if (host != null) {
+			val params = hudLayoutParams(host)
+			val current = hud.layoutParams
+			if (current == null || current.width != params.width || current.height != params.height) {
+				hud.layoutParams = params
+			}
+		}
 		val speed = plugin.hudDisplaySpeedKmh()
 		hud.visibility = View.VISIBLE
 		hud.bringToFront()
@@ -108,11 +120,7 @@ class EvSpeedometerWidget(
 		host.clipChildren = false
 		host.clipToPadding = false
 		val hud = EvSpeedometerHudView(mapActivity)
-		hud.layoutParams = FrameLayout.LayoutParams(
-			ViewGroup.LayoutParams.MATCH_PARENT,
-			ViewGroup.LayoutParams.MATCH_PARENT,
-			Gravity.FILL
-		)
+		hud.layoutParams = hudLayoutParams(host)
 		hud.visibility = View.VISIBLE
 		hud.elevation = 48f
 		hud.translationZ = 48f
@@ -122,6 +130,20 @@ class EvSpeedometerWidget(
 		hud.bringToFront()
 		hudView = hud
 		return hud
+	}
+
+	private fun hudLayoutParams(host: ViewGroup): FrameLayout.LayoutParams {
+		val hostH = host.height
+		val height = if (hostH > 0) {
+			(hostH * HUD_HEIGHT_FRACTION).toInt().coerceAtLeast(1)
+		} else {
+			ViewGroup.LayoutParams.MATCH_PARENT
+		}
+		return FrameLayout.LayoutParams(
+			ViewGroup.LayoutParams.MATCH_PARENT,
+			height,
+			Gravity.CENTER
+		)
 	}
 
 	private fun findHudHost(): ViewGroup? {
