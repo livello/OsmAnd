@@ -94,6 +94,11 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		const val DEFAULT_HUD_BUFFER1_KMH = 50
 		const val DEFAULT_HUD_LIMIT2_KMH = 60
 		const val DEFAULT_HUD_BUFFER2_KMH = 70
+		const val DEFAULT_HUD_STROKE_PERCENT = 30
+		const val DEFAULT_HUD_HEIGHT_PERCENT = 90
+		const val DEFAULT_HUD_FONT_PERCENT = 39
+		const val DEFAULT_HUD_STATS_MINUTES = 5
+		private const val HUD_SPEED_SAMPLE_MS = 200L
 		const val HUD_DEMO_MAX_KMH = 90.0
 		const val HUD_DEMO_HALF_MS = 10_000L
 		private const val SPEED_PROFILE_HYSTERESIS_KMH = 3.0
@@ -238,6 +243,16 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerIntPreference("ev_bms_hud_buffer2_kmh", DEFAULT_HUD_BUFFER2_KMH).makeGlobal().makeShared()
 	val HUD_DEMO: CommonPreference<Boolean> =
 		registerBooleanPreference("ev_bms_hud_demo", false).makeGlobal()
+	val HUD_STROKE_PERCENT: CommonPreference<Int> =
+		registerIntPreference("ev_bms_hud_stroke_percent", DEFAULT_HUD_STROKE_PERCENT).makeGlobal().makeShared()
+	val HUD_HEIGHT_PERCENT: CommonPreference<Int> =
+		registerIntPreference("ev_bms_hud_height_percent", DEFAULT_HUD_HEIGHT_PERCENT).makeGlobal().makeShared()
+	val HUD_FONT_PERCENT: CommonPreference<Int> =
+		registerIntPreference("ev_bms_hud_font_percent", DEFAULT_HUD_FONT_PERCENT).makeGlobal().makeShared()
+	val HUD_SHOW_UNITS: CommonPreference<Boolean> =
+		registerBooleanPreference("ev_bms_hud_show_units", false).makeGlobal().makeShared()
+	val HUD_STATS_MINUTES: CommonPreference<Int> =
+		registerIntPreference("ev_bms_hud_stats_minutes", DEFAULT_HUD_STATS_MINUTES).makeGlobal().makeShared()
 	val VEHICLE_MASS_KG: CommonPreference<Float> =
 		registerFloatPreference("ev_bms_vehicle_mass_kg", DEFAULT_VEHICLE_MASS_KG).makeGlobal().makeShared()
 	val DRIVER_MASS_KG: CommonPreference<Float> =
@@ -300,6 +315,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private var speedCalLastMs = 0L
 	private var speedProfileWantFast: Boolean? = null
 	private var speedProfileSinceMs = 0L
+	private val hudSpeedWindow = ArrayDeque<Pair<Long, Double>>()
+	private var lastHudSampleMs = 0L
 	private var lastChargeAh: Double? = null
 	private var stillSinceMs: Long? = null
 	private var charging = false
@@ -2521,6 +2538,38 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		val eased = (1.0 - cos(PI * u.coerceIn(0.0, 1.0))) / 2.0
 		val speed = if (rising) HUD_DEMO_MAX_KMH * eased else HUD_DEMO_MAX_KMH * (1.0 - eased)
 		return speed.coerceIn(0.0, HUD_DEMO_MAX_KMH)
+	}
+
+	fun noteHudSpeed(speedKmh: Double) {
+		val windowMin = HUD_STATS_MINUTES.get()
+		if (windowMin <= 0) {
+			hudSpeedWindow.clear()
+			return
+		}
+		val now = SystemClock.elapsedRealtime()
+		if (hudSpeedWindow.isNotEmpty() && now - lastHudSampleMs < HUD_SPEED_SAMPLE_MS) {
+			return
+		}
+		lastHudSampleMs = now
+		hudSpeedWindow.addLast(now to speedKmh.coerceAtLeast(0.0))
+		val cutoff = now - windowMin * 60_000L
+		while (hudSpeedWindow.isNotEmpty() && hudSpeedWindow.first().first < cutoff) {
+			hudSpeedWindow.removeFirst()
+		}
+	}
+
+	fun hudWindowMaxKmh(): Float? {
+		if (HUD_STATS_MINUTES.get() <= 0 || hudSpeedWindow.isEmpty()) {
+			return null
+		}
+		return hudSpeedWindow.maxOf { it.second }.toFloat()
+	}
+
+	fun hudWindowAvgKmh(): Float? {
+		if (HUD_STATS_MINUTES.get() <= 0 || hudSpeedWindow.isEmpty()) {
+			return null
+		}
+		return hudSpeedWindow.map { it.second }.average().toFloat()
 	}
 
 	fun speedometerHudZone(speedKmh: Double): EvSpeedometerHudView.Zone {

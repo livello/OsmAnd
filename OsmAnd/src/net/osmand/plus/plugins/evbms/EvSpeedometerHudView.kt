@@ -79,6 +79,11 @@ class EvSpeedometerHudView @JvmOverloads constructor(
 	private var zone = Zone.GREEN
 	private var limit2Kmh = 60f
 	private var buffer2Kmh = 70f
+	private var strokeFraction = 0.30f
+	private var fontFraction = 0.39f
+	private var showUnits = false
+	private var maxKmh: Float? = null
+	private var avgKmh: Float? = null
 	private var flashAlpha = 1f
 	private var flash: ValueAnimator? = null
 
@@ -92,11 +97,16 @@ class EvSpeedometerHudView @JvmOverloads constructor(
 		importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
 	}
 
-	fun updateHud(speedKmh: Float, zone: Zone, limit2Kmh: Int, buffer2Kmh: Int) {
-		this.speedKmh = speedKmh.coerceAtLeast(0f)
-		this.zone = zone
-		this.limit2Kmh = limit2Kmh.toFloat()
-		this.buffer2Kmh = buffer2Kmh.toFloat().coerceAtLeast(this.limit2Kmh + 1f)
+	fun updateHud(frame: Frame) {
+		speedKmh = frame.speedKmh.coerceAtLeast(0f)
+		zone = frame.zone
+		limit2Kmh = frame.limit2Kmh.toFloat()
+		buffer2Kmh = frame.buffer2Kmh.toFloat().coerceAtLeast(limit2Kmh + 1f)
+		strokeFraction = frame.strokeFraction.coerceIn(0.08f, 0.55f)
+		fontFraction = frame.fontFraction.coerceIn(0.08f, 0.55f)
+		showUnits = frame.showUnits
+		maxKmh = frame.maxKmh
+		avgKmh = frame.avgKmh
 		if (zone == Zone.RED) {
 			startFlash()
 		} else {
@@ -124,7 +134,7 @@ class EvSpeedometerHudView @JvmOverloads constructor(
 			return
 		}
 		val color = zoneColor(zone)
-		val maxStroke = min(w, h) * 0.30f
+		val maxStroke = min(w, h) * strokeFraction
 		val minStroke = maxStroke * 0.55f
 		val speedRatio = (speedKmh / buffer2Kmh).coerceIn(0f, 1.25f)
 		val stroke = minStroke + (maxStroke - minStroke) * speedRatio.coerceAtMost(1f)
@@ -148,7 +158,9 @@ class EvSpeedometerHudView @JvmOverloads constructor(
 		canvas.drawArc(arcBounds, START_ANGLE, fillSweep, false, arcPaint)
 
 		val speedText = speedKmh.roundToInt().toString()
-		val textSize = min(w, h) * 0.39f
+		val textSize = min(w, h) * fontFraction
+		textPaint.textAlign = Paint.Align.CENTER
+		textHaloPaint.textAlign = Paint.Align.CENTER
 		textPaint.textSize = textSize
 		textHaloPaint.textSize = textSize
 		textHaloPaint.strokeWidth = textSize * 0.14f
@@ -157,23 +169,42 @@ class EvSpeedometerHudView @JvmOverloads constructor(
 		unitHaloPaint.strokeWidth = unitPaint.textSize * 0.16f
 
 		val cx = w * 0.5f
-		val unitY = h - dp(20f)
-		val baseline = unitY - unitPaint.textSize * 1.15f
-		val textWidth = textPaint.measureText(speedText)
-		val badgePadX = dp(28f)
-		val badgeTop = (baseline - textSize * 0.82f).coerceAtLeast(0f)
-		val badgeBottom = (unitY + dp(8f)).coerceAtMost(h)
-		badgeBounds.set(
-			cx - textWidth * 0.5f - badgePadX,
-			badgeTop,
-			cx + textWidth * 0.5f + badgePadX,
-			badgeBottom
-		)
-		canvas.drawRoundRect(badgeBounds, dp(24f), dp(24f), badgePaint)
-		canvas.drawText(speedText, cx, baseline, textHaloPaint)
-		canvas.drawText(speedText, cx, baseline, textPaint)
-		canvas.drawText("km/h", cx, unitY, unitHaloPaint)
-		canvas.drawText("km/h", cx, unitY, unitPaint)
+		if (showUnits) {
+			val unitY = h - dp(20f)
+			val baseline = unitY - unitPaint.textSize * 1.15f
+			val textWidth = textPaint.measureText(speedText)
+			val badgePadX = dp(28f)
+			badgeBounds.set(
+				cx - textWidth * 0.5f - badgePadX,
+				(baseline - textSize * 0.82f).coerceAtLeast(0f),
+				cx + textWidth * 0.5f + badgePadX,
+				(unitY + dp(8f)).coerceAtMost(h)
+			)
+			canvas.drawRoundRect(badgeBounds, dp(24f), dp(24f), badgePaint)
+			canvas.drawText(speedText, cx, baseline, textHaloPaint)
+			canvas.drawText(speedText, cx, baseline, textPaint)
+			canvas.drawText("km/h", cx, unitY, unitHaloPaint)
+			canvas.drawText("km/h", cx, unitY, unitPaint)
+		} else {
+			val baseline = h - dp(28f)
+			val textWidth = textPaint.measureText(speedText)
+			val badgePadX = dp(28f)
+			badgeBounds.set(
+				cx - textWidth * 0.5f - badgePadX,
+				(baseline - textSize * 0.82f).coerceAtLeast(0f),
+				cx + textWidth * 0.5f + badgePadX,
+				(baseline + dp(16f)).coerceAtMost(h)
+			)
+			canvas.drawRoundRect(badgeBounds, dp(24f), dp(24f), badgePaint)
+			canvas.drawText(speedText, cx, baseline, textHaloPaint)
+			canvas.drawText(speedText, cx, baseline, textPaint)
+		}
+
+		val sideSize = textSize * 0.5f
+		val sideY = h - dp(12f)
+		val sidePad = dp(16f)
+		maxKmh?.let { drawCornerSpeed(canvas, it.roundToInt().toString(), sidePad, sideY, Paint.Align.LEFT, sideSize) }
+		avgKmh?.let { drawCornerSpeed(canvas, it.roundToInt().toString(), w - sidePad, sideY, Paint.Align.RIGHT, sideSize) }
 	}
 
 	private fun zoneColor(zone: Zone): Int = when (zone) {
@@ -190,6 +221,16 @@ class EvSpeedometerHudView @JvmOverloads constructor(
 		Zone.ORANGE -> 245
 		Zone.STRIPE -> 250
 		Zone.RED -> 255
+	}
+
+	private fun drawCornerSpeed(canvas: Canvas, text: String, x: Float, y: Float, align: Paint.Align, size: Float) {
+		textPaint.textSize = size
+		textHaloPaint.textSize = size
+		textHaloPaint.strokeWidth = size * 0.14f
+		textPaint.textAlign = align
+		textHaloPaint.textAlign = align
+		canvas.drawText(text, x, y, textHaloPaint)
+		canvas.drawText(text, x, y, textPaint)
 	}
 
 	private fun startFlash() {
@@ -231,4 +272,16 @@ class EvSpeedometerHudView @JvmOverloads constructor(
 		private const val COLOR_STRIPE = 0xFFFF6D00.toInt()
 		private const val COLOR_RED = 0xFFFF1744.toInt()
 	}
+
+	data class Frame(
+		val speedKmh: Float,
+		val zone: Zone,
+		val limit2Kmh: Int,
+		val buffer2Kmh: Int,
+		val strokeFraction: Float,
+		val fontFraction: Float,
+		val showUnits: Boolean,
+		val maxKmh: Float?,
+		val avgKmh: Float?
+	)
 }

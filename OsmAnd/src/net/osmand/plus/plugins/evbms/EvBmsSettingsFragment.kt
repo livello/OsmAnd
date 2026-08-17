@@ -156,6 +156,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		setupSwitch(plugin.HIKE_MODE.id)
 		setupSpeedProfile()
 		setupHudDemo()
+		setupHudLook()
 		setupHudLimits()
 		setupCalDistance()
 		setupCalFactor()
@@ -231,6 +232,11 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		decorate(plugin.SPEED_PROFILE_SLOW.id, "🐢", R.drawable.ic_action_map_style)
 		decorate(plugin.SPEED_PROFILE_FAST.id, "🏁", R.drawable.ic_action_map_style)
 		decorate(plugin.HUD_DEMO.id, "🎬", R.drawable.ic_action_play_dark)
+		decorate(plugin.HUD_STROKE_PERCENT.id, "➖", R.drawable.ic_action_speed)
+		decorate(plugin.HUD_HEIGHT_PERCENT.id, "↕️", R.drawable.ic_action_speed)
+		decorate(plugin.HUD_FONT_PERCENT.id, "🔢", R.drawable.ic_action_speed)
+		decorate(plugin.HUD_SHOW_UNITS.id, "🏷️", R.drawable.ic_action_speed)
+		decorate(plugin.HUD_STATS_MINUTES.id, "📊", R.drawable.ic_action_time_span)
 		decorate(plugin.HUD_LIMIT1_KMH.id, "🟢", R.drawable.ic_action_speed)
 		decorate(plugin.HUD_BUFFER1_KMH.id, "🟡", R.drawable.ic_action_speed)
 		decorate(plugin.HUD_LIMIT2_KMH.id, "🟠", R.drawable.ic_action_speed)
@@ -489,6 +495,45 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 	private fun setupHudDemo() {
 		val pref = findPreference<SwitchPreferenceEx>(plugin.HUD_DEMO.id) ?: return
 		pref.setDescription(R.string.ev_bms_hud_demo_desc)
+	}
+
+	private fun setupHudLook() {
+		setupHudPercent(
+			plugin.HUD_STROKE_PERCENT.id,
+			plugin.HUD_STROKE_PERCENT.get(),
+			arrayOf(10, 15, 20, 25, 30, 35, 40, 50),
+			R.string.ev_bms_hud_stroke_desc
+		)
+		setupHudPercent(
+			plugin.HUD_HEIGHT_PERCENT.id,
+			plugin.HUD_HEIGHT_PERCENT.get(),
+			arrayOf(50, 60, 70, 80, 90, 100),
+			R.string.ev_bms_hud_height_desc
+		)
+		setupHudPercent(
+			plugin.HUD_FONT_PERCENT.id,
+			plugin.HUD_FONT_PERCENT.get(),
+			arrayOf(13, 20, 26, 32, 39, 45, 52),
+			R.string.ev_bms_hud_font_desc
+		)
+		findPreference<SwitchPreferenceEx>(plugin.HUD_SHOW_UNITS.id)
+			?.setDescription(R.string.ev_bms_hud_show_units_desc)
+		val stats = findPreference<ListPreferenceEx>(plugin.HUD_STATS_MINUTES.id) ?: return
+		val minutes = arrayOf(0, 1, 2, 3, 5, 10, 15, 30)
+		stats.setEntries(minutes.map { min ->
+			if (min == 0) getString(R.string.shared_string_disabled) else getString(R.string.ev_bms_n_min, min)
+		}.toTypedArray())
+		stats.setEntryValues(minutes.map { it as Any }.toTypedArray())
+		stats.setValue(plugin.HUD_STATS_MINUTES.get())
+		stats.setDescription(R.string.ev_bms_hud_stats_desc)
+	}
+
+	private fun setupHudPercent(prefId: String, value: Int, values: Array<Int>, descId: Int) {
+		val pref = findPreference<ListPreferenceEx>(prefId) ?: return
+		pref.setEntries(values.map { getString(R.string.ev_bms_n_percent, it) }.toTypedArray())
+		pref.setEntryValues(values.map { it as Any }.toTypedArray())
+		pref.setValue(value)
+		pref.setDescription(descId)
 	}
 
 	private fun setupHudLimits() {
@@ -945,6 +990,14 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		}
 		if (prefId == plugin.HUD_DEMO.id) {
 			setupHudDemo()
+		}
+		if (prefId == plugin.HUD_STROKE_PERCENT.id ||
+			prefId == plugin.HUD_HEIGHT_PERCENT.id ||
+			prefId == plugin.HUD_FONT_PERCENT.id ||
+			prefId == plugin.HUD_SHOW_UNITS.id ||
+			prefId == plugin.HUD_STATS_MINUTES.id
+		) {
+			setupHudLook()
 		}
 		if (prefId == plugin.HUD_LIMIT1_KMH.id ||
 			prefId == plugin.HUD_BUFFER1_KMH.id ||

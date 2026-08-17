@@ -22,10 +22,6 @@ class EvSpeedometerWidget(
 	widgetsPanel: WidgetsPanel?
 ) : MapWidget(mapActivity, WidgetType.EV_SPEEDOMETER, customId, widgetsPanel) {
 
-	companion object {
-		private const val HUD_HEIGHT_FRACTION = 0.90f
-	}
-
 	private val plugin = PluginsHelper.requirePlugin(EvBmsPlugin::class.java)
 	private var hudView: EvSpeedometerHudView? = null
 	private var demoAnim: ValueAnimator? = null
@@ -96,13 +92,21 @@ class EvSpeedometerWidget(
 			}
 		}
 		val speed = plugin.hudDisplaySpeedKmh()
+		plugin.noteHudSpeed(speed)
 		hud.visibility = View.VISIBLE
 		hud.bringToFront()
 		hud.updateHud(
-			speed.toFloat(),
-			plugin.speedometerHudZone(speed),
-			plugin.HUD_LIMIT2_KMH.get(),
-			plugin.HUD_BUFFER2_KMH.get()
+			EvSpeedometerHudView.Frame(
+				speedKmh = speed.toFloat(),
+				zone = plugin.speedometerHudZone(speed),
+				limit2Kmh = plugin.HUD_LIMIT2_KMH.get(),
+				buffer2Kmh = plugin.HUD_BUFFER2_KMH.get(),
+				strokeFraction = plugin.HUD_STROKE_PERCENT.get() / 100f,
+				fontFraction = plugin.HUD_FONT_PERCENT.get() / 100f,
+				showUnits = plugin.HUD_SHOW_UNITS.get(),
+				maxKmh = plugin.hudWindowMaxKmh(),
+				avgKmh = plugin.hudWindowAvgKmh()
+			)
 		)
 	}
 
@@ -135,7 +139,7 @@ class EvSpeedometerWidget(
 	private fun hudLayoutParams(host: ViewGroup): FrameLayout.LayoutParams {
 		val hostH = host.height
 		val height = if (hostH > 0) {
-			(hostH * HUD_HEIGHT_FRACTION).toInt().coerceAtLeast(1)
+			(hostH * (plugin.HUD_HEIGHT_PERCENT.get() / 100f)).toInt().coerceAtLeast(1)
 		} else {
 			ViewGroup.LayoutParams.MATCH_PARENT
 		}

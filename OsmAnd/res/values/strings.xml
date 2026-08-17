@@ -986,6 +986,7 @@ Setup:<br/>
 • Orange until (limit 2) — default 60 km/h.<br/>
 • Stripe / red above (gray zone 2) — default 70 km/h, then flashing neon red.<br/>
 • Demo — loops 0–90 km/h with 10 s acceleration and 10 s braking so you can check colors without moving. Turn it off before a ride.<br/>
+• Arc thickness, height, digit size, km/h units and a max/average window are in the same settings screen. Max is bottom-left, average bottom-right.<br/>
 4. Optional, same settings screen → <b>Map profiles by speed</b>: turn on auto-switch, pick a slow profile (map, no HUD widget) and a fast profile (HUD on the Top panel). Auto-switch only runs while one of those two profiles is already active. To hide the HUD, remove the widget from that profile — do not rely on a speed threshold.<br/>
 Speed is calibrated controller speed, GPS if the controller is silent.<br/><br/>
 <b>⏱️ Polling</b><br/>
@@ -1028,6 +1029,7 @@ Optional DEBUG log of plugin and BLE actions. Controller RX hex is limited to on
 <b>🥾 Hike mode</b><br/>
 Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+• 🏍️ HUD settings: arc thickness and height, digit size, km/h units, max/avg over the last N minutes (bottom corners)<br/>
 • 🏍️ Speedometer HUD arc and digits are 3× thicker/larger and the overlay is 90% of the screen height<br/>
 • 🏍️ HUD demo in plugin settings: fake 0–90 km/h, 10 s acceleration then 10 s braking<br/>
 • 🏍️ Speedometer HUD uses a high-contrast green arc and a dark speed badge so it stays readable on a light map<br/>
@@ -1289,6 +1291,16 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_hud">Anti-speeding HUD</string>
     <string name="ev_bms_hud_demo">HUD demo</string>
     <string name="ev_bms_hud_demo_desc">Loops a fake speed 0–90 km/h: 10 s smooth acceleration, then 10 s braking. Needs the Speedometer HUD widget on the current profile. Turn off before riding.</string>
+    <string name="ev_bms_hud_stroke">Arc thickness</string>
+    <string name="ev_bms_hud_stroke_desc">Stroke width as a percent of the shorter screen side.</string>
+    <string name="ev_bms_hud_height">Arc height</string>
+    <string name="ev_bms_hud_height_desc">HUD overlay height as a percent of the map screen.</string>
+    <string name="ev_bms_hud_font">Speed digit size</string>
+    <string name="ev_bms_hud_font_desc">Main speed digits as a percent of the shorter screen side.</string>
+    <string name="ev_bms_hud_show_units">Speed units</string>
+    <string name="ev_bms_hud_show_units_desc">Show km/h under the main speed. Max and average never show units.</string>
+    <string name="ev_bms_hud_stats">Max / average window</string>
+    <string name="ev_bms_hud_stats_desc">Maximum in the bottom-left corner, average in the bottom-right, for this many minutes. Half the main digit size, no units. Off hides both.</string>
     <string name="ev_bms_hud_show">Show HUD above</string>
     <string name="ev_bms_hud_show_desc">On profiles other than the fast map profile, the arc stays hidden below this speed. On the fast profile the HUD stays on even when stopped.</string>
     <string name="ev_bms_hud_limit1">Green until (limit 1)</string>
