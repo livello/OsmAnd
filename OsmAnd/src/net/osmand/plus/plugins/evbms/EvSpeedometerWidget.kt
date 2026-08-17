@@ -1,10 +1,11 @@
 package net.osmand.plus.plugins.evbms
 
-import android.animation.ValueAnimator
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.view.animation.LinearInterpolator
 import android.widget.FrameLayout
 import net.osmand.plus.R
 import net.osmand.plus.activities.MapActivity
@@ -23,8 +24,19 @@ class EvSpeedometerWidget(
 ) : MapWidget(mapActivity, WidgetType.EV_SPEEDOMETER, customId, widgetsPanel) {
 
 	private val plugin = PluginsHelper.requirePlugin(EvBmsPlugin::class.java)
+	private val hudHandler = Handler(Looper.getMainLooper())
 	private var hudView: EvSpeedometerHudView? = null
-	private var demoAnim: ValueAnimator? = null
+	private var lastPushMs = 0L
+	private var demoRunning = false
+
+	private val demoTick = object : Runnable {
+		override fun run() {
+			pushHud(force = true)
+			if (demoRunning) {
+				hudHandler.postDelayed(this, plugin.hudFrameIntervalMs())
+			}
+		}
+	}
 
 	override fun getLayoutId(): Int = R.layout.ev_speedometer_widget
 
@@ -60,39 +72,55 @@ class EvSpeedometerWidget(
 	override fun updateInfo(view: View, drawSettings: DrawSettings?) {
 		val demo = plugin.HUD_DEMO.get()
 		setDemoRunning(demo)
-		pushHud()
+		if (!demo) {
+			pushHud(force = false)
+		}
 	}
 
 	private fun setDemoRunning(on: Boolean) {
 		if (on) {
-			if (demoAnim?.isRunning == true) {
+			if (demoRunning) {
 				return
 			}
-			demoAnim = ValueAnimator.ofFloat(0f, 1f).apply {
-				duration = 1000L
-				repeatCount = ValueAnimator.INFINITE
-				interpolator = LinearInterpolator()
-				addUpdateListener { pushHud() }
-				start()
-			}
-		} else {
-			demoAnim?.cancel()
-			demoAnim = null
+			demoRunning = true
+			hudHandler.removeCallbacks(demoTick)
+			hudHandler.post(demoTick)
+		} else if (demoRunning) {
+			demoRunning = false
+			hudHandler.removeCallbacks(demoTick)
 		}
 	}
 
-	private fun pushHud() {
+	private fun pushHud(force: Boolean) {
+		val now = SystemClock.elapsedRealtime()
+		if (!force && now - lastPushMs < plugin.hudFrameIntervalMs()) {
+			return
+		}
+		lastPushMs = now
 		val hud = attachHud() ?: return
+		val speed = plugin.hudDisplaySpeedKmh()
+		plugin.noteHudSpeed(speed)
+		plugin.tickSpeedProfileSwitch()
+		if (!plugin.shouldShowSpeedometerHud(speed)) {
+			if (hud.visibility != View.GONE) {
+				hud.visibility = View.GONE
+				hud.clearVisuals()
+			}
+			return
+		}
 		val host = hud.parent as? ViewGroup
 		if (host != null) {
 			val params = hudLayoutParams(host)
 			val current = hud.layoutParams
-			if (current == null || current.width != params.width || current.height != params.height) {
+			val currentFl = current as? FrameLayout.LayoutParams
+			if (currentFl == null ||
+				currentFl.width != params.width ||
+				currentFl.height != params.height ||
+				currentFl.gravity != params.gravity
+			) {
 				hud.layoutParams = params
 			}
 		}
-		val speed = plugin.hudDisplaySpeedKmh()
-		plugin.noteHudSpeed(speed)
 		hud.visibility = View.VISIBLE
 		hud.bringToFront()
 		hud.updateHud(
@@ -125,7 +153,7 @@ class EvSpeedometerWidget(
 		host.clipToPadding = false
 		val hud = EvSpeedometerHudView(mapActivity)
 		hud.layoutParams = hudLayoutParams(host)
-		hud.visibility = View.VISIBLE
+		hud.visibility = View.GONE
 		hud.elevation = 48f
 		hud.translationZ = 48f
 		hud.isClickable = false
@@ -138,15 +166,16 @@ class EvSpeedometerWidget(
 
 	private fun hudLayoutParams(host: ViewGroup): FrameLayout.LayoutParams {
 		val hostH = host.height
+		val percent = plugin.HUD_HEIGHT_PERCENT.get().coerceIn(50, 100) / 100f
 		val height = if (hostH > 0) {
-			(hostH * (plugin.HUD_HEIGHT_PERCENT.get() / 100f)).toInt().coerceAtLeast(1)
+			(hostH * percent).toInt().coerceAtLeast(1)
 		} else {
 			ViewGroup.LayoutParams.MATCH_PARENT
 		}
 		return FrameLayout.LayoutParams(
 			ViewGroup.LayoutParams.MATCH_PARENT,
 			height,
-			Gravity.CENTER
+			Gravity.BOTTOM
 		)
 	}
 
@@ -169,7 +198,9 @@ class EvSpeedometerWidget(
 	}
 
 	private fun detachHud() {
+		hudHandler.removeCallbacks(demoTick)
 		val hud = hudView ?: return
+		hud.clearVisuals()
 		(hud.parent as? ViewGroup)?.removeView(hud)
 		hudView = null
 	}

@@ -91,6 +91,11 @@
 		android:title="@string/ev_bms_hud_demo" />
 
 	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="ev_bms_hud_show_kmh"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:title="@string/ev_bms_hud_show" />
+
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
 		android:key="ev_bms_hud_stroke_percent"
 		android:layout="@layout/ev_bms_preference_with_descr"
 		android:title="@string/ev_bms_hud_stroke" />
@@ -99,6 +104,11 @@
 		android:key="ev_bms_hud_height_percent"
 		android:layout="@layout/ev_bms_preference_with_descr"
 		android:title="@string/ev_bms_hud_height" />
+
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="ev_bms_hud_fps"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:title="@string/ev_bms_hud_fps" />
 
 	<net.osmand.plus.settings.preferences.ListPreferenceEx
 		android:key="ev_bms_hud_font_percent"

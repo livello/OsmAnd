@@ -98,6 +98,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		const val DEFAULT_HUD_HEIGHT_PERCENT = 90
 		const val DEFAULT_HUD_FONT_PERCENT = 39
 		const val DEFAULT_HUD_STATS_MINUTES = 5
+		const val DEFAULT_HUD_FPS = 15
+		val HUD_FPS_VALUES = intArrayOf(5, 10, 15, 30, 60)
 		private const val HUD_SPEED_SAMPLE_MS = 200L
 		const val HUD_DEMO_MAX_KMH = 90.0
 		const val HUD_DEMO_HALF_MS = 10_000L
@@ -253,6 +255,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerBooleanPreference("ev_bms_hud_show_units", false).makeGlobal().makeShared()
 	val HUD_STATS_MINUTES: CommonPreference<Int> =
 		registerIntPreference("ev_bms_hud_stats_minutes", DEFAULT_HUD_STATS_MINUTES).makeGlobal().makeShared()
+	val HUD_FPS: CommonPreference<Int> =
+		registerIntPreference("ev_bms_hud_fps", DEFAULT_HUD_FPS).makeGlobal().makeShared()
 	val VEHICLE_MASS_KG: CommonPreference<Float> =
 		registerFloatPreference("ev_bms_vehicle_mass_kg", DEFAULT_VEHICLE_MASS_KG).makeGlobal().makeShared()
 	val DRIVER_MASS_KG: CommonPreference<Float> =
@@ -317,6 +321,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private var speedProfileSinceMs = 0L
 	private val hudSpeedWindow = ArrayDeque<Pair<Long, Double>>()
 	private var lastHudSampleMs = 0L
+	private var hudWantVisible = false
 	private var lastChargeAh: Double? = null
 	private var stillSinceMs: Long? = null
 	private var charging = false
@@ -2586,6 +2591,25 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		}
 	}
 
+	fun hudFps(): Int = HUD_FPS.get().coerceIn(HUD_FPS_VALUES.first(), HUD_FPS_VALUES.last())
+
+	fun hudFrameIntervalMs(): Long = (1000L / hudFps()).coerceAtLeast(16L)
+
+	fun shouldShowSpeedometerHud(speedKmh: Double): Boolean {
+		if (isFastSpeedProfile()) {
+			hudWantVisible = true
+			return true
+		}
+		val showAt = HUD_SHOW_KMH.get().toDouble()
+		val hideAt = (showAt - SPEED_PROFILE_HYSTERESIS_KMH).coerceAtLeast(0.0)
+		hudWantVisible = if (hudWantVisible) {
+			speedKmh >= hideAt
+		} else {
+			speedKmh >= showAt
+		}
+		return hudWantVisible
+	}
+
 	fun isFastSpeedProfile(): Boolean {
 		val fast = modeFromPref(SPEED_PROFILE_FAST.get()) ?: return false
 		return settings.applicationMode == fast
@@ -2603,7 +2627,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		}
 	}
 
-	private fun tickSpeedProfileSwitch() {
+	fun tickSpeedProfileSwitch() {
 		if (!SPEED_PROFILE_AUTO.get()) {
 			speedProfileWantFast = null
 			speedProfileSinceMs = 0L
@@ -2620,7 +2644,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			speedProfileSinceMs = 0L
 			return
 		}
-		val speed = speedometerReading()?.kmh ?: 0.0
+		val speed = hudDisplaySpeedKmh()
 		val threshold = SPEED_PROFILE_KMH.get().toDouble()
 		val wantFast = if (current == fast) {
 			speed > threshold - SPEED_PROFILE_HYSTERESIS_KMH

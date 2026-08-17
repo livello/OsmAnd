@@ -1029,11 +1029,14 @@ Optional DEBUG log of plugin and BLE actions. Controller RX hex is limited to on
 <b>🥾 Hike mode</b><br/>
 Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+• 🏍️ HUD FPS cap in plugin settings (default 15) so the overlay does not redraw at map rate<br/>
+• 🏍️ HUD demo uses virtual speed through the same hide and auto-profile rules as a live ride<br/>
+• 🏍️ On the slow map profile the HUD hides below «Show HUD above»; on the fast profile it stays on at rest<br/>
+• 🏍️ At 100% height the horseshoe sits on the bottom of the map; speed digits overlay the arc center<br/>
 • 🏍️ HUD settings: arc thickness and height, digit size, km/h units, max/avg over the last N minutes (bottom corners)<br/>
 • 🏍️ Speedometer HUD arc and digits are 3× thicker/larger and the overlay is 90% of the screen height<br/>
 • 🏍️ HUD demo in plugin settings: fake 0–90 km/h, 10 s acceleration then 10 s braking<br/>
 • 🏍️ Speedometer HUD uses a high-contrast green arc and a dark speed badge so it stays readable on a light map<br/>
-• 🏍️ Speedometer HUD stays on whenever the widget is enabled on the current profile, including at rest<br/>
 • 🏍️ Speedometer HUD setup: Top panel only (Bottom works); color limits in plugin settings → Anti-speeding HUD<br/>
 • 🏍️ Full-screen anti-speeding HUD: transparent circular arc over the map; color and thickness encode city limits and gray zones<br/>
 • 🏍️ Nissan Leaf-style speedometer widget: full width, ~80% height, calibrated controller speed as a huge integer<br/>
@@ -1279,7 +1282,7 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_widget_hike">Hike</string>
     <string name="ev_bms_widget_hike_desc">Turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins. Keeps BMS range, GPS and telemetry every 5 s with a slower BLE poll.</string>
     <string name="ev_bms_widget_speedometer">Speedometer HUD</string>
-    <string name="ev_bms_widget_speedometer_desc">Full-screen transparent arc over the map. Add it to the Top panel (Bottom also works). It does not take panel space. While this widget is on the current profile the HUD stays on, including when stopped. Remove it from a profile to keep that map clean. Color limits are in EV-Telemetry settings → Anti-speeding HUD.</string>
+    <string name="ev_bms_widget_speedometer_desc">Full-screen transparent arc over the map, growing from the bottom. Add to the Top panel (Bottom also works). No panel space. On the slow map profile the arc hides below «Show HUD above» in plugin settings; on the fast profile it stays on at rest. Speed digits sit in the arc center. Color limits, FPS cap and demo: EV-Telemetry settings → Anti-speeding HUD. 🔋 Battery: BLE polling (controller 200 ms, BMS 500 ms) is the main load. HUD at default 15 fps is modest; hide it at low speed or set 5–10 fps to save more. ⚙️ CPU: map OpenGL and GPS dominate; HUD software drawing is small once FPS is capped; red-zone flash is rare. 💾 Storage: CSV/GPX at 1 s, unchanged rows skipped; DEBUG journal up to 2 MB if enabled; max/avg window stays in RAM.</string>
     <string name="ev_bms_speedometer_gps">GPS</string>
     <string name="ev_bms_speed_profile">Map profiles by speed</string>
     <string name="ev_bms_speed_profile_auto">Auto-switch map profiles</string>
@@ -1290,11 +1293,13 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_speed_profile_fast">Fast map profile</string>
     <string name="ev_bms_hud">Anti-speeding HUD</string>
     <string name="ev_bms_hud_demo">HUD demo</string>
-    <string name="ev_bms_hud_demo_desc">Loops a fake speed 0–90 km/h: 10 s smooth acceleration, then 10 s braking. Needs the Speedometer HUD widget on the current profile. Turn off before riding.</string>
+    <string name="ev_bms_hud_demo_desc">Same HUD as a live ride, but speed is virtual: 0–90 km/h, 10 s acceleration then 10 s braking. Hide-below-threshold and auto profile switch use this virtual speed. Needs the Speedometer HUD widget on the profile. Turn off before riding.</string>
     <string name="ev_bms_hud_stroke">Arc thickness</string>
     <string name="ev_bms_hud_stroke_desc">Stroke width as a percent of the shorter screen side.</string>
     <string name="ev_bms_hud_height">Arc height</string>
-    <string name="ev_bms_hud_height_desc">HUD overlay height as a percent of the map screen.</string>
+    <string name="ev_bms_hud_height_desc">Overlay grows from the bottom of the map. At 100% the horseshoe feet sit on the bottom edge.</string>
+    <string name="ev_bms_hud_fps">Speedometer HUD FPS</string>
+    <string name="ev_bms_hud_fps_desc">Caps how often the overlay redraws. Lower values save battery; 15 is smooth enough while riding. Red-zone flash is independent.</string>
     <string name="ev_bms_hud_font">Speed digit size</string>
     <string name="ev_bms_hud_font_desc">Main speed digits as a percent of the shorter screen side.</string>
     <string name="ev_bms_hud_show_units">Speed units</string>
@@ -1302,7 +1307,7 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_hud_stats">Max / average window</string>
     <string name="ev_bms_hud_stats_desc">Maximum in the bottom-left corner, average in the bottom-right, for this many minutes. Half the main digit size, no units. Off hides both.</string>
     <string name="ev_bms_hud_show">Show HUD above</string>
-    <string name="ev_bms_hud_show_desc">On profiles other than the fast map profile, the arc stays hidden below this speed. On the fast profile the HUD stays on even when stopped.</string>
+    <string name="ev_bms_hud_show_desc">On profiles other than the fast map profile, the arc stays hidden below this speed. On the fast profile the HUD stays on even when stopped. Demo uses virtual speed for this rule.</string>
     <string name="ev_bms_hud_limit1">Green until (limit 1)</string>
     <string name="ev_bms_hud_limit1_desc">City limit. Green arc below this speed.</string>
     <string name="ev_bms_hud_buffer1">Yellow until (gray zone 1)</string>
@@ -1370,6 +1375,7 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_n_ah">%1$s Ah</string>
     <string name="ev_bms_n_volt">%1$.2f V</string>
     <string name="ev_bms_n_percent">%1$d %%</string>
+    <string name="ev_bms_n_fps">%1$d fps</string>
     <string name="ev_bms_n_celsius">%1$d °C</string>
     <string name="ev_bms_n_amp">%1$d A</string>
     <string name="ev_bms_n_repeats">%1$d</string>
