@@ -4,8 +4,10 @@ import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.text.SpannableStringBuilder
 import android.text.TextUtils
 import android.text.method.LinkMovementMethod
+import android.text.style.RelativeSizeSpan
 import android.view.View
 import android.view.ViewGroup
 import android.widget.CheckBox
@@ -67,6 +69,7 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	private var fieldsBound = false
 	private var aboutBound = false
 	private var journalBound = false
+	private var sheetTitleView: TextView? = null
 
 	private data class ChartRow(
 		val field: TelemetryField,
@@ -251,6 +254,31 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		for ((tab, button) in tabButtons) {
 			button.setOnClickListener { showTab(tab) }
 		}
+		sheetTitleView = root.findViewById(R.id.title)
+		sheetTitleView?.setOnClickListener { toggleAllAnnouncesFromTitle() }
+		refreshSheetTitleAnnounces()
+	}
+
+	fun refreshSheetTitleAnnounces() {
+		val titleView = sheetTitleView ?: return
+		val baseTitle = getString(R.string.ev_bms_plugin_name)
+		if (plugin.hasAnyAnnounceEnabled()) {
+			val emoji = "🔊"
+			val spannable = SpannableStringBuilder()
+			spannable.append(emoji)
+			spannable.append(' ')
+			spannable.append(baseTitle)
+			spannable.setSpan(RelativeSizeSpan(0.55f), 0, emoji.length, SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE)
+			titleView.text = spannable
+		} else {
+			titleView.text = baseTitle
+		}
+	}
+
+	private fun toggleAllAnnouncesFromTitle() {
+		plugin.toggleAllAnnounces()
+		settingsFragment()?.refreshAnnouncePrefs()
+		refreshSheetTitleAnnounces()
 	}
 
 	private fun bindFields() {

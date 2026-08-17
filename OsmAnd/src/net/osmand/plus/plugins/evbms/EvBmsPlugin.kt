@@ -2991,6 +2991,39 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		recorder.share(activity, uris)
 	}
 
+	val announcePreferences: List<CommonPreference<Boolean>> = listOf(
+		ANNOUNCE_SOC,
+		ANNOUNCE_RANGE_ON_STOP,
+		ANNOUNCE_RANGE_VS_ROUTE,
+		ANNOUNCE_RANGE_RESERVE,
+		ANNOUNCE_RANGE_RESERVE_SMALL,
+		ANNOUNCE_RANGE_RESERVE_LOW,
+		ANNOUNCE_CELL_VOLTAGE,
+		ANNOUNCE_MOTOR_HEAT,
+		ANNOUNCE_BATTERY_OVERHEAT,
+		ANNOUNCE_BATTERY_FREEZE,
+		ANNOUNCE_LINK,
+		ANNOUNCE_CHARGE_ETA
+	)
+
+	fun hasAnyAnnounceEnabled(): Boolean = announcePreferences.any { it.get() }
+
+	fun setAllAnnouncesEnabled(enabled: Boolean) {
+		for (pref in announcePreferences) {
+			pref.set(enabled)
+		}
+	}
+
+	fun toggleAllAnnounces(): Boolean {
+		val enabled = !hasAnyAnnounceEnabled()
+		setAllAnnouncesEnabled(enabled)
+		return enabled
+	}
+
+	fun isAnnouncePreferenceId(prefId: String): Boolean {
+		return announcePreferences.any { it.id == prefId }
+	}
+
 	fun askShowSettingsDialog(activity: FragmentActivity) {
 		EvBmsSettingsBottomSheet.showInstance(activity.supportFragmentManager)
 	}

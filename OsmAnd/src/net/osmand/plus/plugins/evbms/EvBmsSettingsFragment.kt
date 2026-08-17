@@ -211,6 +211,12 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		setupTelemetryFields()
 	}
 
+	fun refreshAnnouncePrefs() {
+		for (pref in plugin.announcePreferences) {
+			findPreference<SwitchPreferenceEx>(pref.id)?.isChecked = pref.get()
+		}
+	}
+
 	fun refreshRecordingPref() {
 		val pref = findPreference<SwitchPreferenceEx>(plugin.RECORD_TELEMETRY.id) ?: return
 		pref.isChecked = plugin.hasTelemetrySession()
@@ -975,6 +981,9 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 
 	override fun onPreferenceChanged(prefId: String) {
 		super.onPreferenceChanged(prefId)
+		if (plugin.isAnnouncePreferenceId(prefId)) {
+			(parentFragment as? EvBmsSettingsBottomSheet)?.refreshSheetTitleAnnounces()
+		}
 		if (prefId == plugin.SPEED_CAL_FACTOR.id) {
 			setupCalFactor()
 		}
