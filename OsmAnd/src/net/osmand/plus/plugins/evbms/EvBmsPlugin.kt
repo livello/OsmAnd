@@ -2509,6 +2509,15 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		}
 	}
 
+	fun isFastSpeedProfile(): Boolean {
+		val key = SPEED_PROFILE_FAST.get()
+		if (key.isNullOrEmpty()) {
+			return false
+		}
+		val fast = ApplicationMode.valueOfStringKey(key, null) ?: return false
+		return settings.applicationMode == fast
+	}
+
 	private fun tickSpeedProfileSwitch() {
 		if (!SPEED_PROFILE_AUTO.get()) {
 			speedProfileWantFast = null

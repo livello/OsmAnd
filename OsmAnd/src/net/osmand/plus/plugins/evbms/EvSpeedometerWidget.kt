@@ -59,9 +59,13 @@ class EvSpeedometerWidget(
 		attachHud()
 		val hud = hudView ?: return
 		val speed = plugin.speedometerReading()?.kmh ?: 0.0
-		val showAt = plugin.HUD_SHOW_KMH.get().toDouble()
-		val hideAt = (showAt - HIDE_HYSTERESIS_KMH).coerceAtLeast(0.0)
-		hudVisible = if (hudVisible) speed >= hideAt else speed >= showAt
+		if (plugin.isFastSpeedProfile()) {
+			hudVisible = true
+		} else {
+			val showAt = plugin.HUD_SHOW_KMH.get().toDouble()
+			val hideAt = (showAt - HIDE_HYSTERESIS_KMH).coerceAtLeast(0.0)
+			hudVisible = if (hudVisible) speed >= hideAt else speed >= showAt
+		}
 		if (!hudVisible) {
 			hud.visibility = View.GONE
 			return
