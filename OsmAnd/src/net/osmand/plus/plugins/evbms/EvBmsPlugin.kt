@@ -1569,9 +1569,12 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	fun connectController(activity: Activity, name: String, address: String) {
 		journal.i("link", "connect CTRL name=$name addr=$address proto=${CONTROLLER_PROTOCOL.get()}")
 		CONTROLLER_NAME.set(name)
-		CONTROLLER_ADDRESS.set(address)
+		if (address.isNotBlank()) {
+			CONTROLLER_ADDRESS.set(address)
+		}
 		controllerClient?.preferredControllerKind = preferredControllerKind()
-		controllerClient?.connect(activity, address)
+		controllerClient?.preferredDeviceName = name.takeIf { it.isNotBlank() }
+		controllerClient?.connect(activity, address, name)
 	}
 
 	fun disconnectBms() {
@@ -1614,10 +1617,12 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			bmsClient?.preferredBmsKind = preferredBmsKind()
 			bmsClient?.connect(activity, bms)
 		}
+		val ctrlName = CONTROLLER_NAME.get()
 		val ctrl = CONTROLLER_ADDRESS.get()
-		if (!ctrl.isNullOrEmpty() && controllerClient?.connected != true) {
+		if ((!ctrl.isNullOrEmpty() || !ctrlName.isNullOrEmpty()) && controllerClient?.connected != true) {
 			controllerClient?.preferredControllerKind = preferredControllerKind()
-			controllerClient?.connect(activity, ctrl)
+			controllerClient?.preferredDeviceName = ctrlName?.takeIf { it.isNotBlank() }
+			controllerClient?.connect(activity, ctrl.orEmpty(), ctrlName)
 		}
 	}
 
@@ -1641,6 +1646,20 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private fun stopPolling() {
 		pollRunning = false
 		handler.removeCallbacks(pollRunnable)
+	}
+
+	override fun onBoundAddress(role: EvBleUartClient.Role, name: String?, address: String) {
+		if (role != EvBleUartClient.Role.CONTROLLER || address.isBlank()) {
+			return
+		}
+		val old = CONTROLLER_ADDRESS.get()
+		if (old != address) {
+			journal.i("link", "CTRL MAC ${old.orEmpty()} → $address name=${name.orEmpty()}")
+			CONTROLLER_ADDRESS.set(address)
+		}
+		if (!name.isNullOrBlank() && CONTROLLER_NAME.get().isNullOrBlank()) {
+			CONTROLLER_NAME.set(name)
+		}
 	}
 
 	override fun onConnectionChanged(role: EvBleUartClient.Role, connected: Boolean, name: String?) {
@@ -1682,10 +1701,12 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			bmsClient?.preferredBmsKind = preferredBmsKind()
 			ensureBleLink(bms, bmsClient, lastBmsRxMs) { lastBmsRxMs = 0L }
 		}
+		val ctrlName = CONTROLLER_NAME.get()
 		val ctrl = CONTROLLER_ADDRESS.get()
-		if (!ctrl.isNullOrEmpty()) {
+		if (!ctrl.isNullOrEmpty() || !ctrlName.isNullOrEmpty()) {
 			controllerClient?.preferredControllerKind = preferredControllerKind()
-			ensureBleLink(ctrl, controllerClient, lastCtrlRxMs) { lastCtrlRxMs = 0L }
+			controllerClient?.preferredDeviceName = ctrlName?.takeIf { it.isNotBlank() }
+			ensureBleLink(ctrl, controllerClient, lastCtrlRxMs, ctrlName) { lastCtrlRxMs = 0L }
 		}
 	}
 
@@ -1693,9 +1714,13 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		address: String?,
 		client: EvBleUartClient?,
 		lastRxMs: Long,
+		preferredName: String? = null,
 		clearRx: () -> Unit
 	) {
-		if (address.isNullOrEmpty() || client == null) {
+		if (client == null) {
+			return
+		}
+		if (address.isNullOrEmpty() && preferredName.isNullOrBlank()) {
 			return
 		}
 		if (client.connected) {
@@ -1729,7 +1754,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				client.forceReconnect("stale")
 			}
 		} else {
-			client.ensureConnected(address)
+			client.ensureConnected(address.orEmpty(), preferredName)
 		}
 	}
 

@@ -1029,6 +1029,7 @@ Optional DEBUG log of plugin and BLE actions. Controller RX hex is limited to on
 <b>🥾 Hike mode</b><br/>
 Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+• 🛵 FarDriver reconnect binds by BLE name and updates the saved MAC after a power cycle<br/>
 • 🏍️ Fix crash opening the About tab / switching sheet tabs: literal %% in changelog strings escaped for getString formatting<br/>
 • 🏍️ Skip auto profile switch while the EV settings sheet is open so HUD demo cannot rebuild the map under the dialog<br/>
 • 🏍️ HUD hide delay (1–30 s) after speed drops below «Show HUD above» on the slow map profile<br/>

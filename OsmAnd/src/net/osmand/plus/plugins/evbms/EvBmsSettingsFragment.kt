@@ -350,10 +350,11 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		val stats = plugin.bleLinkStats(role)
 		val status = when {
 			connected -> getString(R.string.ev_bms_status_connected, label)
-			!address.isNullOrEmpty() -> getString(R.string.ev_bms_status_disconnected, label)
+			!address.isNullOrEmpty() || !name.isNullOrBlank() ->
+				getString(R.string.ev_bms_status_disconnected, label)
 			else -> getString(R.string.ev_bms_status_not_selected)
 		}
-		pref.summary = if (stats != null && !address.isNullOrEmpty()) {
+		pref.summary = if (stats != null && (!address.isNullOrEmpty() || !name.isNullOrBlank())) {
 			"$status\n${bleStatsLine(stats)}"
 		} else {
 			status

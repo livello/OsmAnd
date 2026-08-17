@@ -60,6 +60,9 @@ class EvBleUartClient(
 	var preferredControllerKind: ControllerKind = ControllerKind.UNKNOWN
 
 	@Volatile
+	var preferredDeviceName: String? = null
+
+	@Volatile
 	var detectedControllerKind: ControllerKind = ControllerKind.UNKNOWN
 		private set
 
@@ -75,6 +78,7 @@ class EvBleUartClient(
 		fun onDeviceFound(role: Role, name: String, address: String, rssi: Int?, serviceLabel: String)
 		fun onScanFinished(role: Role)
 		fun onNotifyReady(role: Role) {}
+		fun onBoundAddress(role: Role, name: String?, address: String) {}
 	}
 
 	companion object {
@@ -139,6 +143,20 @@ class EvBleUartClient(
 
 		fun matchesControllerName(name: String?): Boolean {
 			return matchesFarDriverName(name) || matchesVescName(name)
+		}
+
+		fun advertisedNamesMatch(saved: String?, advertised: String?): Boolean {
+			if (saved.isNullOrBlank() || advertised.isNullOrBlank()) {
+				return false
+			}
+			val a = saved.trim()
+			val b = advertised.trim()
+			if (a.equals(b, ignoreCase = true)) {
+				return true
+			}
+			val compactA = a.replace(" ", "")
+			val compactB = b.replace(" ", "")
+			return compactA.equals(compactB, ignoreCase = true)
 		}
 
 		fun describeBleServices(name: String?, serviceUuids: List<UUID>?, role: Role): String {
@@ -240,9 +258,15 @@ class EvBleUartClient(
 		if (!reconnectScanning) {
 			return@Runnable
 		}
-		jw("reconnect scan timed out, falling back to connectGatt")
 		stopReconnectScan()
-		if (wantConnected && !connected && !connecting) {
+		if (!wantConnected || connected || connecting) {
+			return@Runnable
+		}
+		if (shouldBindByName()) {
+			jw("reconnect scan timed out (name=${preferredDeviceName}), retry later")
+			scheduleReconnect()
+		} else {
+			jw("reconnect scan timed out, falling back to connectGatt")
 			openGatt(autoConnect = usingAutoConnect)
 		}
 	}
@@ -266,20 +290,24 @@ class EvBleUartClient(
 
 	private val reconnectScanCallback = object : ScanCallback() {
 		override fun onScanResult(callbackType: Int, result: ScanResult) {
-			val device = result.device ?: return
-			if (!wantConnected || device.address != deviceAddress) {
-				return
+			handleReconnectAdvertisement(result)
+		}
+
+		override fun onBatchScanResults(results: MutableList<ScanResult>) {
+			for (result in results) {
+				handleReconnectAdvertisement(result)
 			}
-			jd("found advertising device rssi=${result.rssi}, connecting")
-			rssiDbm = result.rssi
-			stopReconnectScan()
-			openGatt(device, autoConnect = false)
 		}
 
 		override fun onScanFailed(errorCode: Int) {
 			jw("reconnect scan failed $errorCode")
 			stopReconnectScan()
-			if (wantConnected && !connected) {
+			if (!wantConnected || connected) {
+				return
+			}
+			if (shouldBindByName()) {
+				scheduleReconnect()
+			} else {
 				openGatt(autoConnect = false)
 			}
 		}
@@ -304,8 +332,10 @@ class EvBleUartClient(
 				connectedAtMs = System.currentTimeMillis()
 				mainHandler.removeCallbacks(rssiPollRunnable)
 				mainHandler.post(rssiPollRunnable)
-				deviceName = gatt.device?.name
+				deviceName = gatt.device?.name ?: preferredDeviceName
 				deviceAddress = gatt.device?.address
+				val boundName = deviceName
+				val boundAddress = deviceAddress
 				mainHandler.removeCallbacks(connectTimeoutRunnable)
 				try {
 					gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
@@ -319,7 +349,12 @@ class EvBleUartClient(
 					scheduleReconnect()
 					return
 				}
-				mainHandler.post { listener.onConnectionChanged(role, true, deviceName) }
+				mainHandler.post {
+					if (!boundAddress.isNullOrBlank()) {
+						listener.onBoundAddress(role, boundName, boundAddress)
+					}
+					listener.onConnectionChanged(role, true, boundName)
+				}
 			} else if (newState == BluetoothProfile.STATE_CONNECTED) {
 				jw("connected with status $status, retrying")
 				connecting = false
@@ -654,21 +689,29 @@ class EvBleUartClient(
 	}
 
 	@SuppressLint("MissingPermission")
-	fun connect(activity: Activity, address: String) {
+	fun connect(activity: Activity, address: String, name: String? = null) {
 		if (!AndroidUtils.hasBLEPermission(activity) && !AndroidUtils.requestBLEPermissions(activity)) {
 			return
 		}
 		adapter = BLEUtils.getBluetoothAdapter(activity) ?: bluetoothAdapter()
-		deviceName = try {
-			adapter?.getRemoteDevice(address)?.getAliasName(activity)
-		} catch (_: Exception) {
-			null
+		if (!name.isNullOrBlank()) {
+			preferredDeviceName = name
+			deviceName = name
+		} else {
+			deviceName = try {
+				adapter?.getRemoteDevice(address)?.getAliasName(activity)
+			} catch (_: Exception) {
+				null
+			}
 		}
 		beginConnect(address)
 	}
 
-	fun ensureConnected(address: String) {
-		if (address.isBlank()) {
+	fun ensureConnected(address: String, name: String? = null) {
+		if (!name.isNullOrBlank()) {
+			preferredDeviceName = name
+		}
+		if (address.isBlank() && preferredDeviceName.isNullOrBlank()) {
 			return
 		}
 		if (connected || connecting) {
@@ -677,11 +720,16 @@ class EvBleUartClient(
 		if (!AndroidUtils.hasBLEPermission(app)) {
 			return
 		}
-		if (wantConnected && deviceAddress == address) {
+		val sameTarget = wantConnected &&
+			((address.isNotBlank() && deviceAddress == address) || shouldBindByName())
+		if (sameTarget) {
 			if (!reconnectPosted && !reconnectScanning) {
 				scheduleReconnect()
 			}
 			return
+		}
+		if (!name.isNullOrBlank()) {
+			deviceName = name
 		}
 		beginConnect(address)
 	}
@@ -713,7 +761,9 @@ class EvBleUartClient(
 
 	private fun beginConnect(address: String) {
 		wantConnected = true
-		deviceAddress = address
+		if (address.isNotBlank()) {
+			deviceAddress = address
+		}
 		reconnectAttempt = 0
 		connecting = false
 		cancelReconnect()
@@ -727,8 +777,9 @@ class EvBleUartClient(
 		if (!wantConnected || connected || connecting) {
 			return
 		}
+		val byName = shouldBindByName()
 		val address = deviceAddress
-		if (address.isNullOrBlank()) {
+		if (address.isNullOrBlank() && !byName) {
 			return
 		}
 		if (!AndroidUtils.hasBLEPermission(app)) {
@@ -743,40 +794,97 @@ class EvBleUartClient(
 		}
 		val attempt = reconnectAttempt
 		reconnectAttempt++
-		usingAutoConnect = attempt > 0 && attempt % 3 == 2
-		if (attempt == 0 || usingAutoConnect) {
+		usingAutoConnect = !byName && attempt > 0 && attempt % 3 == 2
+		if (byName) {
+			startReconnectScan()
+		} else if (attempt == 0 || usingAutoConnect) {
 			openGatt(autoConnect = usingAutoConnect)
 		} else {
 			startReconnectScan()
 		}
 	}
 
+	private fun shouldBindByName(): Boolean {
+		if (role != Role.CONTROLLER || preferredDeviceName.isNullOrBlank()) {
+			return false
+		}
+		return preferredControllerKind == ControllerKind.FARDRIVER ||
+			detectedControllerKind == ControllerKind.FARDRIVER ||
+			matchesFarDriverName(preferredDeviceName)
+	}
+
+	private fun advertisementMatches(address: String?, advertisedName: String?): Boolean {
+		if (!address.isNullOrBlank() && !deviceAddress.isNullOrBlank() &&
+			address.equals(deviceAddress, ignoreCase = true)
+		) {
+			return true
+		}
+		return shouldBindByName() && advertisedNamesMatch(preferredDeviceName, advertisedName)
+	}
+
+	@SuppressLint("MissingPermission")
+	private fun handleReconnectAdvertisement(result: ScanResult) {
+		val device = result.device ?: return
+		if (!wantConnected || connected) {
+			return
+		}
+		val advertised = result.scanRecord?.deviceName ?: device.name
+		if (!advertisementMatches(device.address, advertised)) {
+			return
+		}
+		jd("found advertising device name=$advertised addr=${device.address} rssi=${result.rssi}")
+		rssiDbm = result.rssi
+		if (!advertised.isNullOrBlank()) {
+			deviceName = advertised
+		}
+		stopReconnectScan()
+		openGatt(device, autoConnect = false)
+	}
+
 	@SuppressLint("MissingPermission")
 	private fun startReconnectScan() {
-		val address = deviceAddress ?: return
 		val scanner = bluetoothAdapter()?.bluetoothLeScanner
 		if (scanner == null) {
-			openGatt(autoConnect = false)
+			if (shouldBindByName()) {
+				scheduleReconnect()
+			} else {
+				openGatt(autoConnect = false)
+			}
 			return
 		}
 		stopReconnectScan()
 		reconnectScanning = true
 		connecting = false
-		jd("scanning to reconnect $address attempt=$reconnectAttempt")
+		val byName = shouldBindByName()
+		jd(
+			if (byName) {
+				"scanning to reconnect name=${preferredDeviceName} attempt=$reconnectAttempt"
+			} else {
+				"scanning to reconnect $deviceAddress attempt=$reconnectAttempt"
+			}
+		)
 		try {
-			val filter = ScanFilter.Builder().setDeviceAddress(address).build()
+			val filters = if (byName) {
+				emptyList()
+			} else {
+				listOf(ScanFilter.Builder().setDeviceAddress(deviceAddress).build())
+			}
 			val settings = ScanSettings.Builder()
 				.setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
 				.setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE)
 				.setNumOfMatches(ScanSettings.MATCH_NUM_ONE_ADVERTISEMENT)
 				.setReportDelay(0)
 				.build()
-			scanner.startScan(listOf(filter), settings, reconnectScanCallback)
+			scanner.startScan(filters, settings, reconnectScanCallback)
 			mainHandler.postDelayed(reconnectScanTimeout, RECONNECT_SCAN_MS)
 		} catch (e: Exception) {
 			jw("reconnect scan start failed ${e.message}")
 			reconnectScanning = false
-			openGatt(autoConnect = false)
+			if (byName) {
+				scheduleReconnect()
+			} else {
+				openGatt(autoConnect = false)
+			}
 		}
 	}
 

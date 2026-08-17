@@ -1,5 +1,5 @@
 package net.osmand.plus.plugins.evbms
 
 object EvBmsRevision {
-	const val GIT_HASH = "2ddb759a53+fix-about-crash"
+	const val GIT_HASH = "fardriver-name-bind"
 }
