@@ -1029,6 +1029,7 @@ Optional DEBUG log of plugin and BLE actions. Controller RX hex is limited to on
 <b>🥾 Hike mode</b><br/>
 Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+• 🏍️ HUD hide delay (1–30 s) after speed drops below «Show HUD above» on the slow map profile<br/>
 • 🏍️ HUD FPS cap in plugin settings (default 15) so the overlay does not redraw at map rate<br/>
 • 🏍️ HUD demo uses virtual speed through the same hide and auto-profile rules as a live ride<br/>
 • 🏍️ On the slow map profile the HUD hides below «Show HUD above»; on the fast profile it stays on at rest<br/>
@@ -1282,7 +1283,7 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_widget_hike">Hike</string>
     <string name="ev_bms_widget_hike_desc">Turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins. Keeps BMS range, GPS and telemetry every 5 s with a slower BLE poll.</string>
     <string name="ev_bms_widget_speedometer">Speedometer HUD</string>
-    <string name="ev_bms_widget_speedometer_desc">Full-screen transparent arc over the map, growing from the bottom. Add to the Top panel (Bottom also works). No panel space. On the slow map profile the arc hides below «Show HUD above» in plugin settings; on the fast profile it stays on at rest. Speed digits sit in the arc center. Color limits, FPS cap and demo: EV-Telemetry settings → Anti-speeding HUD. 🔋 Battery: BLE polling (controller 200 ms, BMS 500 ms) is the main load. HUD at default 15 fps is modest; hide it at low speed or set 5–10 fps to save more. ⚙️ CPU: map OpenGL and GPS dominate; HUD software drawing is small once FPS is capped; red-zone flash is rare. 💾 Storage: CSV/GPX at 1 s, unchanged rows skipped; DEBUG journal up to 2 MB if enabled; max/avg window stays in RAM.</string>
+    <string name="ev_bms_widget_speedometer_desc">Full-screen transparent arc over the map, growing from the bottom. Add to the Top panel (Bottom also works). No panel space. On the slow map profile the arc hides below «Show HUD above» after a configurable delay; on the fast profile it stays on at rest. Speed digits sit in the arc center. Color limits, hide delay, FPS cap and demo: EV-Telemetry settings → Anti-speeding HUD. 🔋 Battery: BLE polling (controller 200 ms, BMS 500 ms) is the main load. HUD at default 15 fps is modest; hide it at low speed or set 5–10 fps to save more. ⚙️ CPU: map OpenGL and GPS dominate; HUD software drawing is small once FPS is capped; red-zone flash is rare. 💾 Storage: CSV/GPX at 1 s, unchanged rows skipped; DEBUG journal up to 2 MB if enabled; max/avg window stays in RAM.</string>
     <string name="ev_bms_speedometer_gps">GPS</string>
     <string name="ev_bms_speed_profile">Map profiles by speed</string>
     <string name="ev_bms_speed_profile_auto">Auto-switch map profiles</string>
@@ -1308,6 +1309,8 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_hud_stats_desc">Maximum in the bottom-left corner, average in the bottom-right, for this many minutes. Half the main digit size, no units. Off hides both.</string>
     <string name="ev_bms_hud_show">Show HUD above</string>
     <string name="ev_bms_hud_show_desc">On profiles other than the fast map profile, the arc stays hidden below this speed. On the fast profile the HUD stays on even when stopped. Demo uses virtual speed for this rule.</string>
+    <string name="ev_bms_hud_hide_delay">HUD hide delay</string>
+    <string name="ev_bms_hud_hide_delay_desc">On the slow map profile, keep the HUD on this many seconds after speed drops below «Show HUD above». Showing again needs speed above that threshold.</string>
     <string name="ev_bms_hud_limit1">Green until (limit 1)</string>
     <string name="ev_bms_hud_limit1_desc">City limit. Green arc below this speed.</string>
     <string name="ev_bms_hud_buffer1">Yellow until (gray zone 1)</string>

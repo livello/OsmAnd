@@ -233,6 +233,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		decorate(plugin.SPEED_PROFILE_FAST.id, "🏁", R.drawable.ic_action_map_style)
 		decorate(plugin.HUD_DEMO.id, "🎬", R.drawable.ic_action_play_dark)
 		decorate(plugin.HUD_SHOW_KMH.id, "👁️", R.drawable.ic_action_speed)
+		decorate(plugin.HUD_HIDE_DELAY_SEC.id, "⏳", R.drawable.ic_action_time_span)
 		decorate(plugin.HUD_STROKE_PERCENT.id, "➖", R.drawable.ic_action_speed)
 		decorate(plugin.HUD_HEIGHT_PERCENT.id, "↕️", R.drawable.ic_action_speed)
 		decorate(plugin.HUD_FPS.id, "🎞️", R.drawable.ic_action_time_span)
@@ -505,6 +506,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			plugin.HUD_SHOW_KMH.get(),
 			R.string.ev_bms_hud_show_desc
 		)
+		setupHudHideDelay()
 		setupHudPercent(
 			plugin.HUD_STROKE_PERCENT.id,
 			plugin.HUD_STROKE_PERCENT.get(),
@@ -534,6 +536,15 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		stats.setEntryValues(minutes.map { it as Any }.toTypedArray())
 		stats.setValue(plugin.HUD_STATS_MINUTES.get())
 		stats.setDescription(R.string.ev_bms_hud_stats_desc)
+	}
+
+	private fun setupHudHideDelay() {
+		val pref = findPreference<ListPreferenceEx>(plugin.HUD_HIDE_DELAY_SEC.id) ?: return
+		val values = EvBmsPlugin.HUD_HIDE_DELAY_SEC_VALUES
+		pref.setEntries(values.map { getString(R.string.ev_bms_n_sec, it) }.toTypedArray())
+		pref.setEntryValues(values.map { it as Any }.toTypedArray())
+		pref.setValue(plugin.HUD_HIDE_DELAY_SEC.get())
+		pref.setDescription(R.string.ev_bms_hud_hide_delay_desc)
 	}
 
 	private fun setupHudFps() {
@@ -1009,6 +1020,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			setupHudDemo()
 		}
 		if (prefId == plugin.HUD_SHOW_KMH.id ||
+			prefId == plugin.HUD_HIDE_DELAY_SEC.id ||
 			prefId == plugin.HUD_STROKE_PERCENT.id ||
 			prefId == plugin.HUD_HEIGHT_PERCENT.id ||
 			prefId == plugin.HUD_FPS.id ||

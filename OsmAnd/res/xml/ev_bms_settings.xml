@@ -96,6 +96,11 @@
 		android:title="@string/ev_bms_hud_show" />
 
 	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="ev_bms_hud_hide_delay_sec"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:title="@string/ev_bms_hud_hide_delay" />
+
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
 		android:key="ev_bms_hud_stroke_percent"
 		android:layout="@layout/ev_bms_preference_with_descr"
 		android:title="@string/ev_bms_hud_stroke" />

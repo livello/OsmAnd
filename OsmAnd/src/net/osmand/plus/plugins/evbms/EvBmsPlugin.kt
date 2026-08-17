@@ -99,7 +99,9 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		const val DEFAULT_HUD_FONT_PERCENT = 39
 		const val DEFAULT_HUD_STATS_MINUTES = 5
 		const val DEFAULT_HUD_FPS = 15
+		const val DEFAULT_HUD_HIDE_DELAY_SEC = 5
 		val HUD_FPS_VALUES = intArrayOf(5, 10, 15, 30, 60)
+		val HUD_HIDE_DELAY_SEC_VALUES = IntArray(30) { it + 1 }
 		private const val HUD_SPEED_SAMPLE_MS = 200L
 		const val HUD_DEMO_MAX_KMH = 90.0
 		const val HUD_DEMO_HALF_MS = 10_000L
@@ -257,6 +259,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerIntPreference("ev_bms_hud_stats_minutes", DEFAULT_HUD_STATS_MINUTES).makeGlobal().makeShared()
 	val HUD_FPS: CommonPreference<Int> =
 		registerIntPreference("ev_bms_hud_fps", DEFAULT_HUD_FPS).makeGlobal().makeShared()
+	val HUD_HIDE_DELAY_SEC: CommonPreference<Int> =
+		registerIntPreference("ev_bms_hud_hide_delay_sec", DEFAULT_HUD_HIDE_DELAY_SEC).makeGlobal().makeShared()
 	val VEHICLE_MASS_KG: CommonPreference<Float> =
 		registerFloatPreference("ev_bms_vehicle_mass_kg", DEFAULT_VEHICLE_MASS_KG).makeGlobal().makeShared()
 	val DRIVER_MASS_KG: CommonPreference<Float> =
@@ -322,6 +326,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private val hudSpeedWindow = ArrayDeque<Pair<Long, Double>>()
 	private var lastHudSampleMs = 0L
 	private var hudWantVisible = false
+	private var hudHideDeadlineMs = 0L
 	private var lastChargeAh: Double? = null
 	private var stillSinceMs: Long? = null
 	private var charging = false
@@ -2598,16 +2603,35 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	fun shouldShowSpeedometerHud(speedKmh: Double): Boolean {
 		if (isFastSpeedProfile()) {
 			hudWantVisible = true
+			hudHideDeadlineMs = 0L
 			return true
 		}
 		val showAt = HUD_SHOW_KMH.get().toDouble()
 		val hideAt = (showAt - SPEED_PROFILE_HYSTERESIS_KMH).coerceAtLeast(0.0)
-		hudWantVisible = if (hudWantVisible) {
-			speedKmh >= hideAt
-		} else {
-			speedKmh >= showAt
+		val now = SystemClock.elapsedRealtime()
+		val delayMs = HUD_HIDE_DELAY_SEC.get().coerceIn(1, 30) * 1000L
+		if (speedKmh >= showAt) {
+			hudWantVisible = true
+			hudHideDeadlineMs = 0L
+			return true
 		}
-		return hudWantVisible
+		if (!hudWantVisible) {
+			hudHideDeadlineMs = 0L
+			return false
+		}
+		if (speedKmh >= hideAt) {
+			hudHideDeadlineMs = 0L
+			return true
+		}
+		if (hudHideDeadlineMs == 0L) {
+			hudHideDeadlineMs = now + delayMs
+		}
+		if (now >= hudHideDeadlineMs) {
+			hudWantVisible = false
+			hudHideDeadlineMs = 0L
+			return false
+		}
+		return true
 	}
 
 	fun isFastSpeedProfile(): Boolean {
