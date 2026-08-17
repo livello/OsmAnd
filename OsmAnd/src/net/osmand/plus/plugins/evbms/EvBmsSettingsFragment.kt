@@ -136,8 +136,9 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		if (!isEmbedded()) {
 			return
 		}
+		val list = listView ?: return
 		val bottom = AndroidUtils.dpToPx(app, if (buttonsVisible) 88f else 12f)
-		listView.setPadding(listView.paddingLeft, listView.paddingTop, listView.paddingRight, bottom)
+		list.setPadding(list.paddingLeft, list.paddingTop, list.paddingRight, bottom)
 	}
 
 	override fun updateStatusBar() {

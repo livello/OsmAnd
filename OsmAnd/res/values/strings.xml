@@ -1029,22 +1029,24 @@ Optional DEBUG log of plugin and BLE actions. Controller RX hex is limited to on
 <b>🥾 Hike mode</b><br/>
 Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+• 🏍️ Fix crash opening the About tab / switching sheet tabs: literal %% in changelog strings escaped for getString formatting<br/>
+• 🏍️ Skip auto profile switch while the EV settings sheet is open so HUD demo cannot rebuild the map under the dialog<br/>
 • 🏍️ HUD hide delay (1–30 s) after speed drops below «Show HUD above» on the slow map profile<br/>
 • 🏍️ HUD FPS cap in plugin settings (default 15) so the overlay does not redraw at map rate<br/>
 • 🏍️ HUD demo uses virtual speed through the same hide and auto-profile rules as a live ride<br/>
 • 🏍️ On the slow map profile the HUD hides below «Show HUD above»; on the fast profile it stays on at rest<br/>
-• 🏍️ At 100% height the horseshoe sits on the bottom of the map; speed digits overlay the arc center<br/>
+• 🏍️ At 100%% height the horseshoe sits on the bottom of the map; speed digits overlay the arc center<br/>
 • 🏍️ HUD settings: arc thickness and height, digit size, km/h units, max/avg over the last N minutes (bottom corners)<br/>
-• 🏍️ Speedometer HUD arc and digits are 3× thicker/larger and the overlay is 90% of the screen height<br/>
+• 🏍️ Speedometer HUD arc and digits are 3× thicker/larger and the overlay is 90%% of the screen height<br/>
 • 🏍️ HUD demo in plugin settings: fake 0–90 km/h, 10 s acceleration then 10 s braking<br/>
 • 🏍️ Speedometer HUD uses a high-contrast green arc and a dark speed badge so it stays readable on a light map<br/>
 • 🏍️ Speedometer HUD setup: Top panel only (Bottom works); color limits in plugin settings → Anti-speeding HUD<br/>
 • 🏍️ Full-screen anti-speeding HUD: transparent circular arc over the map; color and thickness encode city limits and gray zones<br/>
-• 🏍️ Nissan Leaf-style speedometer widget: full width, ~80% height, calibrated controller speed as a huge integer<br/>
+• 🏍️ Nissan Leaf-style speedometer widget: full width, ~80%% height, calibrated controller speed as a huge integer<br/>
 • 🗺️ Auto-switch slow/fast OsmAnd map profiles at a configurable speedometer threshold<br/>
 • 🔋 Telemetry fields: charge used (Ah), strong cell, imbalance between strong and weak cells; trip history stores used Ah<br/>
 • 🔌 Charge only when BMS current is positive into the pack and controller current is idle; pack current keeps JBD sign (− discharge / + charge)<br/>
-• 🛣️ Optional GPS trip cap at controller odometer × calibration × 100–150%<br/>
+• 🛣️ Optional GPS trip cap at controller odometer × calibration × 100–150%%<br/>
 • 📋 Charge and ride history merged, newest first, with emoji and bold numbers<br/>
 • 📡 BLE picker: device name, RSSI, service type, sorted by signal, no duplicate MAC<br/>
 • 📜 Controller debug RX limited to one frame per second<br/>
@@ -1298,7 +1300,7 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_hud_stroke">Arc thickness</string>
     <string name="ev_bms_hud_stroke_desc">Stroke width as a percent of the shorter screen side.</string>
     <string name="ev_bms_hud_height">Arc height</string>
-    <string name="ev_bms_hud_height_desc">Overlay grows from the bottom of the map. At 100% the horseshoe feet sit on the bottom edge.</string>
+    <string name="ev_bms_hud_height_desc">Overlay grows from the bottom of the map. At 100%% the horseshoe feet sit on the bottom edge.</string>
     <string name="ev_bms_hud_fps">Speedometer HUD FPS</string>
     <string name="ev_bms_hud_fps_desc">Caps how often the overlay redraws. Lower values save battery; 15 is smooth enough while riding. Red-zone flash is independent.</string>
     <string name="ev_bms_hud_font">Speed digit size</string>

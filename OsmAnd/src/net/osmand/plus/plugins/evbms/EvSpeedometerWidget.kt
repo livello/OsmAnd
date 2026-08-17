@@ -92,6 +92,10 @@ class EvSpeedometerWidget(
 	}
 
 	private fun pushHud(force: Boolean) {
+		if (mapActivity.isFinishing || mapActivity.isDestroyed) {
+			setDemoRunning(false)
+			return
+		}
 		val now = SystemClock.elapsedRealtime()
 		if (!force && now - lastPushMs < plugin.hudFrameIntervalMs()) {
 			return

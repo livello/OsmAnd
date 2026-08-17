@@ -909,8 +909,13 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			return
 		}
 		val text = view?.findViewById<TextView>(R.id.ev_bms_about_text) ?: return
-		val html = app.getString(R.string.ev_bms_plugin_description) +
-				app.getString(R.string.ev_bms_changelog, EvBmsRevision.GIT_HASH)
+		val html = try {
+			app.getString(R.string.ev_bms_plugin_description) +
+					app.getString(R.string.ev_bms_changelog, EvBmsRevision.GIT_HASH)
+		} catch (e: Exception) {
+			app.getString(R.string.ev_bms_plugin_description) +
+					"<br/><br/>Changelog · ${EvBmsRevision.GIT_HASH}"
+		}
 		text.setTextColor(ColorUtilities.getPrimaryTextColor(requireContext(), nightMode))
 		text.movementMethod = LinkMovementMethod.getInstance()
 		text.text = HtmlCompat.fromHtml(html, HtmlCompat.FROM_HTML_MODE_LEGACY)

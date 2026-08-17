@@ -2657,6 +2657,11 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			speedProfileSinceMs = 0L
 			return
 		}
+		// Profile switches rebuild map widgets; never do that while the settings sheet is open
+		// (demo crosses the threshold often and would crash preference / tab UI).
+		if (isEvSettingsSheetOpen()) {
+			return
+		}
 		val slow = modeFromPref(SPEED_PROFILE_SLOW.get()) ?: return
 		val fast = modeFromPref(SPEED_PROFILE_FAST.get()) ?: return
 		if (slow == fast) {
@@ -2694,6 +2699,11 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			journal.i("speed-profile", "switch ${current.stringKey} → ${target.stringKey} speed=${"%.0f".format(speed)}")
 		}
 		speedProfileSinceMs = 0L
+	}
+
+	private fun isEvSettingsSheetOpen(): Boolean {
+		val activity = mapActivity ?: return false
+		return activity.supportFragmentManager.findFragmentByTag(EvBmsSettingsBottomSheet.TAG) != null
 	}
 
 	private fun rawCtrlOdometerKm(): Double? = vescSnapshot.odometerKm ?: farSnapshot.odometerKm
