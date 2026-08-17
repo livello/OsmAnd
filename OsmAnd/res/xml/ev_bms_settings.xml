@@ -83,6 +83,13 @@
 		android:layout="@layout/ev_bms_preference_category_divider"
 		android:title="@string/ev_bms_hud" />
 
+	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
+		android:key="ev_bms_hud_demo"
+		android:layout="@layout/ev_bms_preference_switch"
+		android:summaryOff="@string/shared_string_disabled"
+		android:summaryOn="@string/shared_string_enabled"
+		android:title="@string/ev_bms_hud_demo" />
+
 	<net.osmand.plus.settings.preferences.ListPreferenceEx
 		android:key="ev_bms_hud_limit1_kmh"
 		android:layout="@layout/ev_bms_preference_with_descr"

@@ -1,13 +1,17 @@
 package net.osmand.plus.plugins.evbms
 
+import android.animation.ValueAnimator
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.LinearInterpolator
 import android.widget.FrameLayout
 import net.osmand.plus.R
 import net.osmand.plus.activities.MapActivity
 import net.osmand.plus.plugins.PluginsHelper
+import net.osmand.plus.settings.backend.ApplicationMode
 import net.osmand.plus.views.layers.base.OsmandMapLayer.DrawSettings
+import net.osmand.plus.views.mapwidgets.MapWidgetInfo
 import net.osmand.plus.views.mapwidgets.WidgetType
 import net.osmand.plus.views.mapwidgets.WidgetsPanel
 import net.osmand.plus.views.mapwidgets.widgets.MapWidget
@@ -20,6 +24,7 @@ class EvSpeedometerWidget(
 
 	private val plugin = PluginsHelper.requirePlugin(EvBmsPlugin::class.java)
 	private var hudView: EvSpeedometerHudView? = null
+	private var demoAnim: ValueAnimator? = null
 
 	override fun getLayoutId(): Int = R.layout.ev_speedometer_widget
 
@@ -42,9 +47,10 @@ class EvSpeedometerWidget(
 
 	override fun detachView(
 		widgetsPanel: WidgetsPanel,
-		widgets: MutableList<net.osmand.plus.views.mapwidgets.MapWidgetInfo>,
-		mode: net.osmand.plus.settings.backend.ApplicationMode
+		widgets: MutableList<MapWidgetInfo>,
+		mode: ApplicationMode
 	) {
+		setDemoRunning(false)
 		detachHud()
 		super.detachView(widgetsPanel, widgets, mode)
 	}
@@ -52,8 +58,32 @@ class EvSpeedometerWidget(
 	override fun supportsPanelRowDivider(): Boolean = false
 
 	override fun updateInfo(view: View, drawSettings: DrawSettings?) {
+		val demo = plugin.HUD_DEMO.get()
+		setDemoRunning(demo)
+		pushHud()
+	}
+
+	private fun setDemoRunning(on: Boolean) {
+		if (on) {
+			if (demoAnim?.isRunning == true) {
+				return
+			}
+			demoAnim = ValueAnimator.ofFloat(0f, 1f).apply {
+				duration = 1000L
+				repeatCount = ValueAnimator.INFINITE
+				interpolator = LinearInterpolator()
+				addUpdateListener { pushHud() }
+				start()
+			}
+		} else {
+			demoAnim?.cancel()
+			demoAnim = null
+		}
+	}
+
+	private fun pushHud() {
 		val hud = attachHud() ?: return
-		val speed = plugin.speedometerReading()?.kmh ?: 0.0
+		val speed = plugin.hudDisplaySpeedKmh()
 		hud.visibility = View.VISIBLE
 		hud.bringToFront()
 		hud.updateHud(

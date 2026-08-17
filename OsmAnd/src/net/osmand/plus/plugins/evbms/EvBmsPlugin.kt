@@ -6,6 +6,7 @@ import androidx.core.text.HtmlCompat
 import android.graphics.drawable.Drawable
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.View
 import androidx.fragment.app.FragmentActivity
 import com.github.mikephil.charting.charts.LineChart
@@ -45,6 +46,8 @@ import org.json.JSONException
 import org.json.JSONObject
 import java.util.ArrayDeque
 import java.util.Locale
+import kotlin.math.PI
+import kotlin.math.cos
 
 class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.Listener {
 
@@ -91,6 +94,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		const val DEFAULT_HUD_BUFFER1_KMH = 50
 		const val DEFAULT_HUD_LIMIT2_KMH = 60
 		const val DEFAULT_HUD_BUFFER2_KMH = 70
+		const val HUD_DEMO_MAX_KMH = 90.0
+		const val HUD_DEMO_HALF_MS = 10_000L
 		private const val SPEED_PROFILE_HYSTERESIS_KMH = 3.0
 		private const val SPEED_PROFILE_HOLD_MS = 2000L
 		private const val HISTORY_SAMPLE_MIN_MS = 2000L
@@ -231,6 +236,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerIntPreference("ev_bms_hud_limit2_kmh", DEFAULT_HUD_LIMIT2_KMH).makeGlobal().makeShared()
 	val HUD_BUFFER2_KMH: CommonPreference<Int> =
 		registerIntPreference("ev_bms_hud_buffer2_kmh", DEFAULT_HUD_BUFFER2_KMH).makeGlobal().makeShared()
+	val HUD_DEMO: CommonPreference<Boolean> =
+		registerBooleanPreference("ev_bms_hud_demo", false).makeGlobal()
 	val VEHICLE_MASS_KG: CommonPreference<Float> =
 		registerFloatPreference("ev_bms_vehicle_mass_kg", DEFAULT_VEHICLE_MASS_KG).makeGlobal().makeShared()
 	val DRIVER_MASS_KG: CommonPreference<Float> =
@@ -2493,6 +2500,27 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			return SpeedometerReading(gps, false)
 		}
 		return null
+	}
+
+	fun hudDisplaySpeedKmh(): Double {
+		if (HUD_DEMO.get()) {
+			return demoHudSpeedKmh()
+		}
+		return speedometerReading()?.kmh ?: 0.0
+	}
+
+	fun demoHudSpeedKmh(): Double {
+		val halfMs = HUD_DEMO_HALF_MS
+		val elapsed = SystemClock.elapsedRealtime() % (halfMs * 2)
+		val rising = elapsed < halfMs
+		val u = if (rising) {
+			elapsed.toDouble() / halfMs
+		} else {
+			(elapsed - halfMs).toDouble() / halfMs
+		}
+		val eased = (1.0 - cos(PI * u.coerceIn(0.0, 1.0))) / 2.0
+		val speed = if (rising) HUD_DEMO_MAX_KMH * eased else HUD_DEMO_MAX_KMH * (1.0 - eased)
+		return speed.coerceIn(0.0, HUD_DEMO_MAX_KMH)
 	}
 
 	fun speedometerHudZone(speedKmh: Double): EvSpeedometerHudView.Zone {
