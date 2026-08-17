@@ -74,6 +74,7 @@ class EvSpeedometerWidget(
 			hudView = null
 		}
 		val host = findHudHost() ?: return null
+		removeStaleHudViews(host)
 		host.clipChildren = false
 		host.clipToPadding = false
 		val hud = EvSpeedometerHudView(mapActivity)
@@ -83,7 +84,8 @@ class EvSpeedometerWidget(
 			Gravity.FILL
 		)
 		hud.visibility = View.VISIBLE
-		hud.elevation = 32f
+		hud.elevation = 48f
+		hud.translationZ = 48f
 		hud.isClickable = false
 		hud.isFocusable = false
 		host.addView(hud)
@@ -96,6 +98,18 @@ class EvSpeedometerWidget(
 		mapActivity.findViewById<ViewGroup>(R.id.map_hud_layout)?.let { return it }
 		(mapActivity.findViewById<View>(R.id.map_hud_container)?.parent as? ViewGroup)?.let { return it }
 		return mapActivity.findViewById(android.R.id.content)
+	}
+
+	private fun removeStaleHudViews(host: ViewGroup) {
+		for (i in host.childCount - 1 downTo 0) {
+			val child = host.getChildAt(i)
+			if (child === hudView) {
+				continue
+			}
+			if (child is EvSpeedometerHudView || child.tag == EvSpeedometerHudView.HUD_TAG) {
+				host.removeViewAt(i)
+			}
+		}
 	}
 
 	private fun detachHud() {

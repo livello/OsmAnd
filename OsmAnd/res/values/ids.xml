@@ -36,4 +36,5 @@
     <item name="initial_padding_bottom" type="id"/>
     <item name="widget_panel_view_pager_left" type="id" />
     <item name="widget_panel_view_pager_right" type="id" />
+    <item name="ev_speedometer_hud" type="id" />
 </resources>
