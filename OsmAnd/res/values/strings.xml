@@ -979,14 +979,13 @@ You will be able to pair this scanner again at any time.</string>
 A transparent circular arc over the map (not a side/top strip that shrinks the map). Add it only to the <b>Top</b> panel — that is the default. The Bottom panel also works. Do not put it on Left or Right: those panels are not allowed, and the overlay would not start.<br/>
 Setup:<br/>
 1. Open <b>Configure screen</b> for the map profile you ride with (or the “fast” profile if you use auto-switch).<br/>
-2. Tap the <b>Top</b> panel → EV-Telemetry → Speedometer HUD, and enable it. The slot in the panel stays empty; the arc is drawn over the map.<br/>
+2. Tap the <b>Top</b> panel → EV-Telemetry → Speedometer HUD, and enable it. The slot in the panel stays empty; the arc is drawn over the map whenever that profile is active, including when you are stopped.<br/>
 3. In the plugin (tap any EV widget) open ⚙️ settings → <b>Anti-speeding HUD</b>:<br/>
-• Show HUD above — default 40 km/h. Below this the map stays clean on the slow profile; a few km/h under it the arc hides again. On the <b>fast</b> map profile the HUD stays visible even when stopped.<br/>
 • Green until (limit 1) — default 40 km/h.<br/>
 • Yellow until (gray zone 1) — default 50 km/h.<br/>
 • Orange until (limit 2) — default 60 km/h.<br/>
 • Stripe / red above (gray zone 2) — default 70 km/h, then flashing neon red.<br/>
-4. Optional, same settings screen → <b>Map profiles by speed</b>: turn on auto-switch, set the same (or a nearby) speed threshold, pick a slow profile (map, no HUD) and a fast profile (HUD on the Top panel, always on including stops). Auto-switch only runs while one of those two profiles is already active.<br/>
+4. Optional, same settings screen → <b>Map profiles by speed</b>: turn on auto-switch, pick a slow profile (map, no HUD widget) and a fast profile (HUD on the Top panel). Auto-switch only runs while one of those two profiles is already active. To hide the HUD, remove the widget from that profile — do not rely on a speed threshold.<br/>
 Speed is calibrated controller speed, GPS if the controller is silent.<br/><br/>
 <b>⏱️ Polling</b><br/>
 BMS (JBD/ANT) and controller (VESC/FarDriver) have separate poll frequencies, from 200 ms (5 Hz, BLE UART maximum) to 10 s. Range still uses about 1 s samples so GPS jitter does not inflate distance. CSV/GPX default to 1 s; unchanged rows are skipped. Same-as-poll at 5 Hz makes large files without helping range.<br/><br/>
@@ -1028,9 +1027,9 @@ Optional DEBUG log of plugin and BLE actions. Controller RX hex is limited to on
 <b>🥾 Hike mode</b><br/>
 Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
-• 🏍️ Fast map profile keeps the speedometer HUD on even when stopped<br/>
-• 🏍️ Speedometer HUD setup: Top panel only (Bottom works); limits in plugin settings → Anti-speeding HUD<br/>
-• 🏍️ Full-screen anti-speeding HUD: transparent circular arc over the map, hidden below a speed threshold; color and thickness encode city limits and gray zones<br/>
+• 🏍️ Speedometer HUD stays on whenever the widget is enabled on the current profile, including at rest<br/>
+• 🏍️ Speedometer HUD setup: Top panel only (Bottom works); color limits in plugin settings → Anti-speeding HUD<br/>
+• 🏍️ Full-screen anti-speeding HUD: transparent circular arc over the map; color and thickness encode city limits and gray zones<br/>
 • 🏍️ Nissan Leaf-style speedometer widget: full width, ~80% height, calibrated controller speed as a huge integer<br/>
 • 🗺️ Auto-switch slow/fast OsmAnd map profiles at a configurable speedometer threshold<br/>
 • 🔋 Telemetry fields: charge used (Ah), strong cell, imbalance between strong and weak cells; trip history stores used Ah<br/>
@@ -1274,7 +1273,7 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_widget_hike">Hike</string>
     <string name="ev_bms_widget_hike_desc">Turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins. Keeps BMS range, GPS and telemetry every 5 s with a slower BLE poll.</string>
     <string name="ev_bms_widget_speedometer">Speedometer HUD</string>
-    <string name="ev_bms_widget_speedometer_desc">Full-screen transparent arc over the map. Add it to the Top panel (Bottom also works). It does not take panel space. On the fast map profile the HUD stays on even when stopped. On other profiles it stays hidden below the HUD speed threshold. Limits are in EV-Telemetry settings → Anti-speeding HUD.</string>
+    <string name="ev_bms_widget_speedometer_desc">Full-screen transparent arc over the map. Add it to the Top panel (Bottom also works). It does not take panel space. While this widget is on the current profile the HUD stays on, including when stopped. Remove it from a profile to keep that map clean. Color limits are in EV-Telemetry settings → Anti-speeding HUD.</string>
     <string name="ev_bms_speedometer_gps">GPS</string>
     <string name="ev_bms_speed_profile">Map profiles by speed</string>
     <string name="ev_bms_speed_profile_auto">Auto-switch map profiles</string>

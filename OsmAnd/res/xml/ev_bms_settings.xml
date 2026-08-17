@@ -84,11 +84,6 @@
 		android:title="@string/ev_bms_hud" />
 
 	<net.osmand.plus.settings.preferences.ListPreferenceEx
-		android:key="ev_bms_hud_show_kmh"
-		android:layout="@layout/ev_bms_preference_with_descr"
-		android:title="@string/ev_bms_hud_show" />
-
-	<net.osmand.plus.settings.preferences.ListPreferenceEx
 		android:key="ev_bms_hud_limit1_kmh"
 		android:layout="@layout/ev_bms_preference_with_descr"
 		android:title="@string/ev_bms_hud_limit1" />

@@ -103,7 +103,7 @@ class EvSpeedometerHudView @JvmOverloads constructor(
 		trackPaint.strokeWidth = stroke * 0.42f
 		canvas.drawArc(arcBounds, START_ANGLE, SWEEP_ANGLE, false, trackPaint)
 
-		val fillSweep = SWEEP_ANGLE * (speedKmh / (buffer2Kmh * 1.15f)).coerceIn(0.04f, 1f)
+		val fillSweep = SWEEP_ANGLE * (speedKmh / (buffer2Kmh * 1.15f)).coerceIn(0.08f, 1f)
 		arcPaint.strokeWidth = stroke
 		arcPaint.pathEffect = if (zone == Zone.STRIPE) stripeEffect else null
 		arcPaint.color = zoneColor(zone)
@@ -112,7 +112,7 @@ class EvSpeedometerHudView @JvmOverloads constructor(
 
 		val cx = w * 0.5f
 		val baseline = h - dp(28f)
-		textPaint.textSize = min(w, h) * 0.07f
+		textPaint.textSize = min(w, h) * 0.09f
 		unitPaint.textSize = textPaint.textSize * 0.38f
 		canvas.drawText(speedKmh.roundToInt().toString(), cx, baseline, textPaint)
 		canvas.drawText("km/h", cx, baseline + unitPaint.textSize * 1.15f, unitPaint)
@@ -162,7 +162,7 @@ class EvSpeedometerHudView @JvmOverloads constructor(
 	companion object {
 		private const val START_ANGLE = 150f
 		private const val SWEEP_ANGLE = 240f
-		private const val TRACK_COLOR = 0x33FFFFFF
+		private const val TRACK_COLOR = 0x66FFFFFF
 		private const val COLOR_GREEN = 0xFF00E676.toInt()
 		private const val COLOR_YELLOW = 0xFFFFEE58.toInt()
 		private const val COLOR_ORANGE = 0xFFFF9100.toInt()

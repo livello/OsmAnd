@@ -1,5 +1,6 @@
 package net.osmand.plus.plugins.evbms
 
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -17,13 +18,8 @@ class EvSpeedometerWidget(
 	widgetsPanel: WidgetsPanel?
 ) : MapWidget(mapActivity, WidgetType.EV_SPEEDOMETER, customId, widgetsPanel) {
 
-	companion object {
-		private const val HIDE_HYSTERESIS_KMH = 5.0
-	}
-
 	private val plugin = PluginsHelper.requirePlugin(EvBmsPlugin::class.java)
 	private var hudView: EvSpeedometerHudView? = null
-	private var hudVisible = false
 
 	override fun getLayoutId(): Int = R.layout.ev_speedometer_widget
 
@@ -56,21 +52,10 @@ class EvSpeedometerWidget(
 	override fun supportsPanelRowDivider(): Boolean = false
 
 	override fun updateInfo(view: View, drawSettings: DrawSettings?) {
-		attachHud()
-		val hud = hudView ?: return
+		val hud = attachHud() ?: return
 		val speed = plugin.speedometerReading()?.kmh ?: 0.0
-		if (plugin.isFastSpeedProfile()) {
-			hudVisible = true
-		} else {
-			val showAt = plugin.HUD_SHOW_KMH.get().toDouble()
-			val hideAt = (showAt - HIDE_HYSTERESIS_KMH).coerceAtLeast(0.0)
-			hudVisible = if (hudVisible) speed >= hideAt else speed >= showAt
-		}
-		if (!hudVisible) {
-			hud.visibility = View.GONE
-			return
-		}
 		hud.visibility = View.VISIBLE
+		hud.bringToFront()
 		hud.updateHud(
 			speed.toFloat(),
 			plugin.speedometerHudZone(speed),
@@ -79,26 +64,43 @@ class EvSpeedometerWidget(
 		)
 	}
 
-	private fun attachHud() {
-		if (hudView?.parent != null) {
-			return
+	private fun attachHud(): EvSpeedometerHudView? {
+		val existing = hudView
+		if (existing != null) {
+			if (existing.isAttachedToWindow) {
+				return existing
+			}
+			(existing.parent as? ViewGroup)?.removeView(existing)
+			hudView = null
 		}
-		val host = mapActivity.findViewById<ViewGroup>(R.id.map_hud_layout) ?: return
+		val host = findHudHost() ?: return null
+		host.clipChildren = false
+		host.clipToPadding = false
 		val hud = EvSpeedometerHudView(mapActivity)
 		hud.layoutParams = FrameLayout.LayoutParams(
 			ViewGroup.LayoutParams.MATCH_PARENT,
-			ViewGroup.LayoutParams.MATCH_PARENT
+			ViewGroup.LayoutParams.MATCH_PARENT,
+			Gravity.FILL
 		)
-		hud.visibility = View.GONE
-		hud.elevation = 24f
+		hud.visibility = View.VISIBLE
+		hud.elevation = 32f
+		hud.isClickable = false
+		hud.isFocusable = false
 		host.addView(hud)
+		hud.bringToFront()
 		hudView = hud
+		return hud
+	}
+
+	private fun findHudHost(): ViewGroup? {
+		mapActivity.findViewById<ViewGroup>(R.id.map_hud_layout)?.let { return it }
+		(mapActivity.findViewById<View>(R.id.map_hud_container)?.parent as? ViewGroup)?.let { return it }
+		return mapActivity.findViewById(android.R.id.content)
 	}
 
 	private fun detachHud() {
 		val hud = hudView ?: return
 		(hud.parent as? ViewGroup)?.removeView(hud)
 		hudView = null
-		hudVisible = false
 	}
 }

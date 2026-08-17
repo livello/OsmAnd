@@ -2510,12 +2510,20 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	}
 
 	fun isFastSpeedProfile(): Boolean {
-		val key = SPEED_PROFILE_FAST.get()
-		if (key.isNullOrEmpty()) {
-			return false
-		}
-		val fast = ApplicationMode.valueOfStringKey(key, null) ?: return false
+		val fast = modeFromPref(SPEED_PROFILE_FAST.get()) ?: return false
 		return settings.applicationMode == fast
+	}
+
+	private fun modeFromPref(key: String?): ApplicationMode? {
+		val raw = key?.trim().orEmpty()
+		if (raw.isEmpty()) {
+			return null
+		}
+		ApplicationMode.valueOfStringKey(raw, null)?.let { return it }
+		return ApplicationMode.values(app).firstOrNull { mode ->
+			mode.stringKey.equals(raw, ignoreCase = true) ||
+				mode.toHumanString().equals(raw, ignoreCase = true)
+		}
 	}
 
 	private fun tickSpeedProfileSwitch() {
@@ -2524,8 +2532,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			speedProfileSinceMs = 0L
 			return
 		}
-		val slow = ApplicationMode.valueOfStringKey(SPEED_PROFILE_SLOW.get(), null) ?: return
-		val fast = ApplicationMode.valueOfStringKey(SPEED_PROFILE_FAST.get(), null) ?: return
+		val slow = modeFromPref(SPEED_PROFILE_SLOW.get()) ?: return
+		val fast = modeFromPref(SPEED_PROFILE_FAST.get()) ?: return
 		if (slow == fast) {
 			return
 		}

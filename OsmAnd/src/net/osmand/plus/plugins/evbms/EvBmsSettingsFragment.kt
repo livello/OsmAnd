@@ -229,7 +229,6 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		decorate(plugin.SPEED_PROFILE_KMH.id, "🎚️", R.drawable.ic_action_speed)
 		decorate(plugin.SPEED_PROFILE_SLOW.id, "🐢", R.drawable.ic_action_map_style)
 		decorate(plugin.SPEED_PROFILE_FAST.id, "🏁", R.drawable.ic_action_map_style)
-		decorate(plugin.HUD_SHOW_KMH.id, "👁️", R.drawable.ic_action_speed)
 		decorate(plugin.HUD_LIMIT1_KMH.id, "🟢", R.drawable.ic_action_speed)
 		decorate(plugin.HUD_BUFFER1_KMH.id, "🟡", R.drawable.ic_action_speed)
 		decorate(plugin.HUD_LIMIT2_KMH.id, "🟠", R.drawable.ic_action_speed)
@@ -486,11 +485,6 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 	}
 
 	private fun setupHudLimits() {
-		setupHudKmh(
-			plugin.HUD_SHOW_KMH.id,
-			plugin.HUD_SHOW_KMH.get(),
-			R.string.ev_bms_hud_show_desc
-		)
 		setupHudKmh(
 			plugin.HUD_LIMIT1_KMH.id,
 			plugin.HUD_LIMIT1_KMH.get(),
@@ -942,8 +936,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		) {
 			setupSpeedProfile()
 		}
-		if (prefId == plugin.HUD_SHOW_KMH.id ||
-			prefId == plugin.HUD_LIMIT1_KMH.id ||
+		if (prefId == plugin.HUD_LIMIT1_KMH.id ||
 			prefId == plugin.HUD_BUFFER1_KMH.id ||
 			prefId == plugin.HUD_LIMIT2_KMH.id ||
 			prefId == plugin.HUD_BUFFER2_KMH.id
