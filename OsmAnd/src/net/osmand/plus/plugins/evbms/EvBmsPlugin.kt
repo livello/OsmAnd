@@ -111,6 +111,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		const val RANGE_SOURCE_10KM = "rolling_10km"
 		const val RANGE_SOURCE_5MIN = "window_5min"
 		const val RANGE_SOURCE_PNZ = "pnz"
+		const val SESSION_IDLE = "idle"
 		const val SESSION_RECORDING = "recording"
 		const val SESSION_PAUSED = "paused"
 	}
@@ -2972,6 +2973,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			WidgetType.EV_BMS_SOC -> EvBmsTextWidget.Field.SOC
 			WidgetType.EV_BMS_RANGE -> EvBmsTextWidget.Field.RANGE
 			WidgetType.EV_BMS_RANGE_WINDOW -> EvBmsTextWidget.Field.RANGE_WINDOW
+			WidgetType.EV_BMS_RANGE_PNZ -> EvBmsTextWidget.Field.RANGE_PNZ
 			WidgetType.EV_RANGE_RESERVE -> EvBmsTextWidget.Field.RANGE_RESERVE
 			WidgetType.EV_BMS_CONSUMPTION -> EvBmsTextWidget.Field.CONSUMPTION
 			WidgetType.EV_FAR_TRIP -> EvBmsTextWidget.Field.FAR_TRIP

@@ -965,7 +965,7 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 
 	private fun visibleIf(show: Boolean): Int = if (show) View.VISIBLE else View.GONE
 
-	private fun rebuildBottomButtons() {
+	fun rebuildBottomButtons() {
 		val parent = buttonsParent ?: return
 		buttonsBar?.let { parent.removeView(it) }
 		val contentPadding = getDimensionPixelSize(R.dimen.content_padding)
@@ -993,7 +993,7 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		if (paused) {
 			TripRecordingBottomSheet.createItem(app, nightMode, centerButton, ItemType.STOP, true, null)
 			centerButton.setOnClickListener {
-				confirmAction(R.string.shared_string_stop, R.string.ev_bms_confirm_record_stop) {
+				confirmAction(R.string.shared_string_control_stop, R.string.ev_bms_confirm_record_stop) {
 					plugin.stopTelemetryRecording()
 					refreshRecordingPref()
 					rebuildBottomButtons()

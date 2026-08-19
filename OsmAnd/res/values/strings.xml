@@ -1260,6 +1260,8 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_widget_range_desc">Remaining energy divided by average Wh/km over the last 10 km</string>
     <string name="ev_bms_widget_range_window">Range (5 min)</string>
     <string name="ev_bms_widget_range_window_desc">Remaining energy divided by average Wh/km over the last 5 minutes</string>
+    <string name="ev_bms_widget_range_pnz">Range on charge (DOC)</string>
+    <string name="ev_bms_widget_range_pnz_desc">Remaining energy divided by average Wh/km of the current distance on charge</string>
     <string name="ev_bms_range_for_reserve">Range for reserve</string>
     <string name="ev_bms_range_for_reserve_desc">Which remaining-range estimate is used for range reserve, route shortfall and stop announcements</string>
     <string name="ev_bms_confirm_record_start">Start telemetry recording and reset live range, energy and distance-on-charge?</string>

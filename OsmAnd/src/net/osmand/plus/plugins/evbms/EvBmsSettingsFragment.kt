@@ -726,7 +726,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			arrayOf(
 				getString(R.string.ev_bms_widget_range),
 				getString(R.string.ev_bms_widget_range_window),
-				getString(R.string.ev_bms_field_range_pnz)
+				getString(R.string.ev_bms_widget_range_pnz)
 			)
 		)
 		pref.setEntryValues(
@@ -921,6 +921,24 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 				newValue as? Boolean ?: plugin.FILTER_CTRL_ODO.get()
 			return result
 		}
+		if (preference.key == plugin.RECORD_TELEMETRY.id) {
+			val enable = newValue as? Boolean ?: return false
+			if (enable == plugin.hasTelemetrySession()) {
+				return true
+			}
+			val title = if (enable) R.string.ev_bms_record_telemetry else R.string.shared_string_control_stop
+			val message = if (enable) R.string.ev_bms_confirm_record_start else R.string.ev_bms_confirm_record_stop
+			confirmAction(title, message) {
+				if (enable) {
+					plugin.startTelemetryRecording()
+				} else {
+					plugin.stopTelemetryRecording()
+				}
+				refreshRecordingPref()
+				(parentFragment as? EvBmsSettingsBottomSheet)?.rebuildBottomButtons()
+			}
+			return false
+		}
 		return super.onPreferenceChange(preference, newValue)
 	}
 
@@ -994,6 +1012,16 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		return super.onPreferenceClick(preference)
 	}
 
+	private fun confirmAction(titleRes: Int, messageRes: Int, onYes: () -> Unit) {
+		val activity = activity ?: return
+		AlertDialog.Builder(activity)
+			.setTitle(titleRes)
+			.setMessage(messageRes)
+			.setNegativeButton(R.string.shared_string_cancel, null)
+			.setPositiveButton(R.string.shared_string_yes) { _, _ -> onYes() }
+			.show()
+	}
+
 	override fun onDisplayPreferenceDialog(preference: Preference) {
 		if (preference.key == plugin.USE_ROUTE_PROFILE.id) {
 			val manager: FragmentManager = fragmentManager ?: return
@@ -1025,8 +1053,11 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		if (prefId == plugin.BMS_PASSWORD.id) {
 			setupJbdPassword()
 		}
+		if (prefId == plugin.RANGE_FOR_RESERVE.id) {
+			setupRangeForReserve()
+		}
 		if (prefId == plugin.RECORD_TELEMETRY.id) {
-			plugin.applyHikeTelemetryState()
+			refreshRecordingPref()
 		}
 		if (prefId == plugin.RECORD_GPX.id) {
 			plugin.restartTelemetryIfRecording()

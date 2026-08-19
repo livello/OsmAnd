@@ -4760,6 +4760,8 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
     <string name="ev_bms_widget_range_desc">Остаток энергии, делённый на средний Вт·ч/км за последние 10 км</string>
     <string name="ev_bms_widget_range_window">Запас (5 мин)</string>
     <string name="ev_bms_widget_range_window_desc">Остаток энергии, делённый на средний Вт·ч/км за последние 5 минут</string>
+    <string name="ev_bms_widget_range_pnz">Запас хода ПНЗ</string>
+    <string name="ev_bms_widget_range_pnz_desc">Остаток энергии, делённый на средний Вт·ч/км текущего пробега на заряде</string>
     <string name="ev_bms_range_for_reserve">Запас хода для резерва хода</string>
     <string name="ev_bms_range_for_reserve_desc">Какой запас хода использовать для резерва, сравнения с маршрутом и оповещений на остановке</string>
     <string name="ev_bms_confirm_record_start">Начать запись телеметрии и сбросить живой запас хода, расход и пробег на заряде?</string>
