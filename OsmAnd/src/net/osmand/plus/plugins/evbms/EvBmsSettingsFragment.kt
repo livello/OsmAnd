@@ -1168,7 +1168,9 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		val themed = UiUtilities.getThemedContext(activity, isNightMode())
 		val text = buildHistoryText(themed) { buf ->
 			for (row in rows) {
-				buf.append(fmtDateTime(row.startMs)).append(" → ").append(fmtTime(row.endMs)).append('\n')
+				buf.append(fmtDateTime(row.startMs)).append(" → ").append(
+					if (row.isOpen()) getString(R.string.ev_bms_history_charging_now) else fmtTime(row.endMs)
+				).append('\n')
 				buf.append(getString(R.string.ev_bms_history_duration, fmtDuration(row.durationMs()))).append('\n')
 				buf.append(getString(R.string.ev_bms_history_temp, n(row.startTempC), n(row.endTempC))).append('\n')
 				buf.append(getString(R.string.ev_bms_history_charged_ah, n(row.chargedAh))).append("\n\n")

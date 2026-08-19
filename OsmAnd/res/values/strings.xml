@@ -968,7 +968,7 @@ You will be able to pair this scanner again at any time.</string>
 • Settings show 🟢 / 🔴, name, MAC, RSSI and ↑TX / ↓RX packet counts, refreshed every second.<br/>
 • After a drop, both BLE links retry on their own (backoff, scan-then-connect). A live BMS GATT is not torn down just because UART telemetry is silent.<br/><br/>
 <b>📊 Widgets</b><br/>
-• 🔋 SOC (auto-calibrated from min cell voltage per BMS MAC), pack voltage, pack current, min cell, battery temperature.<br/>
+• 🔋 SOC from remaining Ah / full Ah (BMS coulomb count). Voltage-based SOC is a separate field.<br/>
 • 📏 Remaining range, 📊 total consumption (Wh) and specific consumption (Wh/km).<br/>
 • 🛣️ Range reserve — remaining range minus remaining route. Positive means extra kilometers.<br/>
 • 🔌 Distance on charge — starts with motion while telemetry recording is on, resets when a real charge begins.<br/>
@@ -998,12 +998,12 @@ A line graph for every selected numeric field. ⏸️ / ▶️ pauses drawing an
 <b>📋 History</b><br/>
 Charge sessions: duration, Ah from the BMS, start/end battery temperature, weak-cell voltage at start and end, and stop time (from motion stop until motion and discharge after the charge actually ended). 📈 opens a collapsed chart of charge current, temperature, min and max cell voltage — computed once from recorded telemetry and stored.<br/>
 Distance-on-charge rides: distance, charge used (Ah), total and specific consumption, start/end pack voltage, average moving speed, stop time, battery and motor temperatures. 📈 opens power, Wh/km, motor temperature and min cell voltage. 🗑️ deletes a row and its chart.<br/>
-A new charge cannot start until you have ridden and used battery past the thresholds in settings; BLE drop-outs no longer split one charge into many.<br/><br/>
+Charge sessions appear in history as soon as charging starts (shown as in progress) and close only after charge current stops and the vehicle has moved about 1 km.<br/>
 <b>🔌 Distance on charge</b><br/>
 Counts as soon as the vehicle starts moving with telemetry recording on. GPS, controller odometer or OsmAnd trip recording supply the distance. Optional filter caps GPS distance at the controller odometer (with calibration) times 100–150 percent. The counter resets to zero when a real charge cycle starts (standstill, positive BMS current into the pack, and near-zero controller current). While charging it stays at 0. A dash means recording is off or motion has not started yet.<br/><br/>
 <b>📏 Remaining range</b><br/>
-Energy used versus distance over a rolling 5-minute window. Distance prefers GPS. If GPS jumps, accuracy is worse than 40 m, or implied speed is above 160 km/h, the controller odometer is used instead. Range samples about once a second even when BLE is polled faster.<br/>
-Coverage Wh/km is the most conservative of: the 5-minute window, the trip average, controller average Wh/km, and the 80th percentile of recent segments. Remaining energy is remaining Ah × rest pack voltage, then reduced by:<br/>
+Primary range (widget) is remaining energy divided by trip-average Wh/km after about 2 km, smoothed so it cannot jump by tens of kilometres at once. Extra fields: 5-minute window, trip average, and Ah/km. Distance uses GPS, then controller odometer (ignoring wrap/reset), then speed×time. Total consumption (Wh) is the integral of charge used × pack voltage, including standing still.<br/>
+Remaining energy is remaining Ah × rest pack voltage, then reduced by:<br/>
 • Weak cell: rest min cell between 3.00 V (cutoff) and 3.50 V, compared with remaining Ah.<br/>
 • Temperature: full above 20 °C, down to about 50 percent in frost.<br/>
 Optional route profile adds climb energy and credits 55 percent of descent regen for the combined vehicle and driver mass from settings.<br/><br/>
@@ -1018,7 +1018,7 @@ Remaining range minus remaining navigation distance. Speak the current value whe
 • 🔥 Motor heating — default 90 °C from the controller.<br/>
 • 🥵 Battery overheating — default 50 °C, hottest BMS sensor.<br/>
 • ❄️ Battery freezing — default 0 °C, coldest BMS sensor.<br/>
-• ⏳ Time to full while charging.<br/>
+• ⏳ Time to full while charging: every 30 min if more than 2 h left, every 15 min between 30 min and 2 h, every 5 min under 30 min.<br/>
 • 📡 Link loss and restore for BMS and controller, after a short hold so brief drop-outs do not chatter.<br/>
 Temperature and cell alerts speak only while that BLE link is up and telemetry is fresh (a few seconds). Stale values after a drop-out are ignored.<br/><br/>
 <b>💾 CSV / GPX</b><br/>
@@ -1189,7 +1189,12 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_voice_charge_done">Charge complete</string>
     <string name="ev_bms_charge_history">Charge history</string>
     <string name="ev_bms_trip_history">Distance on charge history</string>
+    <string name="ev_bms_history_charging_now">charging now</string>
     <string name="ev_bms_history_count">%1$d records</string>
+    <string name="ev_bms_field_soc_ocv">Voltage SOC</string>
+    <string name="ev_bms_field_range_window">Range (5 min)</string>
+    <string name="ev_bms_field_range_trip">Range (trip avg)</string>
+    <string name="ev_bms_field_range_ah">Range (Ah/km)</string>
     <string name="ev_bms_history_empty">No records yet</string>
     <string name="ev_bms_history_duration">Duration %1$s</string>
     <string name="ev_bms_history_temp">Battery temperature %1$s → %2$s °C</string>
@@ -1251,9 +1256,9 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_voice_controller">Controller %1$d</string>
     <string name="ev_bms_voice_batt_ctrl">Battery %1$d, controller %2$d</string>
     <string name="ev_bms_widget_soc">Battery SOC</string>
-    <string name="ev_bms_widget_soc_desc">Calibrated state of charge from min cell voltage, per BMS MAC</string>
+    <string name="ev_bms_widget_soc_desc">State of charge from remaining Ah divided by full capacity (BMS coulomb count)</string>
     <string name="ev_bms_widget_range">Remaining range</string>
-    <string name="ev_bms_widget_range_desc">Estimated remaining range from GPS or controller distance and 5-minute average Wh/km</string>
+    <string name="ev_bms_widget_range_desc">Primary range from remaining energy and trip-average Wh/km, smoothed. Extra estimates: 5-minute window, trip, Ah/km</string>
     <string name="ev_bms_widget_range_reserve">Range reserve</string>
     <string name="ev_bms_widget_range_reserve_desc">Remaining range minus remaining route. Positive means extra kilometers</string>
     <string name="ev_bms_field_stop_time">Stop time</string>
@@ -1263,7 +1268,7 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_chart_move_end">Move to end</string>
     <string name="ev_bms_chart_actions">Chart actions: %1$s</string>
     <string name="ev_bms_widget_consumption">Total consumption</string>
-    <string name="ev_bms_widget_consumption_desc">Energy used on this charge trip, in watt-hours</string>
+    <string name="ev_bms_widget_consumption_desc">Integral of charge used times pack voltage on this charge trip, in watt-hours</string>
     <string name="ev_bms_widget_far_trip">Controller trip</string>
     <string name="ev_bms_widget_far_trip_desc">Trip distance from the motor controller odometer</string>
     <string name="ev_bms_widget_charge_trip">Distance on charge</string>

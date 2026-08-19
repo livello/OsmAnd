@@ -268,7 +268,7 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			spannable.append(emoji)
 			spannable.append(' ')
 			spannable.append(baseTitle)
-			spannable.setSpan(RelativeSizeSpan(0.55f), 0, emoji.length, SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE)
+			spannable.setSpan(RelativeSizeSpan(1.25f), 0, emoji.length, SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE)
 			titleView.text = spannable
 		} else {
 			titleView.text = baseTitle
@@ -588,7 +588,11 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	): View {
 		val item = inflater.inflate(R.layout.ev_bms_history_row, list, false)
 		item.findViewById<TextView>(R.id.title).text = historyHtml(
-			"🔌 ${fmtDateTime(row.startMs)} → ${fmtTime(row.endMs)}"
+			if (row.isOpen()) {
+				"🔌 ${fmtDateTime(row.startMs)} → ${getString(R.string.ev_bms_history_charging_now)}"
+			} else {
+				"🔌 ${fmtDateTime(row.startMs)} → ${fmtTime(row.endMs)}"
+			}
 		)
 		item.findViewById<TextView>(R.id.description).text = historyHtml(
 			buildString {

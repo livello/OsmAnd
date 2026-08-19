@@ -27,12 +27,12 @@ class EvSpeedometerWidget(
 	private val hudHandler = Handler(Looper.getMainLooper())
 	private var hudView: EvSpeedometerHudView? = null
 	private var lastPushMs = 0L
-	private var demoRunning = false
+	private var tickerRunning = false
 
-	private val demoTick = object : Runnable {
+	private val hudTick = object : Runnable {
 		override fun run() {
 			pushHud(force = true)
-			if (demoRunning) {
+			if (tickerRunning) {
 				hudHandler.postDelayed(this, plugin.hudFrameIntervalMs())
 			}
 		}
@@ -55,6 +55,7 @@ class EvSpeedometerWidget(
 		placeholder.visibility = View.GONE
 		container.addView(placeholder)
 		attachHud()
+		startHudTicker()
 	}
 
 	override fun detachView(
@@ -62,7 +63,7 @@ class EvSpeedometerWidget(
 		widgets: MutableList<MapWidgetInfo>,
 		mode: ApplicationMode
 	) {
-		setDemoRunning(false)
+		stopHudTicker()
 		detachHud()
 		super.detachView(widgetsPanel, widgets, mode)
 	}
@@ -70,30 +71,27 @@ class EvSpeedometerWidget(
 	override fun supportsPanelRowDivider(): Boolean = false
 
 	override fun updateInfo(view: View, drawSettings: DrawSettings?) {
-		val demo = plugin.HUD_DEMO.get()
-		setDemoRunning(demo)
-		if (!demo) {
-			pushHud(force = false)
-		}
+		startHudTicker()
+		pushHud(force = false)
 	}
 
-	private fun setDemoRunning(on: Boolean) {
-		if (on) {
-			if (demoRunning) {
-				return
-			}
-			demoRunning = true
-			hudHandler.removeCallbacks(demoTick)
-			hudHandler.post(demoTick)
-		} else if (demoRunning) {
-			demoRunning = false
-			hudHandler.removeCallbacks(demoTick)
+	private fun startHudTicker() {
+		if (tickerRunning) {
+			return
 		}
+		tickerRunning = true
+		hudHandler.removeCallbacks(hudTick)
+		hudHandler.post(hudTick)
+	}
+
+	private fun stopHudTicker() {
+		tickerRunning = false
+		hudHandler.removeCallbacks(hudTick)
 	}
 
 	private fun pushHud(force: Boolean) {
 		if (mapActivity.isFinishing || mapActivity.isDestroyed) {
-			setDemoRunning(false)
+			stopHudTicker()
 			return
 		}
 		val now = SystemClock.elapsedRealtime()
@@ -202,7 +200,7 @@ class EvSpeedometerWidget(
 	}
 
 	private fun detachHud() {
-		hudHandler.removeCallbacks(demoTick)
+		hudHandler.removeCallbacks(hudTick)
 		val hud = hudView ?: return
 		hud.clearVisuals()
 		(hud.parent as? ViewGroup)?.removeView(hud)

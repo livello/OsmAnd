@@ -38,7 +38,12 @@ class EvHistoryStore(private val app: OsmandApplication) {
 		val endLat: Double?,
 		val endLon: Double?
 	) {
-		fun durationMs(): Long = (endMs - startMs).coerceAtLeast(0L)
+		fun durationMs(): Long {
+			val end = if (endMs > 0L) endMs else System.currentTimeMillis()
+			return (end - startMs).coerceAtLeast(0L)
+		}
+
+		fun isOpen(): Boolean = endMs <= 0L
 
 		fun toJson(): JSONObject {
 			return JSONObject()

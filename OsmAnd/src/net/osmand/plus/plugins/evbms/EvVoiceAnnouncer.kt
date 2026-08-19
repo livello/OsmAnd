@@ -55,7 +55,7 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 	private var announcedBmsLost = false
 	private var announcedCtrlLost = false
 	private var lastChargeEtaMs = 0L
-	private var lastChargeEtaBucket = -1
+	private var lastChargeEtaSpokenMs: Long? = null
 	private var chargeEtaActive = false
 	private var lastChargeSoc: Int? = null
 	private var lastSpokenChargeTempC: Double? = null
@@ -104,7 +104,7 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 		announcedBmsLost = false
 		announcedCtrlLost = false
 		chargeEtaActive = false
-		lastChargeEtaBucket = -1
+		lastChargeEtaSpokenMs = null
 	}
 
 	fun onLink(
@@ -484,34 +484,34 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 		return parts.joinToString(". ")
 	}
 
-	fun onChargeEta(remainingMs: Long?, intervalMs: Long, enabled: Boolean) {
-		if (!enabled || remainingMs == null) {
+	fun onChargeEta(remainingMs: Long?, enabled: Boolean) {
+		if (!enabled) {
 			chargeEtaActive = false
-			lastChargeEtaBucket = -1
+			lastChargeEtaSpokenMs = null
 			return
 		}
-		val minutes = ((remainingMs + 59_999L) / 60_000L).toInt().coerceAtLeast(0)
-		val bucket = when {
-			minutes > 60 -> 4
-			minutes > 30 -> 3
-			minutes > 10 -> 2
-			minutes > 5 -> 1
-			else -> 0
+		if (remainingMs != null && remainingMs >= 0L) {
+			lastChargeEtaSpokenMs = remainingMs
 		}
+		val eta = remainingMs ?: lastChargeEtaSpokenMs ?: return
+		val intervalMs = when {
+			eta > 2 * 3_600_000L -> 30 * 60_000L
+			eta >= 30 * 60_000L -> 15 * 60_000L
+			else -> 5 * 60_000L
+		}
+		val minutes = ((eta + 59_999L) / 60_000L).toInt().coerceAtLeast(0)
 		val now = System.currentTimeMillis()
 		val first = !chargeEtaActive
-		val crossed = lastChargeEtaBucket >= 0 && bucket < lastChargeEtaBucket
 		chargeEtaActive = true
-		if (first || crossed || now - lastChargeEtaMs >= intervalMs) {
+		if (first || now - lastChargeEtaMs >= intervalMs) {
 			lastChargeEtaMs = now
-			lastChargeEtaBucket = bucket
 			speak(formatChargeEta(minutes))
 		}
 	}
 
 	fun onChargeFinished() {
 		chargeEtaActive = false
-		lastChargeEtaBucket = -1
+		lastChargeEtaSpokenMs = null
 		lastChargeSoc = null
 		lastSpokenChargeTempC = null
 		speak(app.getString(R.string.ev_bms_voice_charge_done))
