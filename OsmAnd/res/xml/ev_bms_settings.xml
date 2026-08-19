@@ -430,6 +430,11 @@
 		android:layout="@layout/ev_bms_preference_category_divider"
 		android:title="@string/ev_bms_range_settings" />
 
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="ev_bms_range_for_reserve"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:title="@string/ev_bms_range_for_reserve" />
+
 	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
 		android:key="ev_bms_use_route_profile"
 		android:layout="@layout/ev_bms_preference_switch"

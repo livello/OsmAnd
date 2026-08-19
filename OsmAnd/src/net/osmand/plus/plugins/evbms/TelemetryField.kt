@@ -24,8 +24,7 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 	CELL_IMBALANCE("cell_imbalance_v", R.string.ev_bms_field_cell_imbalance, R.string.ev_bms_field_group_battery, "⚖️"),
 	RANGE("range_km", R.string.ev_bms_field_range, R.string.ev_bms_field_group_battery, "📏"),
 	RANGE_WINDOW("range_window_km", R.string.ev_bms_field_range_window, R.string.ev_bms_field_group_ride, "📏"),
-	RANGE_TRIP("range_trip_km", R.string.ev_bms_field_range_trip, R.string.ev_bms_field_group_ride, "📏"),
-	RANGE_AH("range_ah_km", R.string.ev_bms_field_range_ah, R.string.ev_bms_field_group_ride, "📏"),
+	RANGE_PNZ("range_pnz_km", R.string.ev_bms_field_range_pnz, R.string.ev_bms_field_group_ride, "📏"),
 	CTRL_VOLTAGE("controller_voltage_v", R.string.ev_bms_field_ctrl_voltage, R.string.ev_bms_field_group_controller, "⚡"),
 	CTRL_CURRENT("controller_current_a", R.string.ev_bms_field_ctrl_current, R.string.ev_bms_field_group_controller, "🔌"),
 	POWER("power_w", R.string.ev_bms_widget_power, R.string.ev_bms_field_group_controller, "⚙️"),
@@ -69,8 +68,7 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 			CTRL_TEMP -> n(sample.controllerTempC, "%.1f")
 			RANGE -> n(sample.remainingRangeKm, "%.2f")
 			RANGE_WINDOW -> n(sample.windowRangeKm, "%.2f")
-			RANGE_TRIP -> n(sample.tripRangeKm, "%.2f")
-			RANGE_AH -> n(sample.ahRangeKm, "%.2f")
+			RANGE_PNZ -> n(sample.pnzRangeKm, "%.2f")
 			CONSUMPTION -> n(sample.energyWh, "%.1f")
 			USED_AH -> n(sample.usedAh, "%.3f")
 			COVERAGE -> n(sample.consumptionWhPerKm ?: sample.coverageWhPerKm, "%.1f")
@@ -115,8 +113,7 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 			CTRL_TEMP -> unit(sample.controllerTempC, "%.1f", "°C", empty)
 			RANGE -> unit(sample.remainingRangeKm, "%.1f", "km", empty)
 			RANGE_WINDOW -> unit(sample.windowRangeKm, "%.1f", "km", empty)
-			RANGE_TRIP -> unit(sample.tripRangeKm, "%.1f", "km", empty)
-			RANGE_AH -> unit(sample.ahRangeKm, "%.1f", "km", empty)
+			RANGE_PNZ -> unit(sample.pnzRangeKm, "%.1f", "km", empty)
 			CONSUMPTION -> unit(sample.energyWh, "%.0f", "Wh", empty)
 			USED_AH -> unit(sample.usedAh, "%.2f", "Ah", empty)
 			COVERAGE -> unit(sample.consumptionWhPerKm ?: sample.coverageWhPerKm, "%.0f", "Wh/km", empty)
@@ -159,8 +156,7 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 			CELL_IMBALANCE -> sample.cellImbalanceV?.times(1000.0)
 			RANGE -> sample.remainingRangeKm
 			RANGE_WINDOW -> sample.windowRangeKm
-			RANGE_TRIP -> sample.tripRangeKm
-			RANGE_AH -> sample.ahRangeKm
+			RANGE_PNZ -> sample.pnzRangeKm
 			CTRL_VOLTAGE -> sample.controllerVoltageV
 			CTRL_CURRENT -> sample.controllerCurrentA
 			POWER -> sample.controllerPowerW
@@ -186,7 +182,7 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 		val DEFAULT_IDS = listOf(
 			TIME_MS, LAT, LON, GPS_SPEED, SOC, VOLTAGE, CURRENT,
 			BMS_TEMP, MOTOR_TEMP, CTRL_TEMP, REMAINING_AH, FULL_AH, MIN_CELL,
-			POWER, RANGE, RANGE_TRIP, CONSUMPTION, CHARGE_TRIP
+			POWER, RANGE, RANGE_WINDOW, RANGE_PNZ, CONSUMPTION, CHARGE_TRIP
 		).joinToString(",") { it.id }
 
 		fun parse(raw: String?): List<TelemetryField> {

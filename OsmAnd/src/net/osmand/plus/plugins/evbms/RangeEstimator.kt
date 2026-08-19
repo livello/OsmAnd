@@ -34,7 +34,12 @@ class RangeEstimator(
 		val descentM: Double
 	)
 
+	private data class KmSeg(val dKm: Double, val dWh: Double)
+
 	private val samples = ArrayDeque<Sample>()
+	private val kmWindow = ArrayDeque<KmSeg>()
+	private var kmWindowKm = 0.0
+	private var kmWindowWh = 0.0
 
 	private var tripDistanceKm = 0.0
 	private var tripWh = 0.0
@@ -51,11 +56,7 @@ class RangeEstimator(
 		private set
 
 	@Volatile
-	var tripRangeKm: Double? = null
-		private set
-
-	@Volatile
-	var ahRangeKm: Double? = null
+	var pnzRangeKm: Double? = null
 		private set
 
 	@Volatile
@@ -112,6 +113,9 @@ class RangeEstimator(
 			tripDistanceKm = 0.0
 			tripWh = 0.0
 			tripAh = 0.0
+			kmWindow.clear()
+			kmWindowKm = 0.0
+			kmWindowWh = 0.0
 			smoothedRangeKm = null
 		}
 		lastTripAh = remainingAh
@@ -157,12 +161,18 @@ class RangeEstimator(
 		tripWh = 0.0
 		tripAh = 0.0
 		lastTripAh = null
+		kmWindow.clear()
+		kmWindowKm = 0.0
+		kmWindowWh = 0.0
 		smoothedRangeKm = null
 	}
 
 	@Synchronized
 	fun reset() {
 		samples.clear()
+		kmWindow.clear()
+		kmWindowKm = 0.0
+		kmWindowWh = 0.0
 		tripDistanceKm = 0.0
 		tripWh = 0.0
 		tripAh = 0.0
@@ -170,8 +180,7 @@ class RangeEstimator(
 		smoothedRangeKm = null
 		remainingRangeKm = null
 		windowRangeKm = null
-		tripRangeKm = null
-		ahRangeKm = null
+		pnzRangeKm = null
 		consumptionAhPerKm = null
 		consumptionWhPerKm = null
 		coverageWhPerKm = null
@@ -193,6 +202,18 @@ class RangeEstimator(
 			return
 		}
 		tripDistanceKm += dKm
+		pushKm(dKm, dWh)
+	}
+
+	private fun pushKm(dKm: Double, dWh: Double) {
+		kmWindow.addLast(KmSeg(dKm, dWh))
+		kmWindowKm += dKm
+		kmWindowWh += dWh
+		while (kmWindow.size > 1 && kmWindowKm > ROLLING_KM) {
+			val first = kmWindow.removeFirst()
+			kmWindowKm -= first.dKm
+			kmWindowWh -= first.dWh
+		}
 	}
 
 	private fun trim(nowMs: Long) {
@@ -251,16 +272,18 @@ class RangeEstimator(
 			consumptionWhPerKm = windowWh / distanceKm
 		}
 
-		val tripWhPerKm = if (tripDistanceKm >= TRIP_RANGE_MIN_KM && tripWh > 50.0) {
+		val rollingWhPerKm = if (kmWindowKm >= 1.0 && kmWindowWh > 10.0) {
+			kmWindowWh / kmWindowKm
+		} else {
+			null
+		}
+		val pnzWhPerKm = if (tripDistanceKm >= TRIP_RANGE_MIN_KM && tripWh > 50.0) {
 			tripWh / tripDistanceKm
 		} else {
 			null
 		}
 		val windowWhPerKm = consumptionWhPerKm
-		val ahWhPerKm = consumptionAhPerKm?.let { it * energyVoltageV }?.takeIf { it > 1.0 }
-		val controllerWhPerKm = farAvgWhPerKm?.takeIf { it > 10.0 }
-		val primaryWhPerKm = tripWhPerKm ?: windowWhPerKm ?: ahWhPerKm ?: controllerWhPerKm
-		coverageWhPerKm = primaryWhPerKm
+		coverageWhPerKm = rollingWhPerKm ?: windowWhPerKm ?: pnzWhPerKm
 
 		val cellFactor = weakCellFactor(minCellV, currentRemainingAh, fullAh)
 		weakCellFactor = cellFactor
@@ -284,14 +307,8 @@ class RangeEstimator(
 		}
 
 		windowRangeKm = rangeFrom(windowWhPerKm)
-		tripRangeKm = rangeFrom(tripWhPerKm)
-		ahRangeKm = if (consumptionAhPerKm != null && consumptionAhPerKm!! > 0.01) {
-			(currentRemainingAh * cellFactor * temperatureFactor(batteryTempC) / consumptionAhPerKm!!).coerceAtLeast(0.0)
-		} else {
-			null
-		}
-		val rawPrimary = rangeFrom(primaryWhPerKm) ?: windowRangeKm ?: tripRangeKm ?: ahRangeKm
-		remainingRangeKm = smoothRange(rawPrimary)
+		pnzRangeKm = rangeFrom(pnzWhPerKm)
+		remainingRangeKm = smoothRange(rangeFrom(rollingWhPerKm) ?: rangeFrom(windowWhPerKm))
 	}
 
 	private fun smoothRange(raw: Double?): Double? {
@@ -317,6 +334,7 @@ class RangeEstimator(
 		private const val MIN_JUMP_KM = 0.05
 		private const val MAX_ODO_STEP_KM = 0.08
 		private const val TRIP_RANGE_MIN_KM = 2.0
+		private const val ROLLING_KM = 10.0
 		const val REGEN_EFFICIENCY = 0.55
 		const val MASS_KG = 280.0
 		private const val G = 9.81
@@ -398,8 +416,8 @@ class RangeEstimator(
 			val fromSpeed = speedDistanceKm(prev, cur)
 			return when {
 				fromGps != null -> fromGps
-				fromOdo != null -> fromOdo
 				fromSpeed != null -> fromSpeed
+				fromOdo != null -> fromOdo
 				else -> null
 			}
 		}

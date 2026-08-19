@@ -1002,7 +1002,7 @@ Charge sessions appear in history as soon as charging starts (shown as in progre
 <b>🔌 Distance on charge</b><br/>
 Counts as soon as the vehicle starts moving with telemetry recording on. GPS, controller odometer or OsmAnd trip recording supply the distance. Optional filter caps GPS distance at the controller odometer (with calibration) times 100–150 percent. The counter resets to zero when a real charge cycle starts (standstill, positive BMS current into the pack, and near-zero controller current). While charging it stays at 0. A dash means recording is off or motion has not started yet.<br/><br/>
 <b>📏 Remaining range</b><br/>
-Primary range (widget) is remaining energy divided by trip-average Wh/km after about 2 km, smoothed so it cannot jump by tens of kilometres at once. Extra fields: 5-minute window, trip average, and Ah/km. Distance uses GPS, then controller odometer (ignoring wrap/reset), then speed×time. Total consumption (Wh) is the integral of charge used × pack voltage, including standing still.<br/>
+Primary range (widget) is remaining energy divided by average Wh/km over the last 10 km. A separate widget/field is the 5-minute window. Distance-on-charge range (DOC) uses the current charge-trip average. Settings choose which estimate feeds range reserve and alerts. Distance is integrated from GPS or speed×time and does not use OsmAnd track length or the controller odometer absolute value.<br/>
 Remaining energy is remaining Ah × rest pack voltage, then reduced by:<br/>
 • Weak cell: rest min cell between 3.00 V (cutoff) and 3.50 V, compared with remaining Ah.<br/>
 • Temperature: full above 20 °C, down to about 50 percent in frost.<br/>
@@ -1193,8 +1193,7 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_history_count">%1$d records</string>
     <string name="ev_bms_field_soc_ocv">Voltage SOC</string>
     <string name="ev_bms_field_range_window">Range (5 min)</string>
-    <string name="ev_bms_field_range_trip">Range (trip avg)</string>
-    <string name="ev_bms_field_range_ah">Range (Ah/km)</string>
+    <string name="ev_bms_field_range_pnz">Range on charge (DOC)</string>
     <string name="ev_bms_history_empty">No records yet</string>
     <string name="ev_bms_history_duration">Duration %1$s</string>
     <string name="ev_bms_history_temp">Battery temperature %1$s → %2$s °C</string>
@@ -1258,7 +1257,17 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_widget_soc">Battery SOC</string>
     <string name="ev_bms_widget_soc_desc">State of charge from remaining Ah divided by full capacity (BMS coulomb count)</string>
     <string name="ev_bms_widget_range">Remaining range</string>
-    <string name="ev_bms_widget_range_desc">Primary range from remaining energy and trip-average Wh/km, smoothed. Extra estimates: 5-minute window, trip, Ah/km</string>
+    <string name="ev_bms_widget_range_desc">Remaining energy divided by average Wh/km over the last 10 km</string>
+    <string name="ev_bms_widget_range_window">Range (5 min)</string>
+    <string name="ev_bms_widget_range_window_desc">Remaining energy divided by average Wh/km over the last 5 minutes</string>
+    <string name="ev_bms_range_for_reserve">Range for reserve</string>
+    <string name="ev_bms_range_for_reserve_desc">Which remaining-range estimate is used for range reserve, route shortfall and stop announcements</string>
+    <string name="ev_bms_confirm_record_start">Start telemetry recording and reset live range, energy and distance-on-charge?</string>
+    <string name="ev_bms_confirm_record_pause">Pause telemetry recording?</string>
+    <string name="ev_bms_confirm_record_resume">Resume telemetry recording?</string>
+    <string name="ev_bms_confirm_record_stop">Stop and save telemetry recording?</string>
+    <string name="ev_bms_confirm_cal_start">Start speed calibration against GPS?</string>
+    <string name="ev_bms_confirm_cal_stop">Stop speed calibration?</string>
     <string name="ev_bms_widget_range_reserve">Range reserve</string>
     <string name="ev_bms_widget_range_reserve_desc">Remaining range minus remaining route. Positive means extra kilometers</string>
     <string name="ev_bms_field_stop_time">Stop time</string>

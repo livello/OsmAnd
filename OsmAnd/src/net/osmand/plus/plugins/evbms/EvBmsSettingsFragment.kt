@@ -186,6 +186,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		setupSwitch(plugin.ANNOUNCE_RANGE_RESERVE_LOW.id)
 		setupKmThreshold(plugin.RANGE_RESERVE_SMALL_KM, arrayOf(2, 5, 8, 10, 15, 20))
 		setupKmThreshold(plugin.RANGE_RESERVE_LOW_KM, arrayOf(8, 10, 15, 20, 30, 50))
+		setupRangeForReserve()
 		setupStopSpeed()
 		setupSwitch(plugin.ANNOUNCE_CELL_VOLTAGE.id)
 		setupCellThreshold(plugin.LOW_CELL_MV, arrayOf(3600, 3550, 3500, 3450, 3400))
@@ -274,6 +275,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		decorate(plugin.ANNOUNCE_RANGE_RESERVE_LOW.id, "⛔", R.drawable.ic_action_alert)
 		decorate(plugin.RANGE_RESERVE_SMALL_KM.id, "📉", R.drawable.ic_action_arrow_down)
 		decorate(plugin.RANGE_RESERVE_LOW_KM.id, "📉", R.drawable.ic_action_arrow_down)
+		decorate(plugin.RANGE_FOR_RESERVE.id, "🎯", R.drawable.ic_action_distance)
 		decorate(plugin.STOP_SPEED_KMH.id, "🐢", R.drawable.ic_action_speed)
 		decorate(plugin.ANNOUNCE_CELL_VOLTAGE.id, "⚠️", R.drawable.ic_action_alert)
 		decorate(plugin.LOW_CELL_MV.id, "🔻", R.drawable.ic_action_arrow_down)
@@ -718,6 +720,26 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		pref.setValue(prefHolder.get())
 	}
 
+	private fun setupRangeForReserve() {
+		val pref = findPreference<ListPreferenceEx>(plugin.RANGE_FOR_RESERVE.id) ?: return
+		pref.setEntries(
+			arrayOf(
+				getString(R.string.ev_bms_widget_range),
+				getString(R.string.ev_bms_widget_range_window),
+				getString(R.string.ev_bms_field_range_pnz)
+			)
+		)
+		pref.setEntryValues(
+			arrayOf<Any>(
+				EvBmsPlugin.RANGE_SOURCE_10KM,
+				EvBmsPlugin.RANGE_SOURCE_5MIN,
+				EvBmsPlugin.RANGE_SOURCE_PNZ
+			)
+		)
+		pref.setValue(plugin.RANGE_FOR_RESERVE.get())
+		pref.setDescription(R.string.ev_bms_range_for_reserve_desc)
+	}
+
 	private fun setupRouteProfile() {
 		val pref = findPreference<SwitchPreferenceEx>(plugin.USE_ROUTE_PROFILE.id) ?: return
 		pref.setDescription(R.string.ev_bms_use_route_profile_desc)
@@ -949,13 +971,23 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 				return true
 			}
 			"ev_bms_cal_start" -> {
-				if (plugin.isSpeedCalibrating()) {
-					plugin.stopSpeedCalibration()
-				} else {
-					plugin.startSpeedCalibration()
-				}
-				refreshCalibrationPref()
-				(parentFragment as? EvBmsSettingsBottomSheet)?.onCalibrationTick()
+				val start = !plugin.isSpeedCalibrating()
+				val title = if (start) R.string.ev_bms_cal_start else R.string.ev_bms_calibrate_stop
+				val message = if (start) R.string.ev_bms_confirm_cal_start else R.string.ev_bms_confirm_cal_stop
+				AlertDialog.Builder(activity)
+					.setTitle(title)
+					.setMessage(message)
+					.setNegativeButton(R.string.shared_string_cancel, null)
+					.setPositiveButton(R.string.shared_string_yes) { _, _ ->
+						if (plugin.isSpeedCalibrating()) {
+							plugin.stopSpeedCalibration()
+						} else {
+							plugin.startSpeedCalibration()
+						}
+						refreshCalibrationPref()
+						(parentFragment as? EvBmsSettingsBottomSheet)?.onCalibrationTick()
+					}
+					.show()
 				return true
 			}
 		}

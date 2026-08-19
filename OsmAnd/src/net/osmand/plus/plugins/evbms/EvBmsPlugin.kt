@@ -108,7 +108,9 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		private const val SPEED_PROFILE_HYSTERESIS_KMH = 3.0
 		private const val SPEED_PROFILE_HOLD_MS = 2000L
 		private const val HISTORY_SAMPLE_MIN_MS = 2000L
-		const val SESSION_IDLE = "idle"
+		const val RANGE_SOURCE_10KM = "rolling_10km"
+		const val RANGE_SOURCE_5MIN = "window_5min"
+		const val RANGE_SOURCE_PNZ = "pnz"
 		const val SESSION_RECORDING = "recording"
 		const val SESSION_PAUSED = "paused"
 	}
@@ -181,6 +183,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerIntPreference("ev_bms_range_reserve_small_km", DEFAULT_RESERVE_SMALL_KM).makeGlobal().makeShared()
 	val RANGE_RESERVE_LOW_KM: CommonPreference<Int> =
 		registerIntPreference("ev_bms_range_reserve_low_km", DEFAULT_RESERVE_LOW_KM).makeGlobal().makeShared()
+	val RANGE_FOR_RESERVE: CommonPreference<String> =
+		registerStringPreference("ev_bms_range_for_reserve", RANGE_SOURCE_10KM).makeGlobal().makeShared()
 	val CHARTS_LIVE: CommonPreference<Boolean> =
 		registerBooleanPreference("ev_bms_charts_live", true).makeGlobal().makeShared()
 	val CHART_ORDER: CommonPreference<String> =
@@ -624,24 +628,11 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		if (charging) {
 			return 0.0
 		}
-		if (tripStartMs <= 0L || !hasTelemetrySession()) {
+		if (tripStartMs <= 0L) {
 			return null
 		}
-		val trackM = app.savingTrackHelper.distance
-		var baseline = CHARGE_END_TRACK_M.get()
-		if (trackM + 1f < baseline) {
-			baseline = 0
-			CHARGE_END_TRACK_M.set(0)
-		}
-		val trackKm = (trackM - baseline).coerceAtLeast(0f) / 1000.0
-		val odoKm = chargeTripOdoKm
-		val speedKm = chargeTripSpeedKm
-		val raw = maxOf(trackKm.toDouble(), chargeTripGpsKm, odoKm, speedKm)
-		if (!FILTER_CTRL_ODO.get() || odoKm <= 0.001) {
-			return raw
-		}
-		val excess = CTRL_ODO_EXCESS_PERCENT.get().coerceIn(100, 150) / 100.0
-		return minOf(raw, maxOf(odoKm * excess, speedKm, chargeTripGpsKm))
+		val integrated = maxOf(chargeTripGpsKm, chargeTripOdoKm, chargeTripSpeedKm)
+		return integrated.takeIf { it > 0.0 || hasTelemetrySession() }
 	}
 
 	private fun tripUsedAh(remainingAh: Double?): Double? {
@@ -1600,7 +1591,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		if (!bmsFresh) {
 			return null
 		}
-		val range = rangeEstimator.remainingRangeKm ?: return null
+		val range = selectedRangeKm() ?: return null
 		return EvVoiceAnnouncer.StopReport(
 			rangeKm = range,
 			routeLeftKm = getRouteLeftKm(),
@@ -1668,9 +1659,17 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		return meters / 1000.0
 	}
 
+	fun selectedRangeKm(): Double? {
+		return when (RANGE_FOR_RESERVE.get()) {
+			RANGE_SOURCE_5MIN -> rangeEstimator.windowRangeKm ?: latestTelemetry?.windowRangeKm
+			RANGE_SOURCE_PNZ -> rangeEstimator.pnzRangeKm ?: latestTelemetry?.pnzRangeKm
+			else -> rangeEstimator.remainingRangeKm ?: latestTelemetry?.remainingRangeKm
+		}
+	}
+
 	fun rangeReserveKm(): Double? {
 		val route = getRouteLeftKm() ?: return null
-		val range = rangeEstimator.remainingRangeKm ?: latestTelemetry?.remainingRangeKm ?: return null
+		val range = selectedRangeKm() ?: return null
 		return range - route
 	}
 
@@ -2550,8 +2549,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			controllerTempC = ctrlTempC(),
 			remainingRangeKm = rangeEstimator.remainingRangeKm,
 			windowRangeKm = rangeEstimator.windowRangeKm,
-			tripRangeKm = rangeEstimator.tripRangeKm,
-			ahRangeKm = rangeEstimator.ahRangeKm,
+			pnzRangeKm = rangeEstimator.pnzRangeKm,
 			consumptionAhPerKm = rangeEstimator.consumptionAhPerKm,
 			energyWh = rangeEstimator.tripEnergyWh(),
 			usedAh = tripUsedAh(remainingAh),
@@ -2628,7 +2626,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			ANNOUNCE_RANGE_ON_STOP.get() && bmsFresh
 		)
 		voice.onRangeVsRoute(
-			if (bmsFresh) sample.remainingRangeKm else null,
+			if (bmsFresh) selectedRangeKm() else null,
 			getRouteLeftKm(),
 			ANNOUNCE_RANGE_VS_ROUTE.get() && bmsFresh
 		)
@@ -2973,6 +2971,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		val field = when (widgetType) {
 			WidgetType.EV_BMS_SOC -> EvBmsTextWidget.Field.SOC
 			WidgetType.EV_BMS_RANGE -> EvBmsTextWidget.Field.RANGE
+			WidgetType.EV_BMS_RANGE_WINDOW -> EvBmsTextWidget.Field.RANGE_WINDOW
 			WidgetType.EV_RANGE_RESERVE -> EvBmsTextWidget.Field.RANGE_RESERVE
 			WidgetType.EV_BMS_CONSUMPTION -> EvBmsTextWidget.Field.CONSUMPTION
 			WidgetType.EV_FAR_TRIP -> EvBmsTextWidget.Field.FAR_TRIP
@@ -3248,8 +3247,16 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		if (ok) {
 			RECORD_TELEMETRY.set(true)
 			persistTelemetrySession(SESSION_RECORDING)
+			beginTelemetryCalculations()
 		}
 		return ok
+	}
+
+	private fun beginTelemetryCalculations() {
+		rangeEstimator.reset()
+		if (!chargeSessionOpen && tripStartMs <= 0L) {
+			startTripSession(System.currentTimeMillis(), lastLocation)
+		}
 	}
 
 	fun pauseTelemetryRecording() {

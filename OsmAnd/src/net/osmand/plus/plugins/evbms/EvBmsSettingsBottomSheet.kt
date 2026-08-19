@@ -993,34 +993,52 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		if (paused) {
 			TripRecordingBottomSheet.createItem(app, nightMode, centerButton, ItemType.STOP, true, null)
 			centerButton.setOnClickListener {
-				plugin.stopTelemetryRecording()
-				refreshRecordingPref()
-				rebuildBottomButtons()
+				confirmAction(R.string.shared_string_stop, R.string.ev_bms_confirm_record_stop) {
+					plugin.stopTelemetryRecording()
+					refreshRecordingPref()
+					rebuildBottomButtons()
+				}
 			}
 			TripRecordingBottomSheet.createItemActive(app, nightMode, rightButton, ItemType.RESUME)
 			rightButton.setOnClickListener {
-				plugin.resumeTelemetryRecording()
-				refreshRecordingPref()
-				rebuildBottomButtons()
+				confirmAction(R.string.shared_string_continue, R.string.ev_bms_confirm_record_resume) {
+					plugin.resumeTelemetryRecording()
+					refreshRecordingPref()
+					rebuildBottomButtons()
+				}
 			}
 		} else {
 			bindCalibrateButton(centerButton)
 			if (plugin.isTelemetryRecording()) {
 				TripRecordingBottomSheet.createItem(app, nightMode, rightButton, ItemType.PAUSE, true, null)
 				rightButton.setOnClickListener {
-					plugin.pauseTelemetryRecording()
-					refreshRecordingPref()
-					rebuildBottomButtons()
+					confirmAction(R.string.shared_string_pause, R.string.ev_bms_confirm_record_pause) {
+						plugin.pauseTelemetryRecording()
+						refreshRecordingPref()
+						rebuildBottomButtons()
+					}
 				}
 			} else {
 				TripRecordingBottomSheet.createItemActive(app, nightMode, rightButton, ItemType.START_RECORDING)
 				rightButton.setOnClickListener {
-					plugin.startTelemetryRecording()
-					refreshRecordingPref()
-					rebuildBottomButtons()
+					confirmAction(R.string.ev_bms_record_telemetry, R.string.ev_bms_confirm_record_start) {
+						plugin.startTelemetryRecording()
+						refreshRecordingPref()
+						rebuildBottomButtons()
+					}
 				}
 			}
 		}
+	}
+
+	private fun confirmAction(titleRes: Int, messageRes: Int, onYes: () -> Unit) {
+		val ctx = context ?: return
+		AlertDialog.Builder(ctx)
+			.setTitle(titleRes)
+			.setMessage(messageRes)
+			.setNegativeButton(R.string.shared_string_cancel, null)
+			.setPositiveButton(R.string.shared_string_yes) { _, _ -> onYes() }
+			.show()
 	}
 
 	private fun bindCalibrateButton(button: CardView) {
@@ -1028,17 +1046,21 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			TripRecordingBottomSheet.createItem(app, nightMode, button, ItemType.STOP, true, null)
 			button.findViewById<TextView>(R.id.button_text)?.setText(R.string.ev_bms_calibrate_stop)
 			button.setOnClickListener {
-				plugin.stopSpeedCalibration()
-				refreshCalibrationPref()
-				rebuildBottomButtons()
+				confirmAction(R.string.ev_bms_calibrate_stop, R.string.ev_bms_confirm_cal_stop) {
+					plugin.stopSpeedCalibration()
+					refreshCalibrationPref()
+					rebuildBottomButtons()
+				}
 			}
 		} else {
 			TripRecordingBottomSheet.createItem(app, nightMode, button, ItemType.START_NEW_SEGMENT, true, null)
 			button.findViewById<TextView>(R.id.button_text)?.setText(R.string.ev_bms_calibrate)
 			button.setOnClickListener {
-				plugin.startSpeedCalibration()
-				refreshCalibrationPref()
-				rebuildBottomButtons()
+				confirmAction(R.string.ev_bms_calibrate, R.string.ev_bms_confirm_cal_start) {
+					plugin.startSpeedCalibration()
+					refreshCalibrationPref()
+					rebuildBottomButtons()
+				}
 			}
 		}
 	}

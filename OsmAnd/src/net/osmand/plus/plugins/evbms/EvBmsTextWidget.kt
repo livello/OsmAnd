@@ -30,7 +30,7 @@ class EvBmsTextWidget(
 ) : SimpleWidget(mapActivity, widgetType, customId, widgetsPanel) {
 
 	enum class Field {
-		SOC, RANGE, RANGE_RESERVE, CONSUMPTION, FAR_TRIP, CHARGE_TRIP, CHARGE_ETA, CHARGE_TIME, CHARGE_ENERGY, VOLTAGE, MIN_CELL, CURRENT, POWER, BATTERY_TEMP, MOTOR_TEMP, CONTROLLER_TEMP;
+		SOC, RANGE, RANGE_WINDOW, RANGE_RESERVE, CONSUMPTION, FAR_TRIP, CHARGE_TRIP, CHARGE_ETA, CHARGE_TIME, CHARGE_ENERGY, VOLTAGE, MIN_CELL, CURRENT, POWER, BATTERY_TEMP, MOTOR_TEMP, CONTROLLER_TEMP;
 
 		fun controllerLink(): Boolean {
 			return this == FAR_TRIP || this == POWER || this == MOTOR_TEMP || this == CONTROLLER_TEMP
@@ -84,6 +84,7 @@ class EvBmsTextWidget(
 		val text: String = when (field) {
 			Field.SOC -> sample?.socPercent?.toString() ?: NO_VALUE
 			Field.RANGE -> formatMetricKm(sample?.remainingRangeKm)
+			Field.RANGE_WINDOW -> formatMetricKm(sample?.windowRangeKm)
 			Field.RANGE_RESERVE -> formatMetricKm(plugin.rangeReserveKm())
 			Field.CONSUMPTION -> sample?.energyWh?.let { String.format(Locale.US, "%.0f", it) } ?: NO_VALUE
 			Field.FAR_TRIP -> formatMetricKm(sample?.farTripKm)
