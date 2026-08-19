@@ -1029,6 +1029,7 @@ Optional DEBUG log of plugin and BLE actions. Controller RX hex is limited to on
 <b>🥾 Hike mode</b><br/>
 Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+• 🚲 BLE CSC front-wheel speed (Cycplus BK467): primary speedometer and odometer; GPS auto-calibrates the wheel coefficient<br/>
 • 🛵 FarDriver reconnect binds by BLE name and updates the saved MAC after a power cycle<br/>
 • 🏍️ Fix crash opening the About tab / switching sheet tabs: literal %% in changelog strings escaped for getString formatting<br/>
 • 🏍️ Skip auto profile switch while the EV settings sheet is open so HUD demo cannot rebuild the map under the dialog<br/>
@@ -1123,6 +1124,7 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_devices">Bluetooth devices</string>
     <string name="ev_bms_jbd_title">Battery BMS</string>
     <string name="ev_bms_controller_title">Motor controller</string>
+    <string name="ev_bms_speed_sensor_title">Front wheel speed sensor</string>
     <string name="ev_bms_controller_protocol">Controller protocol</string>
     <string name="ev_bms_protocol_fardriver">FarDriver</string>
     <string name="ev_bms_protocol_vesc">VESC</string>
@@ -1218,6 +1220,8 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_gpx_charge_trip">Distance on charge</string>
     <string name="ev_bms_field_odometer">Odometer</string>
     <string name="ev_bms_field_ctrl_speed">Controller speed</string>
+    <string name="ev_bms_field_wheel_speed">Wheel speed</string>
+    <string name="ev_bms_field_wheel_odometer">Wheel odometer</string>
     <string name="ev_bms_announce_soc">Announce battery charge</string>
     <string name="ev_bms_soc_step">Voltage announcement step</string>
     <string name="ev_bms_announce_range_on_stop">Announce remaining range when stopped</string>
@@ -1231,6 +1235,7 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_driver_mass_desc">Rider mass added to the vehicle for climb energy and descent regen.</string>
     <string name="ev_bms_mass_invalid">Enter a mass in kilograms in the allowed range</string>
     <string name="ev_bms_n_kg">%1$s kg</string>
+    <string name="ev_bms_n_mm">%1$d mm</string>
     <string name="ev_bms_status_connected">🟢 %1$s</string>
     <string name="ev_bms_status_disconnected">🔴 %1$s</string>
     <string name="ev_bms_status_ble_stats">%1$s  ↑%2$d ↓%3$d</string>
@@ -1412,12 +1417,16 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_cal_distance">Auto-calibration distance</string>
     <string name="ev_bms_cal_factor">Calibration factor</string>
     <string name="ev_bms_cal_factor_desc">GPS distance divided by controller distance. 1.000 means no correction.</string>
+    <string name="ev_bms_cal_factor_sensor_desc">GPS distance divided by front-wheel sensor distance. 1.000 means no correction.</string>
+    <string name="ev_bms_wheel_circumference">Front wheel circumference</string>
+    <string name="ev_bms_wheel_circumference_desc">Tire circumference in millimetres. Default 2000 mm. Auto-calibration then stores a GPS coefficient for the BLE sensor.</string>
+    <string name="ev_bms_wheel_circumference_invalid">Enter circumference between 1200 and 2800 mm</string>
+    <string name="ev_bms_cal_failed">Calibration failed. Ride with GPS and a connected wheel sensor or controller.</string>
     <string name="ev_bms_calibrate">Calibrate</string>
     <string name="ev_bms_calibrate_stop">Stop calibration</string>
     <string name="ev_bms_cal_start">Start auto-calibration</string>
     <string name="ev_bms_cal_progress">Calibration: %1$s / %2$s GPS</string>
     <string name="ev_bms_cal_done">Calibration saved: factor %1$.3f</string>
-    <string name="ev_bms_cal_failed">Calibration failed. Ride with GPS and a connected controller.</string>
     <string name="ev_bms_cal_started">Auto-calibration started. Ride %1$s with a clear GPS signal.</string>
     <string name="ev_bms_cal_cancelled">Auto-calibration cancelled</string>
     <string name="ev_bms_filter_ctrl_odo">Filter by controller distance</string>

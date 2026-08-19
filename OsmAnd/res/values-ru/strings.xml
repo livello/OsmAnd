@@ -4529,6 +4529,7 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
 <b>🥾 Режим «Поход»</b><br/>
 Оставляет запас хода, GPS и телеметрию раз в 5 с, замедляет опрос BLE не реже 5 с, отключает тяжёлые слои карты, 3D, погоду, онлайн-тайлы и лишние Bluetooth-плагины.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Список изменений</b> · %1$s<br/>
+• 🚲 BLE CSC датчик переднего колеса (Cycplus BK467): основной источник спидометра и одометра; автокалибровка коэффициента по GPS<br/>
 • 🛵 Переподключение FarDriver по имени BLE; после отключения питания сохранённый MAC обновляется<br/>
 • 🏍️ Исправление вылета при вкладке «О плагине» / переключении вкладок: литералы %% в changelog экранированы для getString<br/>
 • 🏍️ Автопереключение профилей не трогает карту, пока открыт лист настроек EV — демо HUD больше не ломает диалог<br/>
@@ -4623,6 +4624,7 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
     <string name="ev_bms_devices">Устройства Bluetooth</string>
     <string name="ev_bms_jbd_title">BMS батареи</string>
     <string name="ev_bms_controller_title">Контроллер</string>
+    <string name="ev_bms_speed_sensor_title">Датчик скорости переднего колеса</string>
     <string name="ev_bms_controller_protocol">Протокол контроллера</string>
     <string name="ev_bms_protocol_fardriver">FarDriver</string>
     <string name="ev_bms_protocol_vesc">VESC</string>
@@ -4718,6 +4720,8 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
     <string name="ev_bms_gpx_charge_trip">Пробег на заряде</string>
     <string name="ev_bms_field_odometer">Одометр</string>
     <string name="ev_bms_field_ctrl_speed">Скорость контроллера</string>
+    <string name="ev_bms_field_wheel_speed">Скорость колеса</string>
+    <string name="ev_bms_field_wheel_odometer">Одометр колеса</string>
     <string name="ev_bms_announce_soc">Озвучивать заряд батареи</string>
     <string name="ev_bms_soc_step">Шаг объявления напряжения</string>
     <string name="ev_bms_announce_range_on_stop">Озвучивать остаток пробега на остановках</string>
@@ -4731,6 +4735,7 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
     <string name="ev_bms_driver_mass_desc">Масса водителя, добавляется к массе ТС для набора высоты и рекуперации.</string>
     <string name="ev_bms_mass_invalid">Введите массу в килограммах в допустимом диапазоне</string>
     <string name="ev_bms_n_kg">%1$s кг</string>
+    <string name="ev_bms_n_mm">%1$d мм</string>
     <string name="ev_bms_status_connected">🟢 %1$s</string>
     <string name="ev_bms_status_disconnected">🔴 %1$s</string>
     <string name="ev_bms_status_ble_stats">%1$s  ↑%2$d ↓%3$d</string>
@@ -4911,12 +4916,16 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
     <string name="ev_bms_cal_distance">Расстояние автокалибровки</string>
     <string name="ev_bms_cal_factor">Калибровочный коэффициент</string>
     <string name="ev_bms_cal_factor_desc">Расстояние по GPS, делённое на пробег контроллера. 1.000 — без поправки.</string>
+    <string name="ev_bms_cal_factor_sensor_desc">Расстояние по GPS, делённое на пробег датчика переднего колеса. 1.000 — без поправки.</string>
+    <string name="ev_bms_wheel_circumference">Окружность переднего колеса</string>
+    <string name="ev_bms_wheel_circumference_desc">Окружность шины в миллиметрах. По умолчанию 2000 мм. Автокалибровка затем считает коэффициент датчика по GPS.</string>
+    <string name="ev_bms_wheel_circumference_invalid">Введите окружность от 1200 до 2800 мм</string>
+    <string name="ev_bms_cal_failed">Калибровка не удалась. Нужны GPS и связь с датчиком колеса или контроллером.</string>
     <string name="ev_bms_calibrate">Калибровка</string>
     <string name="ev_bms_calibrate_stop">Стоп калибровки</string>
     <string name="ev_bms_cal_start">Запуск автокалибровки</string>
     <string name="ev_bms_cal_progress">Калибровка: %1$s / %2$s GPS</string>
     <string name="ev_bms_cal_done">Калибровка сохранена: коэффициент %1$.3f</string>
-    <string name="ev_bms_cal_failed">Калибровка не удалась. Нужны GPS и связь с контроллером.</string>
     <string name="ev_bms_cal_started">Автокалибровка начата. Проедьте %1$s при устойчивом GPS.</string>
     <string name="ev_bms_cal_cancelled">Автокалибровка отменена</string>
     <string name="ev_bms_filter_ctrl_odo">Фильтровать «пробег по контроллеру»</string>

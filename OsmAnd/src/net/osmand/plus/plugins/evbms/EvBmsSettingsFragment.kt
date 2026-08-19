@@ -154,6 +154,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		setupBmsProtocol()
 		setupJbdPassword()
 		setupControllerProtocol()
+		setupWheelCircumference()
 		setupSwitch(plugin.HIKE_MODE.id)
 		setupSpeedProfile()
 		setupHudDemo()
@@ -234,6 +235,8 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		decorate(plugin.BMS_PASSWORD.id, "🔐", R.drawable.ic_action_lock)
 		decorate(plugin.CONTROLLER_ADDRESS.id, "🛵", R.drawable.ic_action_car_info)
 		decorate(plugin.CONTROLLER_PROTOCOL.id, "⚙️", R.drawable.ic_action_settings)
+		decorate(plugin.SPEED_SENSOR_ADDRESS.id, "🚲", R.drawable.ic_action_bicycle_dark)
+		decorate(plugin.WHEEL_CIRCUMFERENCE_MM.id, "⭕", R.drawable.ic_action_distance)
 		decorate(plugin.HIKE_MODE.id, "🥾", R.drawable.ic_action_trekking_dark)
 		decorate(plugin.SPEED_PROFILE_AUTO.id, "🏍️", R.drawable.ic_action_speed)
 		decorate(plugin.SPEED_PROFILE_KMH.id, "🎚️", R.drawable.ic_action_speed)
@@ -345,15 +348,21 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			plugin.CONTROLLER_ADDRESS.get(),
 			plugin.isControllerConnected()
 		)
+		setupDevicePref(
+			plugin.SPEED_SENSOR_ADDRESS.id,
+			plugin.SPEED_SENSOR_NAME.get(),
+			plugin.SPEED_SENSOR_ADDRESS.get(),
+			plugin.isSpeedSensorConnected()
+		)
 	}
 
 	private fun setupDevicePref(key: String, name: String?, address: String?, connected: Boolean) {
 		val pref = findPreference<Preference>(key) ?: return
 		val label = deviceSummaryLabel(name, address)
-		val role = if (key == plugin.BMS_ADDRESS.id) {
-			EvBleUartClient.Role.BMS
-		} else {
-			EvBleUartClient.Role.CONTROLLER
+		val role = when (key) {
+			plugin.BMS_ADDRESS.id -> EvBleUartClient.Role.BMS
+			plugin.SPEED_SENSOR_ADDRESS.id -> EvBleUartClient.Role.SPEED
+			else -> EvBleUartClient.Role.CONTROLLER
 		}
 		val stats = plugin.bleLinkStats(role)
 		val status = when {
@@ -619,7 +628,15 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		val text = plugin.formattedSpeedCalFactor()
 		pref.text = text
 		pref.summary = text
-		pref.setDescription(R.string.ev_bms_cal_factor_desc)
+		pref.setDescription(plugin.speedCalFactorDescriptionRes())
+	}
+
+	private fun setupWheelCircumference() {
+		val pref = findPreference<EditTextPreferenceEx>(plugin.WHEEL_CIRCUMFERENCE_MM.id) ?: return
+		val text = plugin.formattedWheelCircumferenceMm()
+		pref.text = text
+		pref.summary = getString(R.string.ev_bms_n_mm, plugin.WHEEL_CIRCUMFERENCE_MM.get())
+		pref.setDescription(R.string.ev_bms_wheel_circumference_desc)
 	}
 
 	private fun setupCalAction() {
@@ -631,7 +648,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			pref.summary = getString(R.string.ev_bms_cal_progress, done, target)
 		} else {
 			pref.title = getString(R.string.ev_bms_cal_start)
-			pref.summary = getString(R.string.ev_bms_cal_factor_desc)
+			pref.summary = getString(plugin.speedCalFactorDescriptionRes())
 		}
 	}
 
@@ -880,8 +897,18 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 				app.showToastMessage(R.string.ev_bms_cal_factor_invalid)
 				return false
 			}
-			plugin.SPEED_CAL_FACTOR.set(parsed)
+			plugin.applySpeedCalFactor(parsed)
 			setupCalFactor()
+			return true
+		}
+		if (preference.key == plugin.WHEEL_CIRCUMFERENCE_MM.id) {
+			val parsed = plugin.parseWheelCircumferenceMm(newValue as? String)
+			if (parsed == null) {
+				app.showToastMessage(R.string.ev_bms_wheel_circumference_invalid)
+				return false
+			}
+			plugin.applyWheelCircumferenceMm(parsed)
+			setupWheelCircumference()
 			return true
 		}
 		if (preference.key == plugin.VEHICLE_MASS_KG.id) {
@@ -951,6 +978,10 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			}
 			plugin.CONTROLLER_ADDRESS.id -> {
 				startScan(activity, EvBleUartClient.Role.CONTROLLER)
+				return true
+			}
+			plugin.SPEED_SENSOR_ADDRESS.id -> {
+				startScan(activity, EvBleUartClient.Role.SPEED)
 				return true
 			}
 			plugin.TELEMETRY_FIELDS.id, "ev_bms_telemetry_fields" -> {
@@ -1044,8 +1075,11 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		if (plugin.isAnnouncePreferenceId(prefId)) {
 			(parentFragment as? EvBmsSettingsBottomSheet)?.refreshSheetTitleAnnounces()
 		}
-		if (prefId == plugin.SPEED_CAL_FACTOR.id) {
+		if (prefId == plugin.SPEED_CAL_FACTOR.id || prefId == plugin.SPEED_SENSOR_CAL_FACTOR.id) {
 			setupCalFactor()
+		}
+		if (prefId == plugin.WHEEL_CIRCUMFERENCE_MM.id) {
+			setupWheelCircumference()
 		}
 		if (prefId == plugin.VEHICLE_MASS_KG.id || prefId == plugin.DRIVER_MASS_KG.id) {
 			setupMassPrefs()
@@ -1403,6 +1437,8 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		showPicker(activity)
 		if (role == EvBleUartClient.Role.BMS) {
 			plugin.startBmsScan(activity)
+		} else if (role == EvBleUartClient.Role.SPEED) {
+			plugin.startSpeedSensorScan(activity)
 		} else {
 			plugin.startControllerScan(activity)
 		}
@@ -1421,6 +1457,8 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 					val role = scanningRole
 					if (role == EvBleUartClient.Role.BMS) {
 						plugin.connectBms(activity, selected.name, selected.address)
+					} else if (role == EvBleUartClient.Role.SPEED) {
+						plugin.connectSpeedSensor(activity, selected.name, selected.address)
 					} else if (role == EvBleUartClient.Role.CONTROLLER) {
 						plugin.connectController(activity, selected.name, selected.address)
 					}

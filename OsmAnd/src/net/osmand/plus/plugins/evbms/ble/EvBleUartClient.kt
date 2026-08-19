@@ -38,7 +38,7 @@ class EvBleUartClient(
 ) {
 
 	enum class Role {
-		BMS, CONTROLLER
+		BMS, CONTROLLER, SPEED
 	}
 
 	enum class BmsKind {
@@ -159,9 +159,22 @@ class EvBleUartClient(
 			return compactA.equals(compactB, ignoreCase = true)
 		}
 
+		fun matchesSpeedSensorName(name: String?): Boolean {
+			if (name.isNullOrBlank()) {
+				return false
+			}
+			val n = name.lowercase(Locale.US)
+			return n.contains("cycplus") || n.contains("coospo") || n.contains("bk467") ||
+					n.contains("bk-467") || n.contains("speed cadence") || n.contains("cadence") ||
+					n.contains("bike spd") || n.contains("spd cad") || n.startsWith("csc") ||
+					(n.contains("speed") && (n.contains("sensor") || n.contains("wheel")))
+		}
+
 		fun describeBleServices(name: String?, serviceUuids: List<UUID>?, role: Role): String {
 			val ids = serviceUuids ?: emptyList()
 			return when {
+				ids.contains(GattAttributes.UUID_SERVICE_CYCLING_SPEED_AND_CADENCE) ||
+						role == Role.SPEED || matchesSpeedSensorName(name) -> "CSC"
 				ids.contains(JBD_SERVICE) || (role == Role.BMS && matchesBmsName(name) && !matchesAntName(name)) -> "JBD"
 				matchesAntName(name) -> "ANT BMS"
 				ids.contains(NUS_SERVICE) || matchesVescName(name) -> "VESC"
@@ -409,6 +422,10 @@ class EvBleUartClient(
 				scheduleReconnect()
 				return
 			}
+			if (role == Role.SPEED) {
+				enableCscNotifications(gatt)
+				return
+			}
 			var jbdNotify: BluetoothGattCharacteristic? = null
 			var jbdWrite: BluetoothGattCharacteristic? = null
 			var antNotify: BluetoothGattCharacteristic? = null
@@ -556,7 +573,7 @@ class EvBleUartClient(
 		}
 
 		private fun logRx(value: ByteArray) {
-			if (role != Role.CONTROLLER) {
+			if (role == Role.BMS) {
 				jd("RX ${value.size}B ${EvDebugJournal.hex(value)}")
 				return
 			}
@@ -596,12 +613,23 @@ class EvBleUartClient(
 		if (role == Role.BMS && matchesControllerName(name) && !matchesBmsName(name)) {
 			return
 		}
-		val hasService = if (role == Role.BMS) {
-			serviceUuids?.any { it == JBD_SERVICE || it == FAR_SERVICE } == true
-		} else {
-			serviceUuids?.any { it == FAR_SERVICE || it == NUS_SERVICE } == true
+		if (role == Role.SPEED && (matchesBmsName(name) || matchesControllerName(name)) &&
+			!matchesSpeedSensorName(name)
+		) {
+			return
 		}
-		val match = if (role == Role.BMS) matchesBmsName(name) else matchesControllerName(name)
+		val hasService = when (role) {
+			Role.BMS -> serviceUuids?.any { it == JBD_SERVICE || it == FAR_SERVICE } == true
+			Role.CONTROLLER -> serviceUuids?.any { it == FAR_SERVICE || it == NUS_SERVICE } == true
+			Role.SPEED -> serviceUuids?.any {
+				it == GattAttributes.UUID_SERVICE_CYCLING_SPEED_AND_CADENCE
+			} == true
+		}
+		val match = when (role) {
+			Role.BMS -> matchesBmsName(name)
+			Role.CONTROLLER -> matchesControllerName(name)
+			Role.SPEED -> matchesSpeedSensorName(name)
+		}
 		if (!match && !hasService && !name.isNullOrBlank()) {
 			return
 		}
@@ -805,6 +833,9 @@ class EvBleUartClient(
 	}
 
 	private fun shouldBindByName(): Boolean {
+		if (role == Role.SPEED) {
+			return !preferredDeviceName.isNullOrBlank()
+		}
 		if (role != Role.CONTROLLER || preferredDeviceName.isNullOrBlank()) {
 			return false
 		}
@@ -1007,6 +1038,9 @@ class EvBleUartClient(
 
 	@SuppressLint("MissingPermission")
 	fun write(bytes: ByteArray): Boolean {
+		if (role == Role.SPEED) {
+			return false
+		}
 		val g = gatt ?: run {
 			jd("TX skipped, gatt=null ${bytes.size}B")
 			return false
@@ -1045,6 +1079,41 @@ class EvBleUartClient(
 			BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
 		} else {
 			BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+		}
+	}
+
+	@SuppressLint("MissingPermission")
+	private fun enableCscNotifications(gatt: BluetoothGatt) {
+		writeCharacteristic = null
+		val service = gatt.getService(GattAttributes.UUID_SERVICE_CYCLING_SPEED_AND_CADENCE)
+		val notify = service?.getCharacteristic(
+			GattAttributes.UUID_CHARACTERISTIC_CYCLING_SPEED_AND_CADENCE_MEASUREMENT
+		)
+		jd("CSC service=${service != null} measure=${notify?.uuid}")
+		if (notify == null) {
+			jw("CSC measurement characteristic missing")
+			markNotifyReady()
+			return
+		}
+		enableNotify(gatt, notify)
+	}
+
+	@SuppressLint("MissingPermission")
+	private fun enableNotify(gatt: BluetoothGatt, notify: BluetoothGattCharacteristic) {
+		notifyReady = false
+		gatt.setCharacteristicNotification(notify, true)
+		val cccd = notify.getDescriptor(GattAttributes.UUID_CHARACTERISTIC_CLIENT_CONFIG)
+		if (cccd != null) {
+			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+				gatt.writeDescriptor(cccd, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+			} else {
+				cccd.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+				gatt.writeDescriptor(cccd)
+			}
+			mainHandler.removeCallbacks(notifyReadyFallback)
+			mainHandler.postDelayed(notifyReadyFallback, 2_000L)
+		} else {
+			markNotifyReady()
 		}
 	}
 

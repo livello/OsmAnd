@@ -39,6 +39,8 @@ data class EvTelemetry(
 	val farTripKm: Double? = null,
 	val chargeTripKm: Double? = null,
 	val farSpeedKmh: Double? = null,
+	val wheelSpeedKmh: Double? = null,
+	val wheelOdometerKm: Double? = null,
 	val farAvgWhPerKm: Double? = null,
 	val gpsUnreliable: Boolean = false,
 	val usedFarDriverDistance: Boolean = false,

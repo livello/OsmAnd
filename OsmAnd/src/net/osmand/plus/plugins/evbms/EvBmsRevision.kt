@@ -1,5 +1,5 @@
 package net.osmand.plus.plugins.evbms
 
 object EvBmsRevision {
-	const val GIT_HASH = "range-10km-pnz-widgets"
+	const val GIT_HASH = "ble-wheel-csc-bk467"
 }
