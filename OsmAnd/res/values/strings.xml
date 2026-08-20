@@ -1220,6 +1220,7 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_history_avg_charge_a">Average charge current %1$s A</string>
     <string name="ev_bms_gpx_charge_start">Charge start</string>
     <string name="ev_bms_gpx_charge_end">Charge end</string>
+    <string name="ev_bms_gpx_charge_wh">Charge %d Wh</string>
     <string name="ev_bms_gpx_charge_trip">Distance on charge</string>
     <string name="ev_bms_field_odometer">Odometer</string>
     <string name="ev_bms_field_ctrl_speed">Controller speed</string>
@@ -1273,7 +1274,7 @@ Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, a
     <string name="ev_bms_range_for_reserve">Primary range for range reserve</string>
     <string name="ev_bms_range_for_reserve_desc">Which primary-range estimate is used for range reserve, route shortfall and stop announcements</string>
     <string name="ev_bms_range_source_10km">Primary range (10 km)</string>
-    <string name="ev_bms_range_source_10km_method">Remaining pack energy (amp-hours × voltage, reduced for a weak cell and cold battery) divided by average Wh/km over the last 10 km. Distance prefers GPS, then an odometer step, then speed × time. With the route profile on, climb energy is added and downhill regen is credited at 55 percent.</string>
+    <string name="ev_bms_range_source_10km_method">Remaining pack energy (amp-hours × rest voltage, reduced for a weak cell; cold is applied only until 3 km of measured driving) divided by average Wh/km over the last 10 km. Distance prefers the front-wheel BLE sensor, then GPS with a jump filter, then the controller odometer. With the route profile on, remaining climb uses drivetrain efficiency 80 percent and downhill regen is credited at 55 percent.</string>
     <string name="ev_bms_range_source_5min">Range (5 min)</string>
     <string name="ev_bms_range_source_5min_method">The same remaining energy divided by average Wh/km over the last 5 minutes of motion. Reacts faster to hills and wind than the 10 km window. Route-profile climb and regen are applied the same way.</string>
     <string name="ev_bms_range_source_pnz">Range on charge (DOC)</string>

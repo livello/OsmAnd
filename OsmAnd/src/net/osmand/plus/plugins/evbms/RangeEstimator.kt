@@ -7,14 +7,19 @@ import java.util.ArrayDeque
  * Remaining range and trip energy.
  *
  * Energy (Wh) is the coulomb integral remainingAh·voltage, independent of GPS.
- * Distance prefers GPS, then a small odometer step (wrap/reset ignored), then speed·dt.
- * Primary range uses remaining Wh / Wh/km over the last 10 km; 5-minute and
- * distance-on-charge (ПНЗ) estimates stay available separately.
+ * Distance prefers the front-wheel BLE sensor, then filtered GPS, then the
+ * controller odometer (rear wheel can slip). Primary range uses remaining Wh /
+ * Wh/km over the last 10 km; 5-minute and distance-on-charge (ПНЗ) estimates
+ * stay available separately.
  */
 class RangeEstimator(
 	private val windowMs: Long = 5 * 60 * 1000L,
 	private val minDistanceKm: Double = 0.05
 ) {
+
+	enum class DistanceSource { WHEEL, GPS, CONTROLLER, SPEED }
+
+	data class DistanceStep(val km: Double, val source: DistanceSource)
 
 	data class Sample(
 		val timeMs: Long,
@@ -25,7 +30,8 @@ class RangeEstimator(
 		val lat: Double?,
 		val lon: Double?,
 		val accuracyM: Float?,
-		val odometerKm: Double?
+		val wheelOdometerKm: Double?,
+		val controllerOdometerKm: Double?
 	)
 
 	data class RouteElevation(
@@ -44,7 +50,6 @@ class RangeEstimator(
 	private var tripDistanceKm = 0.0
 	private var tripWh = 0.0
 	private var tripAh = 0.0
-	private var lastTripAh: Double? = null
 	private var smoothedRangeKm: Double? = null
 
 	@Volatile
@@ -94,7 +99,8 @@ class RangeEstimator(
 		voltageV: Double?,
 		restVoltageV: Double?,
 		location: Location?,
-		odometerKm: Double?,
+		wheelOdometerKm: Double?,
+		controllerOdometerKm: Double?,
 		minCellV: Double?,
 		batteryTempC: Double?,
 		fullAh: Double?,
@@ -108,17 +114,6 @@ class RangeEstimator(
 		if (remainingAh == null || voltageV == null || voltageV <= 0.0) {
 			return
 		}
-		val prevAh = lastTripAh
-		if (prevAh != null && remainingAh - prevAh > 1.0) {
-			tripDistanceKm = 0.0
-			tripWh = 0.0
-			tripAh = 0.0
-			kmWindow.clear()
-			kmWindowKm = 0.0
-			kmWindowWh = 0.0
-			smoothedRangeKm = null
-		}
-		lastTripAh = remainingAh
 		val sample = Sample(
 			timeMs = timeMs,
 			remainingAh = remainingAh,
@@ -128,12 +123,13 @@ class RangeEstimator(
 			lat = location?.latitude,
 			lon = location?.longitude,
 			accuracyM = if (location != null && location.hasAccuracy()) location.accuracy else null,
-			odometerKm = odometerKm
+			wheelOdometerKm = wheelOdometerKm,
+			controllerOdometerKm = controllerOdometerKm
 		)
 		val previous = samples.lastOrNull()
 		samples.addLast(sample)
 		if (previous != null) {
-			accumulateTrip(previous, sample, useRouteProfile)
+			accumulateTrip(previous, sample)
 		}
 		trim(timeMs)
 		recalculate(
@@ -156,15 +152,11 @@ class RangeEstimator(
 	fun tripUsedAh(): Double? = tripAh.takeIf { it > 0.001 }
 
 	@Synchronized
+	fun tripDistanceKm(): Double? = tripDistanceKm.takeIf { it > 0.01 }
+
+	@Synchronized
 	fun markTripBoundary() {
-		tripDistanceKm = 0.0
-		tripWh = 0.0
-		tripAh = 0.0
-		lastTripAh = null
-		kmWindow.clear()
-		kmWindowKm = 0.0
-		kmWindowWh = 0.0
-		smoothedRangeKm = null
+		reset()
 	}
 
 	@Synchronized
@@ -176,7 +168,6 @@ class RangeEstimator(
 		tripDistanceKm = 0.0
 		tripWh = 0.0
 		tripAh = 0.0
-		lastTripAh = null
 		smoothedRangeKm = null
 		remainingRangeKm = null
 		windowRangeKm = null
@@ -190,19 +181,20 @@ class RangeEstimator(
 		windowDistanceKm = null
 	}
 
-	private fun accumulateTrip(prev: Sample, cur: Sample, useRouteProfile: Boolean) {
-		val dWh = segmentEnergyWh(prev, cur, useRouteProfile)
-		tripWh += dWh
+	private fun accumulateTrip(prev: Sample, cur: Sample) {
 		val dAh = coulombAh(prev, cur)
-		tripAh = (tripAh + dAh).coerceAtLeast(0.0)
-		val gpsKm = gpsDistanceKm(prev, cur)
-		val odoKm = odometerDeltaKm(prev, cur)
-		val dKm = segmentDistanceKm(prev, cur, gpsKm, odoKm) ?: return
-		if (dKm < 0.002) {
+		if (dAh < -CHARGE_DISCONTINUITY_AH) {
 			return
 		}
-		tripDistanceKm += dKm
-		pushKm(dKm, dWh)
+		val dWh = segmentEnergyWh(prev, cur)
+		tripWh += dWh
+		tripAh = (tripAh + dAh).coerceAtLeast(0.0)
+		val step = distanceStep(prev, cur) ?: return
+		if (step.km < 0.002) {
+			return
+		}
+		tripDistanceKm += step.km
+		pushKm(step.km, dWh)
 	}
 
 	private fun pushKm(dKm: Double, dWh: Double) {
@@ -238,30 +230,27 @@ class RangeEstimator(
 		}
 		var distanceKm = 0.0
 		var windowWh = 0.0
-		var usedFar = false
+		var usedController = false
 		var gpsBad = false
 		val it = samples.iterator()
 		var prev = it.next()
 		while (it.hasNext()) {
 			val cur = it.next()
-			val gpsKm = gpsDistanceKm(prev, cur)
-			val odoKm = odometerDeltaKm(prev, cur)
-			val jump = isGpsUnreliable(prev, cur, gpsKm, odoKm)
-			if (jump) {
+			val step = distanceStep(prev, cur)
+			if (step != null) {
+				distanceKm += step.km
+				if (step.source == DistanceSource.CONTROLLER) {
+					usedController = true
+				}
+			}
+			if (isGpsUnreliable(prev, cur)) {
 				gpsBad = true
 			}
-			val dKm = segmentDistanceKm(prev, cur, gpsKm, odoKm) ?: 0.0
-			if (jump && odoKm != null && odoKm >= 0.0) {
-				usedFar = true
-			} else if (jump.not() && gpsKm == null && odoKm != null && odoKm >= 0.0) {
-				usedFar = true
-			}
-			distanceKm += dKm
-			windowWh += segmentEnergyWh(prev, cur, useRouteProfile)
+			windowWh += segmentEnergyWh(prev, cur)
 			prev = cur
 		}
 		gpsUnreliable = gpsBad
-		usedFarDriverDistance = usedFar
+		usedFarDriverDistance = usedController
 		windowDistanceKm = distanceKm
 
 		val first = samples.first
@@ -283,11 +272,13 @@ class RangeEstimator(
 			null
 		}
 		val windowWhPerKm = consumptionWhPerKm
-		coverageWhPerKm = rollingWhPerKm ?: windowWhPerKm ?: pnzWhPerKm
+		val controllerWhPerKm = farAvgWhPerKm?.takeIf { it >= 1.0 }
+		coverageWhPerKm = rollingWhPerKm ?: windowWhPerKm ?: pnzWhPerKm ?: controllerWhPerKm
 
 		val cellFactor = weakCellFactor(minCellV, currentRemainingAh, fullAh)
 		weakCellFactor = cellFactor
-		val remainingWh = currentRemainingAh * energyVoltageV * cellFactor * temperatureFactor(batteryTempC)
+		val tempFactor = if (kmWindowKm >= 3.0) 1.0 else temperatureFactor(batteryTempC)
+		val remainingWh = currentRemainingAh * energyVoltageV * cellFactor * tempFactor
 
 		fun rangeFrom(whPerKm: Double?): Double? {
 			if (whPerKm == null || whPerKm < 1.0 || remainingWh <= 0.0) {
@@ -296,7 +287,7 @@ class RangeEstimator(
 			var effective = whPerKm
 			if (useRouteProfile && routeElevation != null && routeElevation.remainingKm > 0.05) {
 				val mass = if (massKg.isFinite() && massKg > 0.0) massKg else MASS_KG
-				val climbWh = mass * G * routeElevation.climbM / 3600.0
+				val climbWh = mass * G * routeElevation.climbM / 3600.0 / DRIVE_EFFICIENCY
 				val regenWh = mass * G * routeElevation.descentM / 3600.0 * REGEN_EFFICIENCY
 				effective = whPerKm + (climbWh - regenWh) / routeElevation.remainingKm
 			}
@@ -308,7 +299,10 @@ class RangeEstimator(
 
 		windowRangeKm = rangeFrom(windowWhPerKm)
 		pnzRangeKm = rangeFrom(pnzWhPerKm)
-		remainingRangeKm = smoothRange(rangeFrom(rollingWhPerKm) ?: rangeFrom(windowWhPerKm))
+		remainingRangeKm = smoothRange(
+			rangeFrom(rollingWhPerKm) ?: rangeFrom(windowWhPerKm) ?: rangeFrom(pnzWhPerKm) ?:
+				rangeFrom(controllerWhPerKm)
+		)
 	}
 
 	private fun smoothRange(raw: Double?): Double? {
@@ -332,10 +326,11 @@ class RangeEstimator(
 		private const val MAX_ACCURACY_M = 40f
 		private const val JUMP_VS_ODO_RATIO = 3.0
 		private const val MIN_JUMP_KM = 0.05
-		private const val MAX_ODO_STEP_KM = 0.08
 		private const val TRIP_RANGE_MIN_KM = 2.0
 		private const val ROLLING_KM = 10.0
+		private const val CHARGE_DISCONTINUITY_AH = 0.25
 		const val REGEN_EFFICIENCY = 0.55
+		const val DRIVE_EFFICIENCY = 0.80
 		const val MASS_KG = 280.0
 		private const val G = 9.81
 		private const val CELL_LVC_V = 3.00
@@ -349,6 +344,47 @@ class RangeEstimator(
 					Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
 					Math.sin(dLon / 2) * Math.sin(dLon / 2)
 			return 2 * r * Math.asin(Math.sqrt(a))
+		}
+
+		fun maxPlausibleStepKm(dtMs: Long): Double {
+			val dtSec = dtMs / 1000.0
+			if (dtSec <= 0.05) {
+				return 0.002
+			}
+			return (MAX_PLAUSIBLE_KMH / 3600.0 * dtSec).coerceIn(0.002, 0.5)
+		}
+
+		fun chooseDistanceKm(
+			dtMs: Long,
+			gpsKm: Double?,
+			gpsUnreliable: Boolean,
+			wheelDeltaKm: Double?,
+			controllerDeltaKm: Double?,
+			speedKm: Double?
+		): DistanceStep? {
+			val maxKm = maxPlausibleStepKm(dtMs)
+			fun accept(delta: Double?, source: DistanceSource): DistanceStep? {
+				if (delta != null && delta in 0.0002..maxKm) {
+					return DistanceStep(delta, source)
+				}
+				return null
+			}
+			accept(wheelDeltaKm, DistanceSource.WHEEL)?.let { return it }
+			if (!gpsUnreliable) {
+				accept(gpsKm, DistanceSource.GPS)?.let { return it }
+			}
+			accept(controllerDeltaKm, DistanceSource.CONTROLLER)?.let { return it }
+			accept(speedKm, DistanceSource.SPEED)?.let { return it }
+			return null
+		}
+
+		fun odometerDeltaKm(prev: Double?, cur: Double?, dtMs: Long): Double? {
+			if (prev == null || cur == null) {
+				return null
+			}
+			val d = cur - prev
+			val maxKm = maxPlausibleStepKm(dtMs)
+			return if (d < -0.001 || d > maxKm) null else d
 		}
 
 		fun weakCellFactor(minCellV: Double?, remainingAh: Double, fullAh: Double?): Double {
@@ -388,7 +424,7 @@ class RangeEstimator(
 			return -i * dtH
 		}
 
-		private fun segmentEnergyWh(prev: Sample, cur: Sample, useRouteProfile: Boolean): Double {
+		private fun segmentEnergyWh(prev: Sample, cur: Sample): Double {
 			val vAvg = (prev.voltageV + cur.voltageV) / 2.0
 			var dWh = coulombAh(prev, cur) * vAvg
 			if (kotlin.math.abs(prev.remainingAh - cur.remainingAh) < 0.0005) {
@@ -398,28 +434,22 @@ class RangeEstimator(
 					dWh = -i * vAvg * dtH
 				}
 			}
-			if (useRouteProfile && dWh < 0) {
-				dWh *= REGEN_EFFICIENCY
-			}
 			return dWh
 		}
 
-		private fun segmentDistanceKm(
-			prev: Sample,
-			cur: Sample,
-			gpsKm: Double?,
-			odoKm: Double?
-		): Double? {
-			val jump = isGpsUnreliable(prev, cur, gpsKm, odoKm)
-			val fromGps = if (!jump && gpsKm != null) gpsKm else null
-			val fromOdo = if (odoKm != null && odoKm in 0.0..MAX_ODO_STEP_KM) odoKm else null
-			val fromSpeed = speedDistanceKm(prev, cur)
-			return when {
-				fromGps != null -> fromGps
-				fromOdo != null -> fromOdo
-				fromSpeed != null -> fromSpeed
-				else -> null
-			}
+		private fun distanceStep(prev: Sample, cur: Sample): DistanceStep? {
+			val dtMs = (cur.timeMs - prev.timeMs).coerceAtLeast(0L)
+			val gpsKm = gpsDistanceKm(prev, cur)
+			val wheel = odometerDeltaKm(prev.wheelOdometerKm, cur.wheelOdometerKm, dtMs)
+			val ctrl = odometerDeltaKm(prev.controllerOdometerKm, cur.controllerOdometerKm, dtMs)
+			return chooseDistanceKm(
+				dtMs,
+				gpsKm,
+				isGpsUnreliable(prev, cur, gpsKm, wheel ?: ctrl),
+				wheel,
+				ctrl,
+				speedDistanceKm(prev, cur)
+			)
 		}
 
 		private fun speedDistanceKm(prev: Sample, cur: Sample): Double? {
@@ -433,7 +463,8 @@ class RangeEstimator(
 			}
 			val dtH = (cur.timeMs - prev.timeMs).coerceAtLeast(0L) / 3_600_000.0
 			val dKm = speed * dtH
-			return dKm.takeIf { it in 0.0002..MAX_ODO_STEP_KM }
+			val maxKm = maxPlausibleStepKm(cur.timeMs - prev.timeMs)
+			return dKm.takeIf { it in 0.0002..maxKm }
 		}
 
 		private fun gpsDistanceKm(prev: Sample, cur: Sample): Double? {
@@ -444,26 +475,37 @@ class RangeEstimator(
 			return haversineKm(lat1, lon1, lat2, lon2)
 		}
 
-		private fun odometerDeltaKm(prev: Sample, cur: Sample): Double? {
-			val a = prev.odometerKm ?: return null
-			val b = cur.odometerKm ?: return null
-			val d = b - a
-			return if (d < -0.001 || d > MAX_ODO_STEP_KM) null else d
+		private fun isGpsUnreliable(prev: Sample, cur: Sample): Boolean {
+			val gpsKm = gpsDistanceKm(prev, cur)
+			val dtMs = (cur.timeMs - prev.timeMs).coerceAtLeast(0L)
+			val wheel = odometerDeltaKm(prev.wheelOdometerKm, cur.wheelOdometerKm, dtMs)
+			val ctrl = odometerDeltaKm(prev.controllerOdometerKm, cur.controllerOdometerKm, dtMs)
+			return isGpsUnreliable(prev, cur, gpsKm, wheel ?: ctrl)
 		}
 
-		private fun isGpsUnreliable(
+		fun isGpsUnreliable(
 			prev: Sample,
 			cur: Sample,
 			gpsKm: Double?,
 			odoKm: Double?
 		): Boolean {
-			if (cur.accuracyM != null && cur.accuracyM > MAX_ACCURACY_M) {
+			return isGpsUnreliable(cur.accuracyM, prev.timeMs, cur.timeMs, gpsKm, odoKm)
+		}
+
+		fun isGpsUnreliable(
+			accuracyM: Float?,
+			prevTimeMs: Long,
+			curTimeMs: Long,
+			gpsKm: Double?,
+			odoKm: Double?
+		): Boolean {
+			if (accuracyM != null && accuracyM > MAX_ACCURACY_M) {
 				return true
 			}
 			if (gpsKm == null) {
 				return true
 			}
-			val dtSec = (cur.timeMs - prev.timeMs) / 1000.0
+			val dtSec = (curTimeMs - prevTimeMs) / 1000.0
 			if (dtSec > 0.2) {
 				val impliedKmh = gpsKm / dtSec * 3600.0
 				if (impliedKmh > MAX_PLAUSIBLE_KMH) {

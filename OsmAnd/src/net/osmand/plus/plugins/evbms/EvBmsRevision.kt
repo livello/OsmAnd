@@ -1,5 +1,5 @@
 package net.osmand.plus.plugins.evbms
 
 object EvBmsRevision {
-	const val GIT_HASH = "ev-lower-pass"
+	const val GIT_HASH = "dist-wheel-gps"
 }

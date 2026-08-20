@@ -30,7 +30,8 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 			"""<?xml version="1.0" encoding="UTF-8"?>""" + "\n" +
 					"""<gpx version="1.1" creator="OsmAnd EV BMS" xmlns="http://www.topografix.com/GPX/1/1" xmlns:osmand="https://osmand.net/docs/technical/osmand-file-formats/osmand-gpx">""" +
 					"\n<trk>\n<trkseg>\n"
-		private const val GPX_FOOTER = "</trkseg>\n</trk>\n</gpx>\n"
+		private const val GPX_TRACK_CLOSE = "</trkseg>\n</trk>\n"
+		private const val GPX_FOOTER = "</gpx>\n"
 		private val GPX_POINT = Regex("""<trkpt\s+lat="([^"]+)"\s+lon="([^"]+)"""")
 		private val GPX_TIME = Regex("""<time>([^<]+)</time>""")
 	}
@@ -61,6 +62,7 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 	private var sessionFields: List<TelemetryField> = fields
 	private var writeGpx = false
 	private var lastFingerprint: String? = null
+	private val pendingWaypoints = ArrayList<String>()
 
 	fun setFolderUri(uri: String?) {
 		folderUri = uri?.takeIf { it.isNotBlank() }
@@ -84,7 +86,7 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 		writeGpx = enabled
 		if (!enabled) {
 			try {
-				gpxWriter?.append(GPX_FOOTER)
+				gpxWriter?.append(gpxCloseXml())
 				gpxWriter?.flush()
 				gpxWriter?.close()
 			} catch (_: Exception) {
@@ -107,6 +109,7 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 		detach()
 		csvSpec = null
 		gpxSpec = null
+		pendingWaypoints.clear()
 		val stamp = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(Date())
 		sessionFields = fields
 		val csv = createFile("$stamp.csv", "text/csv") ?: return false
@@ -174,7 +177,7 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 					gpxWriter = gpx
 				}
 			}
-			gpx?.append(GPX_FOOTER)
+			gpx?.append(gpxCloseXml())
 			gpx?.flush()
 		} catch (_: Exception) {
 		}
@@ -221,6 +224,46 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 		lastFingerprint = null
 		appendCsv(sample)
 		appendGpx(sample, name, description)
+	}
+
+	@Synchronized
+	fun appendWaypoint(lat: Double, lon: Double, timeMs: Long, name: String, description: String) {
+		pendingWaypoints.add(waypointXml(lat, lon, timeMs, name, description))
+	}
+
+	private fun waypointXml(
+		lat: Double,
+		lon: Double,
+		timeMs: Long,
+		name: String,
+		description: String
+	): String {
+		val sb = StringBuilder()
+		sb.append("""<wpt lat="""").append(fmt(lat, "%.8f")).append('"')
+			.append(""" lon="""").append(fmt(lon, "%.8f")).append("\">\n")
+		sb.append("<time>").append(isoUtc(timeMs)).append("</time>\n")
+		sb.append("<name>").append(xml(name)).append("</name>\n")
+		if (description.isNotBlank()) {
+			sb.append("<desc>").append(xml(description)).append("</desc>\n")
+		}
+		sb.append("<extensions>\n")
+		sb.append("<osmand:icon>charging_station</osmand:icon>\n")
+		sb.append("<osmand:background>circle</osmand:background>\n")
+		sb.append("<osmand:color>#43A047</osmand:color>\n")
+		sb.append("</extensions>\n")
+		sb.append("</wpt>\n")
+		return sb.toString()
+	}
+
+	private fun gpxCloseXml(): String {
+		val sb = StringBuilder()
+		sb.append(GPX_TRACK_CLOSE)
+		for (wpt in pendingWaypoints) {
+			sb.append(wpt)
+		}
+		pendingWaypoints.clear()
+		sb.append(GPX_FOOTER)
+		return sb.toString()
 	}
 
 	private fun appendCsv(sample: EvTelemetry) {
@@ -294,7 +337,7 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 	private fun closeWriters(writeFooter: Boolean) {
 		try {
 			if (writeFooter) {
-				gpxWriter?.append(GPX_FOOTER)
+				gpxWriter?.append(gpxCloseXml())
 			}
 			gpxWriter?.flush()
 			gpxWriter?.close()

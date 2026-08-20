@@ -380,6 +380,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private var chargeCurrentStoppedMs = 0L
 	private var postChargeDistanceKm = 0.0
 	private var postChargeLastOdoKm: Double? = null
+	private var postChargeLastWheelKm: Double? = null
 	private var postChargeLastLoc: Location? = null
 	private var postChargeLastMs = 0L
 	private val socCalibrator = SocCalibrator()
@@ -398,20 +399,27 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private var tripLastMotorTempC: Double? = null
 	private var tripMovingMs = 0L
 	private var tripLastMoveMs = 0L
-	private var chargeTripGpsKm = 0.0
-	private var chargeTripOdoKm = 0.0
-	private var chargeTripSpeedKm = 0.0
-	private var chargeTripStartOdoKm: Double? = null
-	private var chargeTripLastOdoKm: Double? = null
+	private var chargeTripKmAcc = 0.0
+	private var chargeTripLastWheelKm: Double? = null
+	private var chargeTripLastCtrlKm: Double? = null
 	private var chargeTripLastLoc: Location? = null
-	private var chargeTripLastMoveMs = 0L
+	private var chargeTripLastMs = 0L
 	private var rearmReady = true
 	private var rearmGpsKm = 0.0
 	private var rearmStartOdoKm: Double? = null
 	private var rearmStartAh: Double? = null
 	private var rearmStartSoc: Int? = null
 	private var rearmLastLoc: Location? = null
-	private val pendingGpxEvents = ArrayList<Pair<String, String>>()
+	private val pendingGpxEvents = ArrayList<GpxEvent>()
+
+	private data class GpxEvent(
+		val name: String,
+		val description: String,
+		val lat: Double?,
+		val lon: Double?,
+		val timeMs: Long,
+		val waypoint: Boolean
+	)
 	private val historySamples = ArrayList<EvHistoryChartStore.Sample>()
 	private var historySampleLastMs = 0L
 	private var lastBmsRxMs = 0L
@@ -665,8 +673,11 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		if (tripStartMs <= 0L) {
 			return null
 		}
-		val integrated = maxOf(chargeTripGpsKm, chargeTripOdoKm, chargeTripSpeedKm)
-		return integrated.takeIf { it > 0.0 || hasTelemetrySession() }
+		val fromRange = rangeEstimator.tripDistanceKm()
+		if (fromRange != null && fromRange > 0.0) {
+			return fromRange
+		}
+		return chargeTripKmAcc.takeIf { it > 0.0 || hasTelemetrySession() }
 	}
 
 	private fun tripUsedAh(remainingAh: Double?): Double? {
@@ -756,6 +767,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				chargeCurrentStoppedMs = 0L
 				postChargeDistanceKm = 0.0
 				postChargeLastOdoKm = null
+				postChargeLastWheelKm = null
 				postChargeLastLoc = null
 				postChargeLastMs = 0L
 				journal.i("charge", "resume I=$packI ah=$remainingAh")
@@ -845,6 +857,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		chargeCurrentStoppedMs = 0L
 		postChargeDistanceKm = 0.0
 		postChargeLastOdoKm = null
+		postChargeLastWheelKm = null
 		postChargeLastLoc = null
 		postChargeLastMs = 0L
 		CHARGE_CYCLE_ACTIVE.set(false)
@@ -866,8 +879,12 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		persistChargeSession()
 		upsertOpenChargeRecord(now, remainingAh, tempC, loc)
 		markGpxEvent(
-			app.getString(R.string.ev_bms_gpx_charge_start),
-			chargeEventDescription(start = true, remainingAh, tempC, null)
+			name = app.getString(R.string.ev_bms_gpx_charge_start),
+			description = chargeEventDescription(start = true, remainingAh, tempC, null),
+			lat = loc?.latitude,
+			lon = loc?.longitude,
+			timeMs = now,
+			waypoint = false
 		)
 	}
 
@@ -880,7 +897,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		chargeExitHold = 0
 		chargeCurrentStoppedMs = now
 		postChargeDistanceKm = 0.0
-		postChargeLastOdoKm = ctrlOdometerKm()
+		postChargeLastOdoKm = controllerOdometerKm()
+		postChargeLastWheelKm = wheelOdometerKm()
 		postChargeLastLoc = loc?.let { Location(it) }
 		postChargeLastMs = now
 		upsertOpenChargeRecord(now, remainingAh, tempC, loc)
@@ -928,15 +946,31 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		historyCharts.save(EvHistoryChartStore.KIND_CHARGE, record.startMs, record.endMs, ArrayList(historySamples))
 		historySamples.clear()
 		historySampleLastMs = 0L
+		val energyWh = chargeEnergyWhAcc.takeIf { it >= 1.0 }
+			?: chargedAh?.let { ah ->
+				(lastBms?.voltageV ?: ctrlVoltageV())?.let { v -> ah * v }
+			}?.takeIf { it >= 1.0 }
+		val markerLat = chargeStartLat ?: loc?.latitude
+		val markerLon = chargeStartLon ?: loc?.longitude
+		val markerName = if (energyWh != null) {
+			app.getString(R.string.ev_bms_gpx_charge_wh, kotlin.math.round(energyWh).toInt())
+		} else {
+			app.getString(R.string.ev_bms_gpx_charge_end)
+		}
 		markGpxEvent(
-			app.getString(R.string.ev_bms_gpx_charge_end),
-			chargeEventDescription(
+			name = markerName,
+			description = chargeEventDescription(
 				start = false,
 				remainingAh,
 				tempC,
 				chargedAh,
-				if (chargeStartMs > 0L) now - chargeStartMs else null
-			)
+				if (chargeStartMs > 0L) now - chargeStartMs else null,
+				energyWh
+			),
+			lat = markerLat,
+			lon = markerLon,
+			timeMs = now,
+			waypoint = markerLat != null && markerLon != null
 		)
 		journal.i("charge", "finish chargedAh=$chargedAh remaining=$remainingAh temp=$tempC")
 		charging = false
@@ -966,13 +1000,11 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		tripLastMotorTempC = tripStartMotorTempC
 		tripMovingMs = 0L
 		tripLastMoveMs = 0L
-		chargeTripGpsKm = 0.0
-		chargeTripOdoKm = 0.0
-		chargeTripSpeedKm = 0.0
-		chargeTripStartOdoKm = ctrlOdometerKm()
-		chargeTripLastOdoKm = chargeTripStartOdoKm
+		chargeTripKmAcc = 0.0
+		chargeTripLastWheelKm = if (isSpeedSensorFresh()) wheelTracker.odometerKm else null
+		chargeTripLastCtrlKm = controllerOdometerKm()
 		chargeTripLastLoc = loc?.let { Location(it) }
-		chargeTripLastMoveMs = now
+		chargeTripLastMs = now
 		historySamples.clear()
 		historySampleLastMs = 0L
 		CHARGE_END_TRACK_M.set(app.savingTrackHelper.distance.toInt().coerceAtLeast(0))
@@ -1068,8 +1100,12 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			saveTripRecord(record)
 			historyCharts.save(EvHistoryChartStore.KIND_TRIP, record.startMs, record.endMs, ArrayList(historySamples))
 			markGpxEvent(
-				app.getString(R.string.ev_bms_gpx_charge_trip),
-				tripEventDescription(record)
+				name = app.getString(R.string.ev_bms_gpx_charge_trip),
+				description = tripEventDescription(record),
+				lat = loc?.latitude,
+				lon = loc?.longitude,
+				timeMs = now,
+				waypoint = false
 			)
 		}
 		TRIP_SESSION.set("")
@@ -1079,13 +1115,11 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		tripLastMoveMs = 0L
 		tripStartMotorTempC = null
 		tripLastMotorTempC = null
-		chargeTripGpsKm = 0.0
-		chargeTripOdoKm = 0.0
-		chargeTripSpeedKm = 0.0
-		chargeTripStartOdoKm = null
-		chargeTripLastOdoKm = null
+		chargeTripKmAcc = 0.0
+		chargeTripLastWheelKm = null
+		chargeTripLastCtrlKm = null
 		chargeTripLastLoc = null
-		chargeTripLastMoveMs = 0L
+		chargeTripLastMs = 0L
 		historySamples.clear()
 		historySampleLastMs = 0L
 	}
@@ -1093,31 +1127,48 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private fun accumulateChargeTripDistance(moving: Boolean) {
 		val now = System.currentTimeMillis()
 		val loc = lastLocation
-		val prev = chargeTripLastLoc
-		if (moving && loc != null && prev != null) {
-			val dKm = RangeEstimator.haversineKm(prev.latitude, prev.longitude, loc.latitude, loc.longitude)
-			if (dKm in 0.001..0.15) {
-				chargeTripGpsKm += dKm
+		val wheel = wheelOdometerKm()
+		val ctrl = controllerOdometerKm()
+		if (chargeTripLastMs <= 0L) {
+			if (loc != null) {
+				chargeTripLastLoc = Location(loc)
 			}
+			chargeTripLastWheelKm = wheel ?: chargeTripLastWheelKm
+			chargeTripLastCtrlKm = ctrl ?: chargeTripLastCtrlKm
+			chargeTripLastMs = if (moving) now else 0L
+			return
+		}
+		val dtMs = now - chargeTripLastMs
+		val gpsKm = if (moving && loc != null && chargeTripLastLoc != null) {
+			RangeEstimator.haversineKm(
+				chargeTripLastLoc!!.latitude, chargeTripLastLoc!!.longitude,
+				loc.latitude, loc.longitude
+			)
+		} else {
+			null
+		}
+		val wheelDelta = RangeEstimator.odometerDeltaKm(chargeTripLastWheelKm, wheel, dtMs)
+		val ctrlDelta = RangeEstimator.odometerDeltaKm(chargeTripLastCtrlKm, ctrl, dtMs)
+		val accuracy = loc?.takeIf { it.hasAccuracy() }?.accuracy
+		val gpsBad = RangeEstimator.isGpsUnreliable(
+			accuracy, chargeTripLastMs, now, gpsKm, wheelDelta ?: ctrlDelta
+		)
+		val speedKm = if (moving && chargeTripLastMs > 0L) {
+			val kmh = ctrlSpeedKmh() ?: loc?.takeIf { it.hasSpeed() }?.speed?.times(3.6)
+			if (kmh != null && kmh >= 2.0) kmh * dtMs / 3_600_000.0 else null
+		} else {
+			null
+		}
+		val step = RangeEstimator.chooseDistanceKm(dtMs, gpsKm, gpsBad, wheelDelta, ctrlDelta, speedKm)
+		if (step != null) {
+			chargeTripKmAcc += step.km
 		}
 		if (loc != null) {
 			chargeTripLastLoc = Location(loc)
 		}
-		val odo = ctrlOdometerKm()
-		chargeTripOdoKm += odoStepKm(chargeTripLastOdoKm, odo)
-		chargeTripLastOdoKm = odo ?: chargeTripLastOdoKm
-		if (moving) {
-			val speed = ctrlSpeedKmh() ?: loc?.takeIf { it.hasSpeed() }?.speed?.times(3.6)
-			if (chargeTripLastMoveMs > 0L && speed != null && speed >= 3.0) {
-				val dKm = speed * (now - chargeTripLastMoveMs).coerceAtLeast(0L) / 3_600_000.0
-				if (dKm in 0.0002..0.08) {
-					chargeTripSpeedKm += dKm
-				}
-			}
-			chargeTripLastMoveMs = now
-		} else {
-			chargeTripLastMoveMs = 0L
-		}
+		chargeTripLastWheelKm = wheel ?: chargeTripLastWheelKm
+		chargeTripLastCtrlKm = ctrl ?: chargeTripLastCtrlKm
+		chargeTripLastMs = if (moving) now else 0L
 	}
 
 	private fun accumulatePostChargeDistance(now: Long, moving: Boolean, loc: Location?) {
@@ -1126,41 +1177,50 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			if (loc != null) {
 				postChargeLastLoc = Location(loc)
 			}
-			postChargeLastOdoKm = ctrlOdometerKm() ?: postChargeLastOdoKm
+			postChargeLastOdoKm = controllerOdometerKm() ?: postChargeLastOdoKm
+			postChargeLastWheelKm = wheelOdometerKm() ?: postChargeLastWheelKm
 			return
 		}
-		var gpsStep = 0.0
-		val prevLoc = postChargeLastLoc
-		if (loc != null && prevLoc != null) {
-			val dKm = RangeEstimator.haversineKm(prevLoc.latitude, prevLoc.longitude, loc.latitude, loc.longitude)
-			if (dKm in 0.001..0.15) {
-				gpsStep = dKm
+		if (postChargeLastMs <= 0L) {
+			if (loc != null) {
+				postChargeLastLoc = Location(loc)
 			}
+			postChargeLastOdoKm = controllerOdometerKm() ?: postChargeLastOdoKm
+			postChargeLastWheelKm = wheelOdometerKm() ?: postChargeLastWheelKm
+			postChargeLastMs = now
+			return
+		}
+		val dtMs = now - postChargeLastMs
+		val wheel = wheelOdometerKm()
+		val ctrl = controllerOdometerKm()
+		val prevLoc = postChargeLastLoc
+		val gpsKm = if (loc != null && prevLoc != null) {
+			RangeEstimator.haversineKm(prevLoc.latitude, prevLoc.longitude, loc.latitude, loc.longitude)
+		} else {
+			null
+		}
+		val wheelDelta = RangeEstimator.odometerDeltaKm(postChargeLastWheelKm, wheel, dtMs)
+		val ctrlDelta = RangeEstimator.odometerDeltaKm(postChargeLastOdoKm, ctrl, dtMs)
+		val accuracy = loc?.takeIf { it.hasAccuracy() }?.accuracy
+		val gpsBad = RangeEstimator.isGpsUnreliable(
+			accuracy, postChargeLastMs, now, gpsKm, wheelDelta ?: ctrlDelta
+		)
+		val speedKm = if (postChargeLastMs > 0L) {
+			val kmh = ctrlSpeedKmh() ?: loc?.takeIf { it.hasSpeed() }?.speed?.times(3.6)
+			if (kmh != null && kmh >= 2.0) kmh * dtMs / 3_600_000.0 else null
+		} else {
+			null
+		}
+		val step = RangeEstimator.chooseDistanceKm(dtMs, gpsKm, gpsBad, wheelDelta, ctrlDelta, speedKm)
+		if (step != null) {
+			postChargeDistanceKm += step.km
 		}
 		if (loc != null) {
 			postChargeLastLoc = Location(loc)
 		}
-		val odo = ctrlOdometerKm()
-		val odoStep = odoStepKm(postChargeLastOdoKm, odo)
-		postChargeLastOdoKm = odo ?: postChargeLastOdoKm
-		var speedStep = 0.0
-		val speed = ctrlSpeedKmh() ?: loc?.takeIf { it.hasSpeed() }?.speed?.times(3.6)
-		if (postChargeLastMs > 0L && speed != null && speed >= 3.0) {
-			val dKm = speed * (now - postChargeLastMs).coerceAtLeast(0L) / 3_600_000.0
-			if (dKm in 0.0002..0.08) {
-				speedStep = dKm
-			}
-		}
+		postChargeLastWheelKm = wheel ?: postChargeLastWheelKm
+		postChargeLastOdoKm = ctrl ?: postChargeLastOdoKm
 		postChargeLastMs = now
-		postChargeDistanceKm += maxOf(gpsStep, odoStep, speedStep)
-	}
-
-	private fun odoStepKm(last: Double?, now: Double?): Double {
-		if (last == null || now == null) {
-			return 0.0
-		}
-		val d = now - last
-		return if (d in 0.0..0.08) d else 0.0
 	}
 
 	private fun estimatedRemainingAh(): Double? {
@@ -1193,6 +1253,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		chargeCurrentStoppedMs = 0L
 		postChargeDistanceKm = 0.0
 		postChargeLastOdoKm = null
+		postChargeLastWheelKm = null
 		postChargeLastLoc = null
 		postChargeLastMs = 0L
 	}
@@ -1241,11 +1302,9 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		json.putD("startMotorTempC", tripStartMotorTempC)
 		json.putD("lastMotorTempC", tripLastMotorTempC)
 		json.put("movingMs", tripMovingMs)
-		json.put("gpsKm", chargeTripGpsKm)
-		json.put("odoKm", chargeTripOdoKm)
-		json.put("speedKm", chargeTripSpeedKm)
-		json.putD("startOdoKm", chargeTripStartOdoKm)
-		json.putD("lastOdoKm", chargeTripLastOdoKm)
+		json.put("tripKm", chargeTripKmAcc)
+		json.putD("lastWheelKm", chargeTripLastWheelKm)
+		json.putD("lastCtrlKm", chargeTripLastCtrlKm)
 		TRIP_SESSION.set(json.toString())
 	}
 
@@ -1295,11 +1354,16 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				tripStartMotorTempC = json.optNullableDouble("startMotorTempC")
 				tripLastMotorTempC = json.optNullableDouble("lastMotorTempC")
 				tripMovingMs = json.optLong("movingMs")
-				chargeTripGpsKm = json.optDouble("gpsKm", 0.0).coerceAtLeast(0.0)
-				chargeTripOdoKm = json.optDouble("odoKm", 0.0).coerceAtLeast(0.0)
-				chargeTripSpeedKm = json.optDouble("speedKm", 0.0).coerceAtLeast(0.0)
-				chargeTripStartOdoKm = json.optNullableDouble("startOdoKm")
-				chargeTripLastOdoKm = json.optNullableDouble("lastOdoKm")
+				chargeTripKmAcc = json.optDouble("tripKm", 0.0).let { stored ->
+					if (stored > 0.0) stored else maxOf(
+						json.optDouble("gpsKm", 0.0),
+						json.optDouble("odoKm", 0.0),
+						json.optDouble("speedKm", 0.0)
+					).coerceAtLeast(0.0)
+				}
+				chargeTripLastWheelKm = json.optNullableDouble("lastWheelKm")
+				chargeTripLastCtrlKm = json.optNullableDouble("lastCtrlKm")
+					?: json.optNullableDouble("lastOdoKm")
 			} catch (_: Exception) {
 			}
 		}
@@ -1560,8 +1624,15 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		historyStore.appendTripCsv(row)
 	}
 
-	private fun markGpxEvent(name: String, description: String) {
-		pendingGpxEvents.add(name to description)
+	private fun markGpxEvent(
+		name: String,
+		description: String,
+		lat: Double? = null,
+		lon: Double? = null,
+		timeMs: Long = System.currentTimeMillis(),
+		waypoint: Boolean = false
+	) {
+		pendingGpxEvents.add(GpxEvent(name, description, lat, lon, timeMs, waypoint))
 	}
 
 	private fun chargeEventDescription(
@@ -1569,12 +1640,16 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		remainingAh: Double?,
 		tempC: Double?,
 		chargedAh: Double?,
-		durationMs: Long? = null
+		durationMs: Long? = null,
+		energyWh: Double? = null
 	): String {
 		val parts = ArrayList<String>()
 		parts.add(app.getString(if (start) R.string.ev_bms_gpx_charge_start else R.string.ev_bms_gpx_charge_end))
 		if (durationMs != null && durationMs > 0L) {
 			parts.add(OsmAndFormatter.getFormattedDurationShort((durationMs / 1000L).toInt()))
+		}
+		if (energyWh != null && energyWh >= 1.0) {
+			parts.add(String.format(Locale.US, "%.0f Wh", energyWh))
 		}
 		if (tempC != null) {
 			parts.add(String.format(Locale.US, "%.1f °C", tempC))
@@ -2641,7 +2716,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				bms?.voltageV ?: ctrlVoltageV(),
 				restPackVoltageV,
 				loc,
-				ctrlOdometerKm(),
+				wheelOdometerKm(),
+				controllerOdometerKm(),
 				minCellVoltageV,
 				bms?.temperaturesC?.minOrNull()?.toDouble(),
 				bms?.fullMah?.div(1000.0),
@@ -2649,7 +2725,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				remainingRouteElevation(),
 				USE_ROUTE_PROFILE.get(),
 				totalMassKg(),
-				packCurrentA ?: bms?.currentA,
+				if (bmsFresh) bms?.currentA else null,
 				ctrlSpeedKmh() ?: speed
 			)
 		}
@@ -2726,21 +2802,28 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		pendingGpxEvents.clear()
 		if (recorder.isRecording) {
 			recorder.setWriteGpx(RECORD_GPX.get() && !isTripRecording())
+			val recIv = activeRecordIntervalMs()
 			if (events.isEmpty()) {
-				val recIv = activeRecordIntervalMs()
 				if (lastRecordMs == 0L || sample.timeMs - lastRecordMs >= recIv) {
 					lastRecordMs = sample.timeMs
 					recorder.append(sample)
 				}
 			} else {
 				lastRecordMs = sample.timeMs
-				for ((name, desc) in events) {
-					recorder.appendNamedPoint(sample, name, desc)
+				recorder.append(sample)
+				for (event in events) {
+					if (event.waypoint) {
+						val lat = event.lat ?: continue
+						val lon = event.lon ?: continue
+						recorder.appendWaypoint(lat, lon, event.timeMs, event.name, event.description)
+					} else {
+						recorder.appendNamedPoint(sample, event.name, event.description)
+					}
 				}
 			}
 		}
-		for ((name, desc) in events) {
-			writeTripRecordingWaypoint(sample, name, desc)
+		for (event in events) {
+			writeTripRecordingWaypoint(event)
 		}
 		voice.onLink(
 			bmsUp = bmsFreshAfter,
@@ -2873,8 +2956,16 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private fun ctrlTempC(): Double? = vescSnapshot.controllerTempC ?: farSnapshot.controllerTempC
 
 	private fun ctrlOdometerKm(): Double? {
-		if (isSpeedSensorFresh()) {
-			return wheelTracker.odometerKm
+		return wheelOdometerKm() ?: controllerOdometerKm()
+	}
+
+	private fun wheelOdometerKm(): Double? {
+		return if (isSpeedSensorFresh()) wheelTracker.odometerKm else null
+	}
+
+	private fun controllerOdometerKm(): Double? {
+		if (!isControllerFresh()) {
+			return null
 		}
 		return rawCtrlOdometerKm()?.times(controllerCalFactor())
 	}
@@ -3192,19 +3283,25 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		)
 	}
 
-	private fun writeTripRecordingWaypoint(sample: EvTelemetry, name: String, desc: String) {
-		if (!isTripRecording()) {
+	private fun writeTripRecordingWaypoint(event: GpxEvent) {
+		if (!event.waypoint || !isTripRecording()) {
 			return
 		}
-		val lat = sample.lat ?: return
-		val lon = sample.lon ?: return
-		val color = when {
-			name.contains(app.getString(R.string.ev_bms_gpx_charge_start), true) -> 0xFF43A047.toInt()
-			name.contains(app.getString(R.string.ev_bms_gpx_charge_end), true) -> 0xFFFB8C00.toInt()
-			else -> 0xFF1E88E5.toInt()
-		}
+		val lat = event.lat ?: return
+		val lon = event.lon ?: return
+		val isCharge = event.name.contains(app.getString(R.string.ev_bms_gpx_charge_end), true) ||
+				event.name.contains("Wh", true) ||
+				event.name.contains("Вт", true)
+		val color = if (isCharge) 0xFF43A047.toInt() else 0xFF1E88E5.toInt()
 		app.savingTrackHelper.insertPointData(
-			lat, lon, desc, name, app.getString(R.string.ev_bms_plugin_name), color, "special_star", "circle"
+			lat,
+			lon,
+			event.description,
+			event.name,
+			app.getString(R.string.ev_bms_plugin_name),
+			color,
+			"charging_station",
+			"circle"
 		)
 	}
 

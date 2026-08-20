@@ -4720,6 +4720,7 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
     <string name="ev_bms_history_avg_charge_a">Средний ток заряда %1$s А</string>
     <string name="ev_bms_gpx_charge_start">Начало зарядки</string>
     <string name="ev_bms_gpx_charge_end">Конец зарядки</string>
+    <string name="ev_bms_gpx_charge_wh">Зарядка %d Вт·ч</string>
     <string name="ev_bms_gpx_charge_trip">Пробег на заряде</string>
     <string name="ev_bms_field_odometer">Одометр</string>
     <string name="ev_bms_field_ctrl_speed">Скорость контроллера</string>
@@ -4773,7 +4774,7 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
     <string name="ev_bms_range_for_reserve">Основной запас хода для резерва хода</string>
     <string name="ev_bms_range_for_reserve_desc">Какой расчёт основного запаса хода использовать для резерва, сравнения с маршрутом и оповещений на остановке</string>
     <string name="ev_bms_range_source_10km">Основной запас хода (10 км)</string>
-    <string name="ev_bms_range_source_10km_method">Остаток энергии пакета (ампер-часы × напряжение, с поправкой на слабую ячейку и холод батареи) делится на средний расход Вт·ч/км за последние 10 км. Дистанция: GPS, иначе шаг одометра, иначе скорость × время. Если включён профиль маршрута, добавляется энергия набора высоты и 55% рекуперации на спусках.</string>
+    <string name="ev_bms_range_source_10km_method">Остаток энергии пакета (ампер-часы × напряжение покоя, с поправкой на слабую ячейку; холод учитывается, пока нет 3 км измеренного движения) делится на средний расход Вт·ч/км за последние 10 км. Дистанция: датчик оборотов переднего колеса, иначе GPS с фильтром скачков, иначе одометр контроллера. Если включён профиль маршрута, набор высоты считается с КПД привода 80%, рекуперация на спусках — 55%.</string>
     <string name="ev_bms_range_source_5min">Запас (5 мин)</string>
     <string name="ev_bms_range_source_5min_method">Та же остаточная энергия делится на средний расход Вт·ч/км за последние 5 минут движения. Быстрее отражает холмы и ветер, чем окно 10 км. Профиль маршрута учитывается так же.</string>
     <string name="ev_bms_range_source_pnz">Запас хода ПНЗ</string>
