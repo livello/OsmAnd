@@ -25,6 +25,7 @@ class EvHikeWidget(
 		updateWidgetView()
 		setIcons(widgetType)
 		EvWidgetChrome.applySideLayout(view, panel)
+		EvWidgetChrome.bindPanelTap(this)
 	}
 
 	override fun attachView(
@@ -38,6 +39,7 @@ class EvHikeWidget(
 	override fun recreateViewInternal() {
 		super.recreateViewInternal()
 		EvWidgetChrome.applySideLayout(view, panel)
+		EvWidgetChrome.bindPanelTap(this)
 	}
 
 	override fun updateSimpleWidgetInfo(drawSettings: DrawSettings?) {
@@ -53,6 +55,7 @@ class EvHikeWidget(
 		}
 		EvWidgetChrome.applySideLayout(view, panel)
 		EvWidgetLinkFrame.clearOuterFrame(view)
+		EvWidgetChrome.bindPanelTap(this)
 	}
 
 	override fun applySimpleWidgetAppearance(appearance: ResolvedPanelAppearance) {

@@ -52,6 +52,7 @@ class EvBmsTextWidget(
 		updateWidgetView()
 		EvWidgetChrome.applySideLayout(view, panel)
 		applyLinkFrame()
+		EvWidgetChrome.bindPanelTap(this)
 	}
 
 	override fun attachView(
@@ -66,6 +67,7 @@ class EvBmsTextWidget(
 		super.recreateViewInternal()
 		EvWidgetChrome.applySideLayout(view, panel)
 		applyLinkFrame()
+		EvWidgetChrome.bindPanelTap(this)
 	}
 
 	override fun updateValueAlign(fullRow: Boolean) {
@@ -137,6 +139,7 @@ class EvBmsTextWidget(
 		}
 		applyLinkFrame()
 		EvWidgetChrome.applySideLayout(view, panel)
+		EvWidgetChrome.bindPanelTap(this)
 	}
 
 	private fun formatMetricKm(km: Double?): String {

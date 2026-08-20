@@ -1,5 +1,5 @@
 package net.osmand.plus.plugins.evbms
 
 object EvBmsRevision {
-	const val GIT_HASH = "gpx-field-toggles"
+	const val GIT_HASH = "widget-tap-pass"
 }

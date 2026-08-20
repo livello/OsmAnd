@@ -1029,6 +1029,7 @@ Optional DEBUG log of plugin and BLE actions. Controller RX hex is limited to on
 <b>🥾 Hike mode</b><br/>
 Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+• 🖐️ Side widget panel ignores taps on empty space; EV widgets open settings only from the top EV row, long-press still works on every EV widget<br/>
 • ☑️ Fields tab: title stays on the select-all row; a GPX radio after each checkbox writes that field into the plugin trip GPX<br/>
 • 🚲 BLE CSC front-wheel speed (Cycplus BK467, Magene S3): primary speedometer and odometer; GPS auto-calibrates wheel circumference from revolutions<br/>
 • 🛵 FarDriver reconnect binds by BLE name and updates the saved MAC after a power cycle<br/>

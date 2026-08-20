@@ -6,8 +6,12 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import net.osmand.plus.R
+import net.osmand.plus.settings.enums.ScreenLayoutMode
+import net.osmand.plus.views.mapwidgets.WidgetGroup
+import net.osmand.plus.views.mapwidgets.WidgetType
 import net.osmand.plus.views.mapwidgets.OutlinedTextContainer
 import net.osmand.plus.views.mapwidgets.WidgetsPanel
+import net.osmand.plus.views.mapwidgets.widgets.MapWidget
 import net.osmand.plus.views.mapwidgets.widgets.SimpleWidget
 
 object EvWidgetChrome {
@@ -30,6 +34,68 @@ object EvWidgetChrome {
 		} else {
 			container.addView(view)
 		}
+		bindPanelTap(widget)
+	}
+
+	@JvmStatic
+	fun bindPanelTap(widget: SimpleWidget) {
+		val root = widget.view
+		val enableTap = isTopEvPanelWidget(widget)
+		val plugin = net.osmand.plus.plugins.PluginsHelper.getPlugin(EvBmsPlugin::class.java)
+		if (enableTap && plugin != null) {
+			root.setOnClickListener { plugin.askShowSettingsDialog(widget.mapActivity) }
+			root.isClickable = true
+		} else {
+			root.setOnClickListener(null)
+			root.isClickable = false
+			root.isLongClickable = true
+		}
+	}
+
+	@JvmStatic
+	fun isTopEvPanelWidget(widget: MapWidget): Boolean {
+		if (!isPanelEvWidget(widget.widgetType)) {
+			return false
+		}
+		val mapActivity = widget.mapActivity
+		val app = mapActivity.app
+		val registry = app.osmandMap.mapLayers.mapWidgetRegistry
+		val appMode = app.settings.applicationMode
+		val layoutMode = ScreenLayoutMode.getDefault(mapActivity)
+		var panel: WidgetsPanel? = null
+		var myPage = 0
+		for (candidate in WidgetsPanel.entries) {
+			for (info in registry.getWidgetsForPanel(candidate)) {
+				if (info.widget === widget) {
+					panel = candidate
+					myPage = info.pageIndex
+					break
+				}
+			}
+			if (panel != null) {
+				break
+			}
+		}
+		if (panel == null) {
+			return true
+		}
+		for (info in registry.getWidgetsForPanel(panel)) {
+			if (info.pageIndex != myPage) {
+				continue
+			}
+			if (!info.isEnabledForAppMode(appMode, layoutMode) || !info.widget.isViewVisible) {
+				continue
+			}
+			if (!isPanelEvWidget(info.widget.widgetType)) {
+				continue
+			}
+			return info.widget === widget
+		}
+		return true
+	}
+
+	private fun isPanelEvWidget(type: WidgetType): Boolean {
+		return type.group == WidgetGroup.EV_BMS && type != WidgetType.EV_SPEEDOMETER
 	}
 
 	@JvmStatic

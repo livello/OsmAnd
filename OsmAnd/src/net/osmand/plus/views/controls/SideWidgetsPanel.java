@@ -12,6 +12,7 @@ import android.graphics.Paint.Cap;
 import android.graphics.Paint.Style;
 import android.graphics.Path;
 import android.util.AttributeSet;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
@@ -83,6 +84,8 @@ public class SideWidgetsPanel extends FrameLayoutEx implements WidgetsContainer 
 		}
 	};
 
+	private boolean trackingWidgetTouch;
+
 	public SideWidgetsPanel(@NonNull Context context) {
 		this(context, null);
 	}
@@ -109,6 +112,8 @@ public class SideWidgetsPanel extends FrameLayoutEx implements WidgetsContainer 
 		setupBorderPaint();
 		inflate(context, R.layout.side_widgets_panel, this);
 		setupChildren();
+		setClickable(false);
+		setFocusable(false);
 	}
 
 	public boolean isRightSide() {
@@ -173,6 +178,59 @@ public class SideWidgetsPanel extends FrameLayoutEx implements WidgetsContainer 
 			}
 		});
 		updateDots();
+	}
+
+	@Override
+	public boolean dispatchTouchEvent(MotionEvent ev) {
+		int action = ev.getActionMasked();
+		if (action == MotionEvent.ACTION_DOWN) {
+			trackingWidgetTouch = isInteractiveHit(ev);
+		}
+		if (!trackingWidgetTouch) {
+			if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+				trackingWidgetTouch = false;
+			}
+			return false;
+		}
+		if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+			trackingWidgetTouch = false;
+		}
+		return super.dispatchTouchEvent(ev);
+	}
+
+	private boolean isInteractiveHit(@NonNull MotionEvent ev) {
+		if (dots != null && dots.getVisibility() == VISIBLE) {
+			for (int i = 0; i < dots.getChildCount(); i++) {
+				if (isPointInsideVisibleView(dots.getChildAt(i), ev)) {
+					return true;
+				}
+			}
+		}
+		View page = getCurrentPageView();
+		if (page == null) {
+			return false;
+		}
+		View container = page.findViewById(R.id.container);
+		if (container instanceof ViewGroup group) {
+			for (int i = 0; i < group.getChildCount(); i++) {
+				if (isPointInsideVisibleView(group.getChildAt(i), ev)) {
+					return true;
+				}
+			}
+			return false;
+		}
+		return isPointInsideVisibleView(page, ev);
+	}
+
+	private boolean isPointInsideVisibleView(@Nullable View view, @NonNull MotionEvent ev) {
+		if (view == null || view.getVisibility() != VISIBLE || view.getWidth() <= 0 || view.getHeight() <= 0) {
+			return false;
+		}
+		int[] loc = new int[2];
+		view.getLocationOnScreen(loc);
+		float x = ev.getRawX();
+		float y = ev.getRawY();
+		return x >= loc[0] && x < loc[0] + view.getWidth() && y >= loc[1] && y < loc[1] + view.getHeight();
 	}
 
 	private int getPagerIdForPanelForRestoreState() {
