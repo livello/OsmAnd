@@ -14,6 +14,7 @@ import net.osmand.util.Algorithms;
 public class ListPreferenceEx extends DialogPreference {
 
 	private String[] entries;
+	private String[] entryDescriptions;
 	private Object[] entryValues;
 	private Object selectedValue;
 	private String description;
@@ -52,6 +53,14 @@ public class ListPreferenceEx extends DialogPreference {
 
 	public String[] getEntries() {
 		return entries;
+	}
+
+	public void setEntryDescriptions(String[] entryDescriptions) {
+		this.entryDescriptions = entryDescriptions;
+	}
+
+	public String[] getEntryDescriptions() {
+		return entryDescriptions;
 	}
 
 	public void setEntryValues(Object[] entryValues) {

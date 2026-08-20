@@ -4529,7 +4529,7 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
 <b>🥾 Режим «Поход»</b><br/>
 Оставляет запас хода, GPS и телеметрию раз в 5 с, замедляет опрос BLE не реже 5 с, отключает тяжёлые слои карты, 3D, погоду, онлайн-тайлы и лишние Bluetooth-плагины.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Список изменений</b> · %1$s<br/>
-• 🚲 BLE CSC датчик переднего колеса (Cycplus BK467): основной источник спидометра и одометра; автокалибровка коэффициента по GPS<br/>
+• 🚲 BLE CSC датчик переднего колеса (Cycplus BK467, Magene S3): основной источник спидометра и одометра; автокалибровка окружности по GPS и оборотам<br/>
 • 🛵 Переподключение FarDriver по имени BLE; после отключения питания сохранённый MAC обновляется<br/>
 • 🏍️ Исправление вылета при вкладке «О плагине» / переключении вкладок: литералы %% в changelog экранированы для getString<br/>
 • 🏍️ Автопереключение профилей не трогает карту, пока открыт лист настроек EV — демо HUD больше не ломает диалог<br/>
@@ -4722,9 +4722,9 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
     <string name="ev_bms_field_ctrl_speed">Скорость контроллера</string>
     <string name="ev_bms_field_wheel_speed">Скорость колеса</string>
     <string name="ev_bms_field_wheel_odometer">Одометр колеса</string>
-    <string name="ev_bms_announce_soc">Озвучивать заряд батареи</string>
+    <string name="ev_bms_announce_soc">Озвучивать полное напряжение батареи</string>
     <string name="ev_bms_soc_step">Шаг объявления напряжения</string>
-    <string name="ev_bms_announce_range_on_stop">Озвучивать остаток пробега на остановках</string>
+    <string name="ev_bms_announce_range_on_stop">Озвучивать основной запас хода на остановках</string>
     <string name="ev_bms_stop_speed">Порог скорости остановки</string>
     <string name="ev_bms_range_settings">Запас хода</string>
     <string name="ev_bms_use_route_profile">Профиль маршрута и рекуперация</string>
@@ -4749,10 +4749,10 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
     <string name="ev_bms_ble_rssi_unknown">📶 сопряжено</string>
     <string name="ev_bms_connected">Подключено к %1$s</string>
     <string name="ev_bms_disconnected">Отключено от %1$s</string>
-    <string name="ev_bms_voice_soc">Заряд батареи %1$s вольт</string>
+    <string name="ev_bms_voice_soc">Полное напряжение батареи %1$s вольт</string>
     <string name="ev_bms_voice_charge_soc">Заряд %1$d процентов</string>
     <string name="ev_bms_voice_charge_temp">Температура батареи %1$d градусов</string>
-    <string name="ev_bms_voice_range">Запас хода %1$d км</string>
+    <string name="ev_bms_voice_range">Основной запас хода %1$d км</string>
     <string name="ev_bms_voice_to_charge">Ехать до зарядки %1$d км</string>
     <string name="ev_bms_voice_voltage">Напряжение %1$s</string>
     <string name="ev_bms_voice_motor">Мотор %1$d</string>
@@ -4767,8 +4767,14 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
     <string name="ev_bms_widget_range_window_desc">Остаток энергии, делённый на средний Вт·ч/км за последние 5 минут</string>
     <string name="ev_bms_widget_range_pnz">Запас хода ПНЗ</string>
     <string name="ev_bms_widget_range_pnz_desc">Остаток энергии, делённый на средний Вт·ч/км текущего пробега на заряде</string>
-    <string name="ev_bms_range_for_reserve">Запас хода для резерва хода</string>
-    <string name="ev_bms_range_for_reserve_desc">Какой запас хода использовать для резерва, сравнения с маршрутом и оповещений на остановке</string>
+    <string name="ev_bms_range_for_reserve">Основной запас хода для резерва хода</string>
+    <string name="ev_bms_range_for_reserve_desc">Какой расчёт основного запаса хода использовать для резерва, сравнения с маршрутом и оповещений на остановке</string>
+    <string name="ev_bms_range_source_10km">Основной запас хода (10 км)</string>
+    <string name="ev_bms_range_source_10km_method">Остаток энергии пакета (ампер-часы × напряжение, с поправкой на слабую ячейку и холод батареи) делится на средний расход Вт·ч/км за последние 10 км. Дистанция: GPS, иначе шаг одометра, иначе скорость × время. Если включён профиль маршрута, добавляется энергия набора высоты и 55% рекуперации на спусках.</string>
+    <string name="ev_bms_range_source_5min">Запас (5 мин)</string>
+    <string name="ev_bms_range_source_5min_method">Та же остаточная энергия делится на средний расход Вт·ч/км за последние 5 минут движения. Быстрее отражает холмы и ветер, чем окно 10 км. Профиль маршрута учитывается так же.</string>
+    <string name="ev_bms_range_source_pnz">Запас хода ПНЗ</string>
+    <string name="ev_bms_range_source_pnz_method">Та же остаточная энергия делится на средний расход с начала текущего пробега на заряде (после зарядки или сброса ПНЗ). Учитывается весь цикл, а не только последние километры или минуты. Профиль маршрута учитывается так же.</string>
     <string name="ev_bms_confirm_record_start">Начать запись телеметрии и сбросить живой запас хода, расход и пробег на заряде?</string>
     <string name="ev_bms_confirm_record_pause">Приостановить запись телеметрии?</string>
     <string name="ev_bms_confirm_record_resume">Продолжить запись телеметрии?</string>
@@ -4859,7 +4865,7 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
     <string name="ev_bms_export_csv">Экспорт логов</string>
     <string name="ev_bms_export_csv_desc">Отправить записанные CSV и GPX</string>
     <string name="ev_bms_csv_none">Файлов телеметрии пока нет</string>
-    <string name="ev_bms_announce_range_vs_route">Предупреждать, если запас хода меньше остатка маршрута</string>
+    <string name="ev_bms_announce_range_vs_route">Предупреждать, если основной запас хода меньше остатка маршрута</string>
     <string name="ev_bms_announce_range_reserve">Озвучивать резерв хода на остановке</string>
     <string name="ev_bms_announce_range_reserve_small">Оповещение о малом резерве хода</string>
     <string name="ev_bms_announce_range_reserve_low">Оповещение о низком резерве хода</string>
@@ -4916,9 +4922,10 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
     <string name="ev_bms_cal_distance">Расстояние автокалибровки</string>
     <string name="ev_bms_cal_factor">Калибровочный коэффициент</string>
     <string name="ev_bms_cal_factor_desc">Расстояние по GPS, делённое на пробег контроллера. 1.000 — без поправки.</string>
-    <string name="ev_bms_cal_factor_sensor_desc">Расстояние по GPS, делённое на пробег датчика переднего колеса. 1.000 — без поправки.</string>
+    <string name="ev_bms_cal_factor_sensor_desc">Дополнительный коэффициент поверх окружности колеса. Автокалибровка записывает окружность и сбрасывает это значение в 1.000.</string>
+    <string name="ev_bms_cal_sensor_circ_desc">Расстояние по GPS, делённое на обороты колеса. Автокалибровка записывает окружность в миллиметрах и ставит дополнительный коэффициент 1.000.</string>
     <string name="ev_bms_wheel_circumference">Окружность переднего колеса</string>
-    <string name="ev_bms_wheel_circumference_desc">Окружность шины в миллиметрах. По умолчанию 2000 мм. Автокалибровка затем считает коэффициент датчика по GPS.</string>
+    <string name="ev_bms_wheel_circumference_desc">Окружность шины в миллиметрах (1200–2800). Задайте вручную или посчитайте автокалибровкой: метры GPS ÷ обороты колеса.</string>
     <string name="ev_bms_wheel_circumference_invalid">Введите окружность от 1200 до 2800 мм</string>
     <string name="ev_bms_cal_failed">Калибровка не удалась. Нужны GPS и связь с датчиком колеса или контроллером.</string>
     <string name="ev_bms_calibrate">Калибровка</string>
@@ -4926,6 +4933,7 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
     <string name="ev_bms_cal_start">Запуск автокалибровки</string>
     <string name="ev_bms_cal_progress">Калибровка: %1$s / %2$s GPS</string>
     <string name="ev_bms_cal_done">Калибровка сохранена: коэффициент %1$.3f</string>
+    <string name="ev_bms_cal_done_circ">Калибровка сохранена: окружность %1$d мм</string>
     <string name="ev_bms_cal_started">Автокалибровка начата. Проедьте %1$s при устойчивом GPS.</string>
     <string name="ev_bms_cal_cancelled">Автокалибровка отменена</string>
     <string name="ev_bms_filter_ctrl_odo">Фильтровать «пробег по контроллеру»</string>

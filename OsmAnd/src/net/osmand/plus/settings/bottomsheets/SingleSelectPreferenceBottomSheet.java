@@ -66,10 +66,13 @@ public class SingleSelectPreferenceBottomSheet extends BasePreferenceBottomSheet
 		}
 
 		String[] entries = listPreference.getEntries();
+		String[] entryDescriptions = listPreference.getEntryDescriptions();
 
 		for (int i = 0; i < entries.length; i++) {
+			boolean hasDescription = entryDescriptions != null && i < entryDescriptions.length
+					&& !Algorithms.isEmpty(entryDescriptions[i]);
 			BaseBottomSheetItem[] preferenceItem = new BottomSheetItemWithCompoundButton[1];
-			preferenceItem[0] = new BottomSheetItemWithCompoundButton.Builder()
+			BottomSheetItemWithCompoundButton.Builder builder = new BottomSheetItemWithCompoundButton.Builder()
 					.setChecked(i == selectedEntryIndex)
 					.setButtonTintList(AndroidUtils.createCheckedColorIntStateList(
 							ColorUtilities.getDefaultIconColor(ctx, nightMode),
@@ -78,15 +81,20 @@ public class SingleSelectPreferenceBottomSheet extends BasePreferenceBottomSheet
 									ContextCompat.getColor(ctx, getActiveColorId())))
 					.setTitle(entries[i])
 					.setTag(i)
-					.setLayoutId(R.layout.bottom_sheet_item_with_radio_btn_left)
+					.setLayoutId(hasDescription
+							? R.layout.bottom_sheet_item_with_long_descr_and_left_radio_btn
+							: R.layout.bottom_sheet_item_with_radio_btn_left)
 					.setOnClickListener(new View.OnClickListener() {
 						@Override
 						public void onClick(View v) {
 							selectedEntryIndex = (int) preferenceItem[0].getTag();
 							updateItems();
 						}
-					})
-					.create();
+					});
+			if (hasDescription) {
+				builder.setDescription(entryDescriptions[i]);
+			}
+			preferenceItem[0] = builder.create();
 			items.add(preferenceItem[0]);
 		}
 	}

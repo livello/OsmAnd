@@ -7,7 +7,7 @@ import java.util.ArrayDeque
  * Remaining range and trip energy.
  *
  * Energy (Wh) is the coulomb integral remainingAh·voltage, independent of GPS.
- * Distance prefers GPS, then speed·dt, then a small odometer step (wrap/reset ignored).
+ * Distance prefers GPS, then a small odometer step (wrap/reset ignored), then speed·dt.
  * Primary range uses remaining Wh / Wh/km over the last 10 km; 5-minute and
  * distance-on-charge (ПНЗ) estimates stay available separately.
  */
@@ -416,8 +416,8 @@ class RangeEstimator(
 			val fromSpeed = speedDistanceKm(prev, cur)
 			return when {
 				fromGps != null -> fromGps
-				fromSpeed != null -> fromSpeed
 				fromOdo != null -> fromOdo
+				fromSpeed != null -> fromSpeed
 				else -> null
 			}
 		}

@@ -49,6 +49,7 @@ import java.util.ArrayDeque
 import java.util.Locale
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.roundToInt
 
 class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.Listener {
 
@@ -85,6 +86,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		const val DEFAULT_STOP_ANNOUNCE_REPEATS = 2
 		const val DEFAULT_SPEED_CAL_DISTANCE_M = 1000
 		const val DEFAULT_WHEEL_CIRCUMFERENCE_MM = 2000
+		private const val MIN_WHEEL_REVS_FOR_CAL = 20L
 		const val DEFAULT_CTRL_ODO_EXCESS_PERCENT = 120
 		const val DEFAULT_VEHICLE_MASS_KG = 200f
 		const val DEFAULT_DRIVER_MASS_KG = 80f
@@ -323,7 +325,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private var speedSensorClient: EvBleUartClient? = null
 	private val wheelTracker = CscWheelTracker()
 	private var lastSpeedSensorRxMs = 0L
-	private var speedCalWheelStartRawM = 0.0
+	private var speedCalWheelStartRevs: Long? = null
 	private var speedCalUseWheel = false
 	private var bmsBuffer = ByteArray(0)
 	private var controllerBuffer = ByteArray(0)
@@ -2056,9 +2058,10 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			}
 			EvBleUartClient.Role.SPEED -> {
 				configureWheelTracker()
+				lastSpeedSensorRxMs = System.currentTimeMillis()
 				if (wheelTracker.ingest(data)) {
-					lastSpeedSensorRxMs = System.currentTimeMillis()
 					persistWheelOdometer()
+					handler.post { publishWheelLive() }
 				}
 			}
 		}
@@ -2563,6 +2566,23 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		handler.post { scanListener?.onScanFinished(role) }
 	}
 
+	private fun publishWheelLive() {
+		val prev = latestTelemetry
+		if (prev == null) {
+			publishSample()
+			return
+		}
+		val speed = wheelSpeedKmh()
+		val odo = if (isSpeedSensorFresh()) wheelTracker.odometerKm else null
+		latestTelemetry = prev.copy(
+			farOdometerKm = ctrlOdometerKm() ?: prev.farOdometerKm,
+			farTripKm = farTripKm() ?: prev.farTripKm,
+			farSpeedKmh = ctrlSpeedKmh() ?: prev.farSpeedKmh,
+			wheelSpeedKmh = speed,
+			wheelOdometerKm = odo
+		)
+	}
+
 	private fun publishSample() {
 		val bms = lastBms
 		val loc = lastLocation
@@ -2865,7 +2885,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		if (!isSpeedSensorFresh()) {
 			return null
 		}
-		return wheelTracker.speedKmh
+		return wheelTracker.currentSpeedKmh()
 	}
 
 	fun speedometerReading(): SpeedometerReading? {
@@ -3474,7 +3494,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		speedCalCtrlM = 0.0
 		speedCalCtrlStartKm = rawCtrlOdometerKm()
 		speedCalUseWheel = isSpeedSensorFresh() || isSpeedSensorConnected()
-		speedCalWheelStartRawM = wheelTracker.rawMeters()
+		speedCalWheelStartRevs = wheelTracker.lastWheelRevs()
 		speedCalLastLoc = lastLocation?.let { Location(it) }
 		speedCalLastMs = System.currentTimeMillis()
 		val target = OsmAndFormatter.getFormattedDistance(speedCalTargetMeters().toFloat(), app)
@@ -3517,7 +3537,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 
 	fun speedCalFactorDescriptionRes(): Int {
 		return if (isSpeedSensorSelected()) {
-			R.string.ev_bms_cal_factor_sensor_desc
+			R.string.ev_bms_cal_sensor_circ_desc
 		} else {
 			R.string.ev_bms_cal_factor_desc
 		}
@@ -3598,6 +3618,9 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		}
 		if (isSpeedSensorFresh()) {
 			speedCalUseWheel = true
+			if (speedCalWheelStartRevs == null) {
+				speedCalWheelStartRevs = wheelTracker.lastWheelRevs()
+			}
 		}
 		val now = System.currentTimeMillis()
 		if (speedCalCtrlStartKm == null) {
@@ -3631,13 +3654,27 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			app.showToastMessage(R.string.ev_bms_cal_failed)
 			return
 		}
-		val wheelKm = wheelTracker.rawMetersSince(speedCalWheelStartRawM) / 1000.0
-		val useWheel = speedCalUseWheel && wheelKm >= 0.05
+		if (speedCalUseWheel) {
+			val dRevs = wheelTracker.revsSince(speedCalWheelStartRevs)
+			if (dRevs == null || dRevs < MIN_WHEEL_REVS_FOR_CAL) {
+				app.showToastMessage(R.string.ev_bms_cal_failed)
+				return
+			}
+			val circMm = (speedCalGpsM / dRevs.toDouble() * 1000.0).roundToInt()
+			if (circMm !in 1200..2800) {
+				app.showToastMessage(R.string.ev_bms_cal_failed)
+				return
+			}
+			WHEEL_CIRCUMFERENCE_MM.set(circMm)
+			SPEED_SENSOR_CAL_FACTOR.set(1f)
+			configureWheelTracker()
+			app.showToastMessage(app.getString(R.string.ev_bms_cal_done_circ, circMm))
+			return
+		}
 		val odoKm = speedCalCtrlStartKm?.let { start ->
 			rawCtrlOdometerKm()?.minus(start)
 		}
 		val ctrlKm = when {
-			useWheel -> wheelKm
 			odoKm != null && odoKm >= 0.05 -> odoKm
 			speedCalCtrlM >= 50.0 -> speedCalCtrlM / 1000.0
 			else -> null
@@ -3651,12 +3688,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			app.showToastMessage(R.string.ev_bms_cal_failed)
 			return
 		}
-		if (useWheel) {
-			SPEED_SENSOR_CAL_FACTOR.set(factor)
-			configureWheelTracker()
-		} else {
-			SPEED_CAL_FACTOR.set(factor)
-		}
+		SPEED_CAL_FACTOR.set(factor)
 		app.showToastMessage(app.getString(R.string.ev_bms_cal_done, factor))
 	}
 

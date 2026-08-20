@@ -741,9 +741,16 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		val pref = findPreference<ListPreferenceEx>(plugin.RANGE_FOR_RESERVE.id) ?: return
 		pref.setEntries(
 			arrayOf(
-				getString(R.string.ev_bms_widget_range),
-				getString(R.string.ev_bms_widget_range_window),
-				getString(R.string.ev_bms_widget_range_pnz)
+				getString(R.string.ev_bms_range_source_10km),
+				getString(R.string.ev_bms_range_source_5min),
+				getString(R.string.ev_bms_range_source_pnz)
+			)
+		)
+		pref.setEntryDescriptions(
+			arrayOf(
+				getString(R.string.ev_bms_range_source_10km_method),
+				getString(R.string.ev_bms_range_source_5min_method),
+				getString(R.string.ev_bms_range_source_pnz_method)
 			)
 		)
 		pref.setEntryValues(

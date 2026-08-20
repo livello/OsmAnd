@@ -165,7 +165,9 @@ class EvBleUartClient(
 			}
 			val n = name.lowercase(Locale.US)
 			return n.contains("cycplus") || n.contains("coospo") || n.contains("bk467") ||
-					n.contains("bk-467") || n.contains("speed cadence") || n.contains("cadence") ||
+					n.contains("bk-467") || n.contains("magene") || n.contains("gemini") ||
+					n.contains("s3+") || n.contains("magene_s3") ||
+					n.contains("speed cadence") || n.contains("cadence") ||
 					n.contains("bike spd") || n.contains("spd cad") || n.startsWith("csc") ||
 					(n.contains("speed") && (n.contains("sensor") || n.contains("wheel")))
 		}
