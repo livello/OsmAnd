@@ -72,25 +72,25 @@ public class SingleSelectPreferenceBottomSheet extends BasePreferenceBottomSheet
 			boolean hasDescription = entryDescriptions != null && i < entryDescriptions.length
 					&& !Algorithms.isEmpty(entryDescriptions[i]);
 			BaseBottomSheetItem[] preferenceItem = new BottomSheetItemWithCompoundButton[1];
-			BottomSheetItemWithCompoundButton.Builder builder = new BottomSheetItemWithCompoundButton.Builder()
-					.setChecked(i == selectedEntryIndex)
-					.setButtonTintList(AndroidUtils.createCheckedColorIntStateList(
-							ColorUtilities.getDefaultIconColor(ctx, nightMode),
-							isProfileDependent() ?
-									getAppMode().getProfileColor(nightMode) :
-									ContextCompat.getColor(ctx, getActiveColorId())))
-					.setTitle(entries[i])
-					.setTag(i)
-					.setLayoutId(hasDescription
-							? R.layout.bottom_sheet_item_with_long_descr_and_left_radio_btn
-							: R.layout.bottom_sheet_item_with_radio_btn_left)
-					.setOnClickListener(new View.OnClickListener() {
-						@Override
-						public void onClick(View v) {
-							selectedEntryIndex = (int) preferenceItem[0].getTag();
-							updateItems();
-						}
-					});
+			BottomSheetItemWithCompoundButton.Builder builder = new BottomSheetItemWithCompoundButton.Builder();
+			builder.setChecked(i == selectedEntryIndex);
+			builder.setButtonTintList(AndroidUtils.createCheckedColorIntStateList(
+					ColorUtilities.getDefaultIconColor(ctx, nightMode),
+					isProfileDependent() ?
+							getAppMode().getProfileColor(nightMode) :
+							ContextCompat.getColor(ctx, getActiveColorId())));
+			builder.setTitle(entries[i]);
+			builder.setTag(i);
+			builder.setLayoutId(hasDescription
+					? R.layout.bottom_sheet_item_with_long_descr_and_left_radio_btn
+					: R.layout.bottom_sheet_item_with_radio_btn_left);
+			builder.setOnClickListener(new View.OnClickListener() {
+				@Override
+				public void onClick(View v) {
+					selectedEntryIndex = (int) preferenceItem[0].getTag();
+					updateItems();
+				}
+			});
 			if (hasDescription) {
 				builder.setDescription(entryDescriptions[i]);
 			}
