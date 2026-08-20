@@ -195,12 +195,18 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 		).joinToString(",") { it.id }
 
 		fun parse(raw: String?): List<TelemetryField> {
-			val byId = entries.associateBy { it.id }
-			val source = if (raw.isNullOrBlank()) DEFAULT_IDS else raw
-			val parsed = source.split(',').mapNotNull { byId[it.trim()] }
+			val parsed = parseExact(raw)
 			return parsed.ifEmpty {
-				DEFAULT_IDS.split(',').mapNotNull { byId[it.trim()] }
+				parseExact(DEFAULT_IDS)
 			}
+		}
+
+		fun parseExact(raw: String?): List<TelemetryField> {
+			if (raw.isNullOrBlank()) {
+				return emptyList()
+			}
+			val byId = entries.associateBy { it.id }
+			return raw.split(',').mapNotNull { byId[it.trim()] }
 		}
 
 		fun grouped(): List<Pair<Int, List<TelemetryField>>> {

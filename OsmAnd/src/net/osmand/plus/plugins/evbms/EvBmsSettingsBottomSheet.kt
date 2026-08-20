@@ -13,6 +13,7 @@ import android.view.ViewGroup
 import android.widget.CheckBox
 import android.widget.LinearLayout
 import android.widget.PopupMenu
+import android.widget.RadioButton
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.SwitchCompat
@@ -293,11 +294,12 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		val inflater = layoutInflater
 		val content = inflater.inflate(R.layout.ev_bms_telemetry_fields_dialog, container, false)
 		content.fitsSystemWindows = false
-		content.findViewById<View>(R.id.title).visibility = View.GONE
 		content.findViewById<View>(R.id.fields_actions).visibility = View.GONE
 		container.addView(content)
 		val selected = plugin.selectedTelemetryFields().toMutableSet()
+		val gpxSelected = plugin.selectedGpxTelemetryFields().toMutableSet()
 		val boxes = ArrayList<Pair<TelemetryField, CheckBox>>()
+		val gpxButtons = ArrayList<Pair<TelemetryField, RadioButton>>()
 		val list = content.findViewById<LinearLayout>(R.id.fields_list)
 		fun persist() {
 			val chosen = TelemetryField.entries.filter { it in selected }
@@ -309,9 +311,15 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			settingsFragment()?.refreshTelemetryFieldsPref()
 			chartsKey = ""
 		}
+		fun persistGpx() {
+			plugin.setGpxTelemetryFields(TelemetryField.entries.filter { it in gpxSelected })
+		}
 		fun bindChecks() {
 			for ((field, box) in boxes) {
 				box.isChecked = field in selected
+			}
+			for ((field, button) in gpxButtons) {
+				button.isChecked = field in gpxSelected
 			}
 		}
 		content.findViewById<TextView>(R.id.select_all).apply {
@@ -336,19 +344,33 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			for (field in fields) {
 				val row = inflater.inflate(R.layout.ev_bms_telemetry_field_row, list, false)
 				val box = row.findViewById<CheckBox>(R.id.compound_button)
+				val gpxBtn = row.findViewById<RadioButton>(R.id.gpx_button)
 				val title = row.findViewById<TextView>(R.id.title)
 				val value = row.findViewById<TextView>(R.id.value)
 				title.text = "${field.emoji} ${getString(field.titleRes)}"
 				value.text = field.liveValue(themed, plugin.latestTelemetry)
 				box.isChecked = field in selected
+				gpxBtn.isChecked = field in gpxSelected
 				UiUtilities.setupCompoundButton(box, nightMode, UiUtilities.CompoundButtonType.GLOBAL)
+				UiUtilities.setupCompoundButton(gpxBtn, nightMode, UiUtilities.CompoundButtonType.GLOBAL)
 				row.setOnClickListener {
 					box.isChecked = !box.isChecked
 					if (box.isChecked) selected.add(field) else selected.remove(field)
 					persist()
 				}
+				gpxBtn.setOnClickListener {
+					if (field in gpxSelected) {
+						gpxSelected.remove(field)
+						gpxBtn.isChecked = false
+					} else {
+						gpxSelected.add(field)
+						gpxBtn.isChecked = true
+					}
+					persistGpx()
+				}
 				fieldValueViews.add(field to value)
 				boxes.add(field to box)
+				gpxButtons.add(field to gpxBtn)
 				list.addView(row)
 			}
 		}

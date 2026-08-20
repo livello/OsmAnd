@@ -142,6 +142,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerBooleanPreference("ev_bms_record_gpx", true).makeGlobal().makeShared()
 	val TELEMETRY_FIELDS: CommonPreference<String> =
 		registerStringPreference("ev_bms_telemetry_fields", TelemetryField.DEFAULT_IDS).makeGlobal().makeShared()
+	val TELEMETRY_GPX_FIELDS: CommonPreference<String> =
+		registerStringPreference("ev_bms_telemetry_gpx_fields", "").makeGlobal().makeShared()
 	val SHEET_TAB: CommonPreference<Int> =
 		registerIntPreference("ev_bms_sheet_tab", 0).makeGlobal().makeShared()
 	val DEBUG_JOURNAL: CommonPreference<Boolean> =
@@ -3148,6 +3150,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	fun applyHikeTelemetryState() {
 		recorder.setFolderUri(CSV_FOLDER_URI.get())
 		recorder.setFields(selectedTelemetryFields())
+		recorder.setGpxFields(selectedGpxTelemetryFields())
 		recorder.setWriteGpx(RECORD_GPX.get() && !isTripRecording())
 	}
 
@@ -3206,6 +3209,19 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	}
 
 	fun selectedTelemetryFields(): List<TelemetryField> = TelemetryField.parse(TELEMETRY_FIELDS.get())
+
+	fun selectedGpxTelemetryFields(): List<TelemetryField> {
+		return if (TELEMETRY_GPX_FIELDS.isSet()) {
+			TelemetryField.parseExact(TELEMETRY_GPX_FIELDS.get())
+		} else {
+			selectedTelemetryFields()
+		}
+	}
+
+	fun setGpxTelemetryFields(selected: List<TelemetryField>) {
+		TELEMETRY_GPX_FIELDS.set(selected.joinToString(",") { it.id })
+		applyHikeTelemetryState()
+	}
 
 	fun chartHistorySnapshot(): List<EvTelemetry> {
 		synchronized(chartLock) {

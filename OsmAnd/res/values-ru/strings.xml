@@ -4529,6 +4529,7 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
 <b>🥾 Режим «Поход»</b><br/>
 Оставляет запас хода, GPS и телеметрию раз в 5 с, замедляет опрос BLE не реже 5 с, отключает тяжёлые слои карты, 3D, погоду, онлайн-тайлы и лишние Bluetooth-плагины.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Список изменений</b> · %1$s<br/>
+• ☑️ Вкладка полей: заголовок в строке «выделить все»; радио GPX после чекбокса пишет поле в GPX поездки плагина<br/>
 • 🚲 BLE CSC датчик переднего колеса (Cycplus BK467, Magene S3): основной источник спидометра и одометра; автокалибровка окружности по GPS и оборотам<br/>
 • 🛵 Переподключение FarDriver по имени BLE; после отключения питания сохранённый MAC обновляется<br/>
 • 🏍️ Исправление вылета при вкладке «О плагине» / переключении вкладок: литералы %% в changelog экранированы для getString<br/>
@@ -4651,6 +4652,7 @@ CSV с точкой с запятой и опциональный GPX 1.1 с в�
     <string name="ev_bms_coloring_consumption">Расход</string>
     <string name="ev_bms_telemetry_fields_summary">Выбрано %1$d из %2$d</string>
     <string name="ev_bms_telemetry_fields_empty">Выберите хотя бы одно поле</string>
+    <string name="ev_bms_field_write_gpx">Писать это поле в GPX плагина</string>
     <string name="ev_bms_charge_settings">Пробег на заряде</string>
     <string name="ev_bms_charge_still_sec">Стоянка перед зарядкой</string>
     <string name="ev_bms_charge_still_kmh">Порог движения</string>

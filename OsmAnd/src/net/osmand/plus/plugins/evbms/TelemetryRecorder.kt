@@ -57,6 +57,7 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 	private var gpxSpec: String? = null
 	private var folderUri: String? = null
 	private var fields: List<TelemetryField> = TelemetryField.parse(null)
+	private var gpxFields: List<TelemetryField> = fields
 	private var sessionFields: List<TelemetryField> = fields
 	private var writeGpx = false
 	private var lastFingerprint: String? = null
@@ -69,6 +70,10 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 		if (selected.isNotEmpty()) {
 			fields = selected
 		}
+	}
+
+	fun setGpxFields(selected: List<TelemetryField>) {
+		gpxFields = selected
 	}
 
 	@Synchronized
@@ -200,7 +205,9 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 
 	@Synchronized
 	fun append(sample: EvTelemetry) {
-		val fingerprint = sessionFields.joinToString("\u001f") { it.fingerprint(sample) }
+		val fingerprint = (sessionFields + gpxFields).distinct().joinToString("\u001f") {
+			it.fingerprint(sample)
+		}
 		if (fingerprint == lastFingerprint) {
 			return
 		}
@@ -248,7 +255,7 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 			if (!description.isNullOrBlank()) {
 				sb.append("<desc>").append(xml(description)).append("</desc>\n")
 			}
-			val extras = sessionFields.filter {
+			val extras = gpxFields.filter {
 				it != TelemetryField.LAT && it != TelemetryField.LON && it != TelemetryField.TIME_MS
 			}
 			val body = LinkedHashMap<String, String>()
@@ -258,16 +265,16 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 					body[field.id] = value
 				}
 			}
-			fun addEv(tag: String, value: String) {
-				if (value.isNotEmpty()) {
+			fun addEv(field: TelemetryField, tag: String, value: String) {
+				if (field in gpxFields && value.isNotEmpty()) {
 					body[tag] = value
 				}
 			}
-			addEv(PointAttributes.EV_TAG_CONSUMPTION, TelemetryField.CONSUMPTION.csvValue(sample))
-			addEv(PointAttributes.EV_TAG_VOLTAGE, TelemetryField.VOLTAGE.csvValue(sample))
-			addEv(PointAttributes.EV_TAG_CURRENT, TelemetryField.CURRENT.csvValue(sample))
-			addEv(PointAttributes.EV_TAG_SOC, TelemetryField.SOC.csvValue(sample))
-			addEv(PointAttributes.EV_TAG_CHARGE_TRIP, TelemetryField.CHARGE_TRIP.csvValue(sample))
+			addEv(TelemetryField.CONSUMPTION, PointAttributes.EV_TAG_CONSUMPTION, TelemetryField.CONSUMPTION.csvValue(sample))
+			addEv(TelemetryField.VOLTAGE, PointAttributes.EV_TAG_VOLTAGE, TelemetryField.VOLTAGE.csvValue(sample))
+			addEv(TelemetryField.CURRENT, PointAttributes.EV_TAG_CURRENT, TelemetryField.CURRENT.csvValue(sample))
+			addEv(TelemetryField.SOC, PointAttributes.EV_TAG_SOC, TelemetryField.SOC.csvValue(sample))
+			addEv(TelemetryField.CHARGE_TRIP, PointAttributes.EV_TAG_CHARGE_TRIP, TelemetryField.CHARGE_TRIP.csvValue(sample))
 			if (body.isNotEmpty()) {
 				sb.append("<extensions>\n")
 				for ((id, value) in body) {
