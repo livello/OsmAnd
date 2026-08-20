@@ -43,12 +43,15 @@ object EvWidgetChrome {
 		val enableTap = isTopEvPanelWidget(widget)
 		val plugin = net.osmand.plus.plugins.PluginsHelper.getPlugin(EvBmsPlugin::class.java)
 		if (enableTap && plugin != null) {
+			root.setTag(R.id.ev_widget_map_passthrough, null)
 			root.setOnClickListener { plugin.askShowSettingsDialog(widget.mapActivity) }
 			root.isClickable = true
+			root.isLongClickable = true
 		} else {
 			root.setOnClickListener(null)
 			root.isClickable = false
-			root.isLongClickable = true
+			root.isLongClickable = false
+			root.setTag(R.id.ev_widget_map_passthrough, true)
 		}
 	}
 

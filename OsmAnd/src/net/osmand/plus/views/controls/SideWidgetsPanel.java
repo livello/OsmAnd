@@ -213,7 +213,11 @@ public class SideWidgetsPanel extends FrameLayoutEx implements WidgetsContainer 
 		View container = page.findViewById(R.id.container);
 		if (container instanceof ViewGroup group) {
 			for (int i = 0; i < group.getChildCount(); i++) {
-				if (isPointInsideVisibleView(group.getChildAt(i), ev)) {
+				View child = group.getChildAt(i);
+				if (Boolean.TRUE.equals(child.getTag(R.id.ev_widget_map_passthrough))) {
+					continue;
+				}
+				if (isPointInsideVisibleView(child, ev)) {
 					return true;
 				}
 			}
