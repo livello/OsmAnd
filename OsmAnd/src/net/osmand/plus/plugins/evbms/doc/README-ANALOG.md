@@ -4,7 +4,7 @@ Comparison of the **EV-Telemetry** plugin in this OsmAnd fork with the closest o
 
 Last updated: 2026-08-21.  
 Plugin code: `../` (parent of this `doc/` folder).  
-Field reference: [`EV-Telemetry.md`](EV-Telemetry.md). BMS wire protocol: [`BMS_DATA_ABOUT.md`](BMS_DATA_ABOUT.md).
+Field reference: [`EV-Telemetry.md`](EV-Telemetry.md). Range and energy methodology: [`CalculationInfo.md`](CalculationInfo.md). BMS wire protocol: [`BMS_DATA_ABOUT.md`](BMS_DATA_ABOUT.md).
 
 ---
 
@@ -174,6 +174,7 @@ OsmAnd/src/net/osmand/plus/plugins/evbms/
   README.md
   doc/
     EV-Telemetry.md
+    CalculationInfo.md
     BMS_DATA_ABOUT.md
     README-ANALOG.md
 ```

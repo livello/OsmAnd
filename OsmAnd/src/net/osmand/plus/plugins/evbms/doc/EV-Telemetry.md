@@ -196,7 +196,9 @@ The “in UI” rate is how often the value **can** change. The snapshot is stil
 
 ## 4. Remaining range and energy
 
-Samples every 1 s while not charging. Step distance, first match wins:
+Samples every 1 s while not charging. Full methodology, diagrams and constants: [`CalculationInfo.md`](CalculationInfo.md).
+
+Step distance, first match wins:
 
 1. **Wheel odometer delta** (lifetime `odometerKm`; at rest GPS is not mixed in: Δ ≈ 0 → step 0).
 2. GPS haversine if not `gpsUnreliable` (accuracy ≤ 40 m, no jump versus odometer).
@@ -261,4 +263,5 @@ Cadence (`cadence_rpm`) is on by default in the field list and charts.
 | `protocol/CscWheelTracker.kt`, `CscCadenceTracker.kt` | CSC |
 | `ble/EvBleUartClient.kt` | four GATT roles |
 | `TelemetryRecorder.kt` | CSV / GPX |
+| `doc/CalculationInfo.md` | odometers, energy, remaining range |
 | `doc/BMS_DATA_ABOUT.md` | JBD/ANT frames and BMS BLE session |

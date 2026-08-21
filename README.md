@@ -8,7 +8,7 @@ Personal fork of [osmandapp/Osmand](https://github.com/osmandapp/Osmand) by [liv
 - Package: `net.osmand.dev` (does not replace Play Store OsmAnd)
 - Branch: `feature/ev-bms-fardriver-plugin`
 - Remotes: `origin` → `git@github.com:livello/OsmAnd.git` (this fork), `upstream` → official OsmAnd
-- Docs: [`OsmAnd/src/net/osmand/plus/plugins/evbms/doc/EV-Telemetry.md`](OsmAnd/src/net/osmand/plus/plugins/evbms/doc/EV-Telemetry.md) (all fields), [`BMS_DATA_ABOUT.md`](OsmAnd/src/net/osmand/plus/plugins/evbms/doc/BMS_DATA_ABOUT.md) (JBD/ANT BLE), [`README-ANALOG.md`](OsmAnd/src/net/osmand/plus/plugins/evbms/doc/README-ANALOG.md) (vs R-Speedo, Locus, upstream PR notes)
+- Docs: [`EV-Telemetry.md`](OsmAnd/src/net/osmand/plus/plugins/evbms/doc/EV-Telemetry.md) (fields), [`CalculationInfo.md`](OsmAnd/src/net/osmand/plus/plugins/evbms/doc/CalculationInfo.md) (range/energy methodology), [`BMS_DATA_ABOUT.md`](OsmAnd/src/net/osmand/plus/plugins/evbms/doc/BMS_DATA_ABOUT.md) (JBD/ANT BLE), [`README-ANALOG.md`](OsmAnd/src/net/osmand/plus/plugins/evbms/doc/README-ANALOG.md) (vs R-Speedo, Locus, upstream PR notes)
 - Release APK (arm64, OpenGL, minified):
 
 ```bash

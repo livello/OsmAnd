@@ -7,6 +7,7 @@ OsmAnd plugin for DIY electric vehicles: live BLE telemetry from **JBD** and **A
 | Document | Contents |
 |---|---|
 | [`doc/EV-Telemetry.md`](doc/EV-Telemetry.md) | All telemetry fields, sources, rates, formulas |
+| [`doc/CalculationInfo.md`](doc/CalculationInfo.md) | Distance, energy, remaining range methodology |
 | [`doc/BMS_DATA_ABOUT.md`](doc/BMS_DATA_ABOUT.md) | JBD / ANT BLE protocol and session |
 | [`doc/README-ANALOG.md`](doc/README-ANALOG.md) | Comparison with R-Speedo, Locus 4.35, upstream PR notes |
 
