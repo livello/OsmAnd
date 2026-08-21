@@ -1006,7 +1006,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		tripMovingMs = 0L
 		tripLastMoveMs = 0L
 		chargeTripKmAcc = 0.0
-		chargeTripLastWheelKm = if (isSpeedSensorFresh()) wheelTracker.odometerKm else null
+		chargeTripLastWheelKm = wheelOdometerForRange()
 		chargeTripLastCtrlKm = controllerOdometerKm()
 		chargeTripLastLoc = loc?.let { Location(it) }
 		chargeTripLastMs = now
@@ -1132,7 +1132,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private fun accumulateChargeTripDistance(moving: Boolean) {
 		val now = System.currentTimeMillis()
 		val loc = lastLocation
-		val wheel = wheelOdometerKm()
+		val wheel = wheelOdometerForRange()
 		val ctrl = controllerOdometerKm()
 		if (chargeTripLastMs <= 0L) {
 			if (loc != null) {
@@ -1183,7 +1183,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				postChargeLastLoc = Location(loc)
 			}
 			postChargeLastOdoKm = controllerOdometerKm() ?: postChargeLastOdoKm
-			postChargeLastWheelKm = wheelOdometerKm() ?: postChargeLastWheelKm
+			postChargeLastWheelKm = wheelOdometerForRange() ?: postChargeLastWheelKm
 			return
 		}
 		if (postChargeLastMs <= 0L) {
@@ -1191,12 +1191,12 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				postChargeLastLoc = Location(loc)
 			}
 			postChargeLastOdoKm = controllerOdometerKm() ?: postChargeLastOdoKm
-			postChargeLastWheelKm = wheelOdometerKm() ?: postChargeLastWheelKm
+			postChargeLastWheelKm = wheelOdometerForRange() ?: postChargeLastWheelKm
 			postChargeLastMs = now
 			return
 		}
 		val dtMs = now - postChargeLastMs
-		val wheel = wheelOdometerKm()
+		val wheel = wheelOdometerForRange()
 		val ctrl = controllerOdometerKm()
 		val prevLoc = postChargeLastLoc
 		val gpsKm = if (loc != null && prevLoc != null) {
@@ -2036,7 +2036,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			}
 			if (role == EvBleUartClient.Role.SPEED) {
 				configureWheelTracker()
-				wheelTracker.resetTrip()
+				wheelTracker.resetBaseline()
 			}
 			startPolling()
 			applyHikeTelemetryState()
@@ -2109,6 +2109,11 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			}
 			if (client.role == EvBleUartClient.Role.BMS) {
 				// Module still answers FF AA 17; UART silence is not a dead radio.
+				return
+			}
+			if (client.role == EvBleUartClient.Role.SPEED) {
+				// CSC sensors stop notifying at rest and often rename BK6LC/BK6LS.
+				// Tearing GATT down here zeros the odometer widget until the next ride.
 				return
 			}
 			val now = System.currentTimeMillis()
@@ -2655,7 +2660,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			return
 		}
 		val speed = wheelSpeedKmh()
-		val odo = if (isSpeedSensorFresh()) wheelTracker.odometerKm else null
+		val odo = wheelTracker.odometerKm
 		latestTelemetry = prev.copy(
 			farOdometerKm = ctrlOdometerKm() ?: prev.farOdometerKm,
 			farTripKm = farTripKm() ?: prev.farTripKm,
@@ -2721,7 +2726,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				bms?.voltageV ?: ctrlVoltageV(),
 				restPackVoltageV,
 				loc,
-				wheelOdometerKm(),
+				wheelOdometerForRange(),
 				controllerOdometerKm(),
 				minCellVoltageV,
 				bms?.temperaturesC?.minOrNull()?.toDouble(),
@@ -2771,7 +2776,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			chargeTripKm = chargeTripKm(),
 			farSpeedKmh = ctrlSpeedKmh(),
 			wheelSpeedKmh = wheelSpeedKmh(),
-			wheelOdometerKm = if (isSpeedSensorFresh()) wheelTracker.odometerKm else null,
+			wheelOdometerKm = wheelTracker.odometerKm,
 			farAvgWhPerKm = ctrlAvgWhPerKm(),
 			gpsUnreliable = rangeEstimator.gpsUnreliable,
 			usedFarDriverDistance = rangeEstimator.usedFarDriverDistance,
@@ -2964,8 +2969,18 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		return wheelOdometerKm() ?: controllerOdometerKm()
 	}
 
-	private fun wheelOdometerKm(): Double? {
-		return if (isSpeedSensorFresh()) wheelTracker.odometerKm else null
+	private fun wheelOdometerKm(): Double? = wheelTracker.odometerKm
+
+	private fun wheelOdometerForRange(): Double? {
+		val odo = wheelTracker.odometerKm ?: return null
+		if (isSpeedSensorFresh()) {
+			return odo
+		}
+		if (!isSpeedSensorConnected()) {
+			return null
+		}
+		val gpsKmh = lastLocation?.takeIf { it.hasSpeed() }?.speed?.times(3.6) ?: 0.0
+		return if (gpsKmh < 3.0) odo else null
 	}
 
 	private fun controllerOdometerKm(): Double? {
@@ -2980,8 +2995,11 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private fun controllerSpeedKmh(): Double? = rawCtrlSpeedKmh()?.times(controllerCalFactor())
 
 	private fun wheelSpeedKmh(): Double? {
-		if (!isSpeedSensorFresh()) {
+		if (!isSpeedSensorConnected() || !wheelTracker.hasWheelData) {
 			return null
+		}
+		if (!isSpeedSensorFresh()) {
+			return 0.0
 		}
 		return wheelTracker.currentSpeedKmh()
 	}

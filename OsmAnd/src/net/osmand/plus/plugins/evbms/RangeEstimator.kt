@@ -369,6 +369,9 @@ class RangeEstimator(
 				}
 				return null
 			}
+			if (wheelDeltaKm != null && wheelDeltaKm >= 0.0 && wheelDeltaKm < 0.0002) {
+				return null
+			}
 			accept(wheelDeltaKm, DistanceSource.WHEEL)?.let { return it }
 			if (!gpsUnreliable) {
 				accept(gpsKm, DistanceSource.GPS)?.let { return it }

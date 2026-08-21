@@ -154,9 +154,13 @@ class EvBleUartClient(
 			if (a.equals(b, ignoreCase = true)) {
 				return true
 			}
-			val compactA = a.replace(" ", "")
-			val compactB = b.replace(" ", "")
+			val compactA = normalizeSpeedSensorName(a)
+			val compactB = normalizeSpeedSensorName(b)
 			return compactA.equals(compactB, ignoreCase = true)
+		}
+
+		fun normalizeSpeedSensorName(name: String): String {
+			return name.replace(" ", "").replace(Regex("(?i)BK6L[CS]"), "BK6L")
 		}
 
 		fun matchesSpeedSensorName(name: String?): Boolean {
@@ -165,7 +169,7 @@ class EvBleUartClient(
 			}
 			val n = name.lowercase(Locale.US)
 			return n.contains("cycplus") || n.contains("coospo") || n.contains("bk467") ||
-					n.contains("bk-467") || n.contains("magene") || n.contains("gemini") ||
+					n.contains("bk6l") || n.contains("bk-467") || n.contains("magene") || n.contains("gemini") ||
 					n.contains("s3+") || n.contains("magene_s3") ||
 					n.contains("speed cadence") || n.contains("cadence") ||
 					n.contains("bike spd") || n.contains("spd cad") || n.startsWith("csc") ||

@@ -1062,6 +1062,7 @@ BMS UART (JBD / ANT) + controller UART (FarDriver / VESC) + BLE CSC wheel + GPS 
 • <b>protocol/</b> — JbdBmsProtocol, JbdBleModuleProtocol, AntBmsProtocol, FarDriverProtocol, VescProtocol, BmsSnapshot<br/>
 Layouts: <i>res/layout/ev_bms_*.xml</i>. Preferences: <i>res/xml/ev_bms_settings.xml</i>. Strings: <i>res/values/strings.xml</i> and <i>values-ru</i>.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+• 🚲 Wheel odometer keeps the last distance at rest and after CSC sleep; BK6LC/BK6LS names match; charts show the tapped point<br/>
 • 📐 About tab: full remaining-range methodology and plugin file map<br/>
 • 📏 Distance for range and DOC: front-wheel BLE, then filtered GPS, then controller odometer (rear wheel can slip)<br/>
 • 🔌 Charge-end GPX waypoints on the trip track, labeled with Wh into the pack<br/>
@@ -1159,6 +1160,7 @@ Layouts: <i>res/layout/ev_bms_*.xml</i>. Preferences: <i>res/xml/ev_bms_settings
     <string name="ev_bms_charts_paused">Charts paused</string>
     <string name="ev_bms_charts_pause">Pause charts</string>
     <string name="ev_bms_charts_resume">Resume charts</string>
+    <string name="ev_bms_chart_inspect">%1$s  ·  %2$s</string>
     <string name="ev_bms_devices">Bluetooth devices</string>
     <string name="ev_bms_jbd_title">Battery BMS</string>
     <string name="ev_bms_controller_title">Motor controller</string>

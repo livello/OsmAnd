@@ -123,7 +123,9 @@ class CscWheelTracker {
 		if (prevRevs == null) {
 			lastRevWallMs = now
 			lastInstantKmh = 0.0
-			odometerKm = calibratedM / 1000.0
+			if (calibratedM > 0.0) {
+				odometerKm = calibratedM / 1000.0
+			}
 			return true
 		}
 		if (revs + 8L < prevRevs) {

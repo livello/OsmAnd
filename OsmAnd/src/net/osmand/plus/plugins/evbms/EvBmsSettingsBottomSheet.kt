@@ -8,6 +8,7 @@ import android.text.SpannableStringBuilder
 import android.text.TextUtils
 import android.text.method.LinkMovementMethod
 import android.text.style.RelativeSizeSpan
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.CheckBox
@@ -26,6 +27,8 @@ import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.data.Entry
 import com.github.mikephil.charting.data.LineData
 import com.github.mikephil.charting.data.LineDataSet
+import com.github.mikephil.charting.highlight.Highlight
+import com.github.mikephil.charting.listener.OnChartValueSelectedListener
 import net.osmand.plus.R
 import net.osmand.plus.base.MenuBottomSheetDialogFragment
 import net.osmand.plus.base.bottomsheetmenu.BaseBottomSheetItem
@@ -48,6 +51,7 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	companion object {
 		val TAG: String = EvBmsSettingsBottomSheet::class.java.simpleName
 		private const val SETTINGS_TAG = "ev_bms_settings_embedded"
+		private val CHART_CLOCK = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
 
 		fun showInstance(fragmentManager: FragmentManager) {
 			if (AndroidUtils.isFragmentCanBeAdded(fragmentManager, TAG)) {
@@ -75,7 +79,8 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	private data class ChartRow(
 		val field: TelemetryField,
 		val chart: LineChart,
-		val value: TextView
+		val value: TextView,
+		var selectedX: Float? = null
 	)
 
 	private val liveTick = object : Runnable {
@@ -434,7 +439,9 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			styleChartTitle(title, field)
 			value.text = field.liveValue(ctx, plugin.latestTelemetry)
 			styleChart(chart)
-			chartRows.add(ChartRow(field, chart, value))
+			val chartRow = ChartRow(field, chart, value)
+			bindChartInspect(chartRow)
+			chartRows.add(chartRow)
 			list.addView(row)
 		}
 		refreshCharts()
@@ -508,9 +515,14 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		val divider = ColorUtilities.getDividerColor(ctx, nightMode)
 		chart.description.isEnabled = false
 		chart.legend.isEnabled = false
-		chart.setTouchEnabled(false)
+		chart.setTouchEnabled(true)
+		chart.setDragEnabled(false)
 		chart.setScaleEnabled(false)
 		chart.setPinchZoom(false)
+		chart.setDoubleTapToZoomEnabled(false)
+		chart.isHighlightPerTapEnabled = true
+		chart.isHighlightPerDragEnabled = true
+		chart.setMaxHighlightDistance(64f)
 		chart.setDrawGridBackground(false)
 		chart.setDrawBorders(false)
 		chart.minOffset = 0f
@@ -532,6 +544,69 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		chart.axisLeft.setDrawTopYLabelEntry(true)
 		chart.setNoDataText(getString(R.string.ev_bms_charts_empty))
 		chart.setNoDataTextColor(secondary)
+		chart.setOnTouchListener { v, event ->
+			when (event.actionMasked) {
+				MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE ->
+					v.parent?.requestDisallowInterceptTouchEvent(true)
+				MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
+					v.parent?.requestDisallowInterceptTouchEvent(false)
+			}
+			false
+		}
+	}
+
+	private fun bindChartInspect(row: ChartRow) {
+		row.chart.setOnChartValueSelectedListener(object : OnChartValueSelectedListener {
+			override fun onValueSelected(e: Entry?, h: Highlight?) {
+				if (e == null) {
+					return
+				}
+				row.selectedX = e.x
+				showChartInspect(row, e)
+			}
+
+			override fun onNothingSelected() {
+				row.selectedX = null
+				val ctx = context ?: return
+				row.value.text = row.field.liveValue(ctx, plugin.latestTelemetry)
+			}
+		})
+	}
+
+	private fun showChartInspect(row: ChartRow, entry: Entry) {
+		val ctx = context ?: return
+		val sample = entry.data as? EvTelemetry
+		val value = if (sample != null) {
+			row.field.liveValue(ctx, sample)
+		} else {
+			row.field.liveValue(ctx, plugin.latestTelemetry)
+		}
+		val time = if (sample != null) {
+			CHART_CLOCK.format(Date(sample.timeMs))
+		} else {
+			formatElapsed(entry.x)
+		}
+		row.value.text = getString(R.string.ev_bms_chart_inspect, value, time)
+	}
+
+	private fun formatElapsed(seconds: Float): String {
+		val total = seconds.toInt().coerceAtLeast(0)
+		val m = total / 60
+		val s = total % 60
+		return String.format(Locale.getDefault(), "%d:%02d", m, s)
+	}
+
+	private fun applyChartValue(row: ChartRow, live: EvTelemetry?) {
+		val ctx = context ?: return
+		val selectedX = row.selectedX
+		if (selectedX != null) {
+			val entry = row.chart.data?.getDataSetByIndex(0)?.getEntryForXValue(selectedX, Float.NaN)
+			if (entry != null) {
+				showChartInspect(row, entry)
+				return
+			}
+		}
+		row.value.text = row.field.liveValue(ctx, live)
 	}
 
 	private fun refreshCharts() {
@@ -540,8 +615,8 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		val color = ColorUtilities.getActiveColor(ctx, nightMode)
 		val sample = plugin.latestTelemetry
 		for (row in chartRows) {
-			row.value.text = row.field.liveValue(ctx, sample)
 			if (!plugin.isChartsLive() || plugin.isChartPaused(row.field.id)) {
+				applyChartValue(row, sample)
 				continue
 			}
 			val entries = ArrayList<Entry>()
@@ -549,16 +624,17 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			for (item in history) {
 				val y = row.field.chartValue(item) ?: continue
 				val x = ((item.timeMs - t0) / 1000.0).toFloat()
-				entries.add(Entry(x, y.toFloat()))
+				entries.add(Entry(x, y.toFloat(), item))
 			}
 			if (entries.isEmpty()) {
 				row.chart.clear()
 				row.chart.invalidate()
+				applyChartValue(row, sample)
 				continue
 			}
 			if (entries.size == 1) {
 				val only = entries[0]
-				entries.add(Entry(only.x + 1f, only.y))
+				entries.add(Entry(only.x + 1f, only.y, only.data))
 			}
 			val set = LineDataSet(entries, "")
 			set.setDrawCircles(false)
@@ -568,11 +644,20 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			set.color = color
 			set.fillColor = color
 			set.fillAlpha = 48
+			set.highLightColor = color
+			set.setHighlightLineWidth(1.2f)
 			set.setDrawHorizontalHighlightIndicator(false)
-			set.setDrawVerticalHighlightIndicator(false)
+			set.setDrawVerticalHighlightIndicator(true)
 			set.mode = LineDataSet.Mode.LINEAR
 			row.chart.data = LineData(set)
+			val selectedX = row.selectedX
+			if (selectedX != null) {
+				row.chart.highlightValue(selectedX, 0, false)
+			} else {
+				row.chart.highlightValues(null)
+			}
 			row.chart.invalidate()
+			applyChartValue(row, sample)
 		}
 	}
 
@@ -780,7 +865,9 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			set.lineWidth = 1.6f
 			set.color = color
 			set.setDrawHorizontalHighlightIndicator(false)
-			set.setDrawVerticalHighlightIndicator(false)
+			set.setDrawVerticalHighlightIndicator(true)
+			set.highLightColor = color
+			set.setHighlightLineWidth(1.2f)
 			set.mode = LineDataSet.Mode.LINEAR
 			sets.add(set)
 			val last = data.last(id)

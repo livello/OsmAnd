@@ -4562,6 +4562,7 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
 • <b>protocol/</b> — JbdBmsProtocol, JbdBleModuleProtocol, AntBmsProtocol, FarDriverProtocol, VescProtocol, BmsSnapshot<br/>
 Вёрстка: <i>res/layout/ev_bms_*.xml</i>. Настройки: <i>res/xml/ev_bms_settings.xml</i>. Строки: <i>res/values/strings.xml</i> и <i>values-ru</i>.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Список изменений</b> · %1$s<br/>
+• 🚲 Одометр колеса держит последний пробег на остановке и после сна CSC; BK6LC/BK6LS — одно устройство; тап по графику показывает точку<br/>
 • 📐 Вкладка «О плагине»: полная методика запаса хода и карта файлов<br/>
 • 📏 Дистанция для запаса хода и ПНЗ: BLE переднего колеса, затем GPS с фильтром, затем одометр контроллера (заднее может буксовать)<br/>
 • 🔌 Точки зарядки на GPX-треке поездки с подписью закачанных Вт·ч<br/>
@@ -4659,6 +4660,7 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
     <string name="ev_bms_charts_paused">Графики на паузе</string>
     <string name="ev_bms_charts_pause">Пауза графиков</string>
     <string name="ev_bms_charts_resume">Продолжить графики</string>
+    <string name="ev_bms_chart_inspect">%1$s  ·  %2$s</string>
     <string name="ev_bms_devices">Устройства Bluetooth</string>
     <string name="ev_bms_jbd_title">BMS батареи</string>
     <string name="ev_bms_controller_title">Контроллер</string>
