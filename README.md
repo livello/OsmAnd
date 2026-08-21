@@ -1,15 +1,14 @@
 OsmAnd (OSM Automated Navigation Directions)
 ------------
 
-## This fork / Этот форк
+## This fork
 
-Personal fork of [osmandapp/Osmand](https://github.com/osmandapp/Osmand) by [livello](https://github.com/livello): **EV BMS + controller** plugin for electric vehicles (JBD / ANT BMS, FarDriver, VESC), Russian plugin UI, OpenGL Nightly for Doogee S200 X.
-
-Личный форк [osmandapp/Osmand](https://github.com/osmandapp/Osmand): плагин **АКБ + контроллер** (BMS JBD/ANT, FarDriver, VESC), русский интерфейс плагина, сборка OpenGL Nightly под Doogee S200 X.
+Personal fork of [osmandapp/Osmand](https://github.com/osmandapp/Osmand) by [livello](https://github.com/livello): **EV-Telemetry** plugin for electric vehicles (JBD / ANT BMS, FarDriver, VESC, CSC wheel and cadence), English plugin UI, OpenGL Nightly for Doogee S200 X.
 
 - Package: `net.osmand.dev` (does not replace Play Store OsmAnd)
 - Branch: `feature/ev-bms-fardriver-plugin`
 - Remotes: `origin` → `git@github.com:livello/OsmAnd.git` (this fork), `upstream` → official OsmAnd
+- Docs: [`EV-Telemetry.md`](EV-Telemetry.md) (all fields), [`BMS_DATA_ABOUT.md`](BMS_DATA_ABOUT.md) (JBD/ANT BLE)
 - Release APK (arm64, OpenGL, minified):
 
 ```bash

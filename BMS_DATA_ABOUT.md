@@ -1,31 +1,31 @@
-# BMS: поля телеметрии, частоты и соединение
+# BMS: telemetry fields, poll rates, and the BLE link
 
-Документ описывает, **что плагин EV-Telemetry реально читает** с **JBD / Xiaoxiang** и **ANT BMS** по Bluetooth LE, с какой частотой это приходит в приложение и как устроены авторизация и GATT-сессия.
+This document describes **what EV-Telemetry actually reads** from **JBD / Xiaoxiang** and **ANT BMS** over Bluetooth LE, how often it arrives, and how authorization and the GATT session work.
 
-Источник: `OsmAnd/src/net/osmand/plus/plugins/evbms/`  
-(ветки `JbdBmsProtocol`, `JbdBleModuleProtocol`, `AntBmsProtocol`, `EvBleUartClient`, `EvBmsPlugin`).
+Source: `OsmAnd/src/net/osmand/plus/plugins/evbms/`  
+(`JbdBmsProtocol`, `JbdBleModuleProtocol`, `AntBmsProtocol`, `EvBleUartClient`, `EvBmsPlugin`).
 
-Контроллер мотора (FarDriver / VESC) и датчик колеса CSC в этот файл не входят.
+The motor controller (FarDriver / VESC) and the CSC wheel sensor are not covered here. See [`EV-Telemetry.md`](EV-Telemetry.md) for the full field list.
 
 ---
 
-## 1. Два разных мира на одном UART
+## 1. Two protocols on one UART
 
-После GATT оба BMS выглядят как «байт-поток»: плагин пишет команду в characteristic WRITE и ждёт NOTIFY. Дальше кадры разные.
+After GATT, both BMS devices look like a byte stream: the plugin writes a command to the WRITE characteristic and waits for NOTIFY. The frames differ after that.
 
 | | **JBD / Xiaoxiang** | **ANT BMS** |
 |---|---|---|
-| Имена в эфире | `xiaoxiang`, `jbd`, `SP…`, `overkill`, `smart bms` | `ANTBMS`, `ANT-BMS`, `ant_bms`, `ant-…` |
-| GATT-сервис | `0000ff00-…` | `0000ffe0-…` (как FarDriver) |
-| Notify | `0000ff01` | `0000ffe1` (тот же UUID, что и запись) |
+| Advertised names | `xiaoxiang`, `jbd`, `SP…`, `overkill`, `smart bms` | `ANTBMS`, `ANT-BMS`, `ant_bms`, `ant-…` |
+| GATT service | `0000ff00-…` | `0000ffe0-…` (same as FarDriver) |
+| Notify | `0000ff01` | `0000ffe1` (same UUID as write) |
 | Write | `0000ff02` | `0000ffe1` |
-| Кадр | `DD … 77` | `7E A1 … AA 55` |
-| Авторизация | да: BLE-донгл **и** UART BMS | нет (в плагине пароль не шлётся) |
-| Ячейки | отдельный регистр `0x04`, чередуется с пакетом | в том же статус-кадре |
+| Frame | `DD … 77` | `7E A1 … AA 55` |
+| Auth | yes: BLE dongle **and** UART BMS | none (the plugin never sends a password) |
+| Cells | separate register `0x04`, alternated with the pack | same status frame |
 
 ```mermaid
 flowchart LR
-  subgraph Phone["Телефон · EvBleUartClient"]
+  subgraph Phone["Phone · EvBleUartClient"]
     GATT["GATT CONNECT<br/>PRIORITY_HIGH"]
     N["NOTIFY"]
     W["WRITE"]
@@ -34,8 +34,8 @@ flowchart LR
     JBD["JBD<br/>FF00 / FF01+FF02"]
     ANT["ANT<br/>FFE0 / FFE1"]
   end
-  subgraph UART["Байт-поток"]
-    MOD["FF AA · донгл Xiaoxiang"]
+  subgraph UART["Byte stream"]
+    MOD["FF AA · Xiaoxiang dongle"]
     JUART["DD A5 · JBD UART V4"]
     AUART["7E A1 · ANT status"]
   end
@@ -50,204 +50,204 @@ flowchart LR
   N --> AUART
 ```
 
-Протокол в настройках: **Авто / JBD / ANT**. Авто смотрит UUID сервиса, имя и первый байт буфера (`0xDD` vs `0x7E 0xA1`). Кадры `FF AA` всегда разбираются как ответы BLE-модуля Xiaoxiang, даже если дальше пойдёт JBD UART.
+Protocol in settings: **Auto / JBD / ANT**. Auto looks at the service UUID, the name, and the first byte of the buffer (`0xDD` vs `0x7E 0xA1`). `FF AA` frames are always parsed as Xiaoxiang BLE-module replies, even when JBD UART follows.
 
 ---
 
-## 2. Частота опроса
+## 2. Poll rate
 
-Плагин — **запрос–ответ**, не поток. Таймер `pollRunnable` тикает с `min(BMS_poll, CTRL_poll)` и шлёт BMS-команду, если прошло `BMS_POLL_MS`.
+The plugin is **request–response**, not a push stream. `pollRunnable` ticks at `min(BMS_poll, CTRL_poll)` and sends a BMS command when `BMS_POLL_MS` has elapsed.
 
-| Параметр | Значение |
+| Parameter | Value |
 |---|---|
-| Допустимые интервалы BMS | **200 / 500 / 1000 / 2000 / 5000 / 10000 мс** |
-| По умолчанию BMS | **500 мс (2 Гц)** |
-| Безопасный максимум | **200 мс (5 Гц)** — быстрее кадры накладываются |
-| Режим «Поход» | не чаще **5 с** |
-| Данные «свежие» | `max(5 с, 3 × poll)` |
-| Связь «мертва» | `max(12 с, 4 × poll)` |
-| Запас хода | пробы **раз в 1 с**, независимо от BLE |
-| CSV / GPX | по умолчанию **1 с**; неизменённые строки не пишутся |
+| Allowed BMS intervals | **200 / 500 / 1000 / 2000 / 5000 / 10000 ms** |
+| Default BMS | **500 ms (2 Hz)** |
+| Safe maximum | **200 ms (5 Hz)** — faster and frames overlap |
+| Hike mode | no faster than **5 s** |
+| Data is fresh | `max(5 s, 3 × poll)` |
+| Link is dead | `max(12 s, 4 × poll)` |
+| Remaining range | samples **once per second**, independent of BLE |
+| CSV / GPX | **1 s** default; unchanged rows are not written |
 
-### Что реально обновляется за один poll
+### What actually updates on one poll
 
-**ANT:** один запрос `statusRequest()` → один кадр `0x11` со **всем**: пакет, ток, SOC, А·ч, MOSFET, **все ячейки и температуры**. Полный снимок = частота опроса.
+**ANT:** one `statusRequest()` → one `0x11` frame with **everything**: pack, current, SOC, Ah, MOSFETs, **all cells and temperatures**. Full snapshot = poll rate.
 
-**JBD:** один poll = **либо** регистр `0x03` (пакет), **либо** `0x04` (ячейки). Плагин чередует их (`pollCellsNext`). Полный снимок ячеек = **два опроса**.
+**JBD:** one poll = **either** register `0x03` (pack) **or** `0x04` (cells). The plugin alternates (`pollCellsNext`). A full cell snapshot = **two polls**.
 
-| Интервал BMS | Запросов/с | ANT: полный снимок | JBD: пакет `0x03` | JBD: ячейки `0x04` |
+| BMS interval | Requests/s | ANT full snapshot | JBD pack `0x03` | JBD cells `0x04` |
 |---|---:|---:|---:|---:|
-| 200 мс | 5 | 5 Гц | 2.5 Гц | 2.5 Гц |
-| **500 мс (default)** | **2** | **2 Гц** | **1 Гц** | **1 Гц** |
-| 1 с | 1 | 1 Гц | 0.5 Гц | 0.5 Гц |
-| 2 с | 0.5 | 0.5 Гц | 0.25 Гц | 0.25 Гц |
-| 5 с | 0.2 | 0.2 Гц | 0.1 Гц | 0.1 Гц |
-| 10 с | 0.1 | 0.1 Гц | 0.05 Гц | 0.05 Гц |
+| 200 ms | 5 | 5 Hz | 2.5 Hz | 2.5 Hz |
+| **500 ms (default)** | **2** | **2 Hz** | **1 Hz** | **1 Hz** |
+| 1 s | 1 | 1 Hz | 0.5 Hz | 0.5 Hz |
+| 2 s | 0.5 | 0.5 Hz | 0.25 Hz | 0.25 Hz |
+| 5 s | 0.2 | 0.2 Hz | 0.1 Hz | 0.1 Hz |
+| 10 s | 0.1 | 0.1 Hz | 0.05 Hz | 0.05 Hz |
 
 ```mermaid
 gantt
-    title Один цикл JBD при poll = 500 мс
+    title One JBD cycle at poll = 500 ms
     dateFormat X
-    axisFormat %L мс
-    section Запрос
-    0x03 пакет           :a1, 0, 500
-    0x04 ячейки          :a2, 500, 500
-    0x03 пакет           :a3, 1000, 500
-    0x04 ячейки          :a4, 1500, 500
-    section Снимок
-    Пакет V/I/Ah/SOC     :b1, 0, 500
-    Ячейки min/max       :b2, 500, 500
-    Пакет V/I/Ah/SOC     :b3, 1000, 500
-    Ячейки min/max       :b4, 1500, 500
+    axisFormat %L ms
+    section Request
+    0x03 pack            :a1, 0, 500
+    0x04 cells           :a2, 500, 500
+    0x03 pack            :a3, 1000, 500
+    0x04 cells           :a4, 1500, 500
+    section Snapshot
+    Pack V/I/Ah/SOC      :b1, 0, 500
+    Cells min/max        :b2, 500, 500
+    Pack V/I/Ah/SOC      :b3, 1000, 500
+    Cells min/max        :b4, 1500, 500
 ```
 
 ```mermaid
 gantt
-    title Один цикл ANT при poll = 500 мс
+    title One ANT cycle at poll = 500 ms
     dateFormat X
-    axisFormat %L мс
-    section Запрос
+    axisFormat %L ms
+    section Request
     7E A1 01 status      :c1, 0, 500
     7E A1 01 status      :c2, 500, 500
     7E A1 01 status      :c3, 1000, 500
     7E A1 01 status      :c4, 1500, 500
-    section Снимок
-    Пакет + все ячейки   :d1, 0, 500
-    Пакет + все ячейки   :d2, 500, 500
-    Пакет + все ячейки   :d3, 1000, 500
-    Пакет + все ячейки   :d4, 1500, 500
+    section Snapshot
+    Pack plus all cells  :d1, 0, 500
+    Pack plus all cells  :d2, 500, 500
+    Pack plus all cells  :d3, 1000, 500
+    Pack plus all cells  :d4, 1500, 500
 ```
 
-Пока идёт unlock Xiaoxiang (`advanceJbdAuth() == true`), **телеметрию JBD не запрашивают** — слоты poll уходят на `FF AA`. ANT этой фазы не имеет.
+While Xiaoxiang unlock is running (`advanceJbdAuth() == true`), **JBD telemetry is not requested** — poll slots go to `FF AA`. ANT has no such phase.
 
 ---
 
-## 3. Поля, которые плагин получает с BMS
+## 3. Fields the plugin gets from the BMS
 
-Ниже — то, что парсер кладёт в `BmsSnapshot` и дальше в `EvTelemetry`.  
-«На проводе есть, плагин не читает» — отдельные строки.
+Below is what the parser puts into `BmsSnapshot` and then `EvTelemetry`.  
+“On the wire, not used” is listed separately.
 
-### 3.1. Сводка по полям приложения
+### 3.1. Application field summary
 
-| Поле `EvTelemetry` | Ед. | JBD | ANT | Как считается | Типичная частота |
+| `EvTelemetry` field | Unit | JBD | ANT | How it is computed | Typical rate |
 |---|---|:---:|:---:|---|---|
-| `voltageV` | В | да | да | пакет / 1000 (JBD) или ×0.01 (ANT) | poll / 2 (JBD) · poll (ANT) |
-| `currentA` | А | да | да | **+ заряд в пакет, − разряд** (JBD signed ×10 мА; ANT signed ×0.1 А) | то же |
-| `socPercent` | % | да | да | JBD: байт SOC; ANT: u16 0…100. Виджет: кулоны `remaining/full`, иначе это значение | то же |
-| `remainingAh` | А·ч | да | да | JBD: mAh×10 / 1000; ANT: u32 × 10⁻⁶ А·ч | то же |
-| `fullAh` | А·ч | да | да | то же | то же |
-| `cycles` | шт. | да | **нет** | JBD u16; ANT в снимке всегда `0` | poll / 2 |
-| `bmsTempC` | °C | да | да | мин. живой NTC (виджет/голос) | poll / 2 · poll |
-| список NTC | °C | да | да | JBD: `(raw−2731)/10`; ANT: signed °C, −40…120 | то же |
-| `cellCount` | шт. | да | да | JBD байт; ANT байт, 1…32 | то же |
-| ячейки `cells[]` | В | да | да | u16 мВ; JBD BE, ANT LE | **poll / 2** · **poll** |
-| `minCellVoltageV` | В | да | да | `min(cells)` | после кадра ячеек |
-| `maxCellVoltageV` | В | да | да | `max(cells)` | то же |
-| `cellImbalanceV` | В | да | да | max − min, если ≥ 2 ячеек | то же |
-| MOSFET заряд | bool | да | да | JBD FET bit0; ANT байт `== 0x01` | пакет / статус |
-| MOSFET разряд | bool | да | да | JBD FET bit1; ANT байт `== 0x01` | то же |
-| `socVoltagePercent` | % | произв. | произв. | `SocCalibrator` по мин. ячейке (OCV / I·R), не байт BMS | ~1 с |
-| запас хода, Вт·ч, ПНЗ | — | произв. | произв. | `RangeEstimator`, ток **только BMS** | 1 с |
+| `voltageV` | V | yes | yes | pack / 1000 (JBD) or ×0.01 (ANT) | poll / 2 (JBD) · poll (ANT) |
+| `currentA` | A | yes | yes | **+ charge into pack, − discharge** (JBD signed ×10 mA; ANT signed ×0.1 A) | same |
+| `socPercent` | % | yes | yes | JBD: SOC byte; ANT: u16 0…100. Widget: coulomb `remaining/full`, else this value | same |
+| `remainingAh` | Ah | yes | yes | JBD: mAh×10 / 1000; ANT: u32 × 10⁻⁶ Ah | same |
+| `fullAh` | Ah | yes | yes | same | same |
+| `cycles` | count | yes | **no** | JBD u16; ANT snapshot always `0` | poll / 2 |
+| `bmsTempC` | °C | yes | yes | live NTC (widget/voice) | poll / 2 · poll |
+| NTC list | °C | yes | yes | JBD: `(raw−2731)/10`; ANT: signed °C, −40…120 | same |
+| `cellCount` | count | yes | yes | JBD byte; ANT byte, 1…32 | same |
+| cells `cells[]` | V | yes | yes | u16 mV; JBD BE, ANT LE | **poll / 2** · **poll** |
+| `minCellVoltageV` | V | yes | yes | `min(cells)` | after a cell frame |
+| `maxCellVoltageV` | V | yes | yes | `max(cells)` | same |
+| `cellImbalanceV` | V | yes | yes | max − min if ≥ 2 cells | same |
+| Charge MOSFET | bool | yes | yes | JBD FET bit0; ANT byte `== 0x01` | pack / status |
+| Discharge MOSFET | bool | yes | yes | JBD FET bit1; ANT byte `== 0x01` | same |
+| `socVoltagePercent` | % | derived | derived | `SocCalibrator` from min cell (OCV / I·R), not the BMS byte | ~1 s |
+| Remaining range, Wh, DOC | — | derived | derived | `RangeEstimator`, current from **BMS only** | 1 s |
 
-Знак тока контроллера в интеграл энергии **не идёт**.
+Controller current sign **does not** enter the energy integral.
 
-### 3.2. JBD UART V4 — регистр `0x03` (basic info)
+### 3.2. JBD UART V4 — register `0x03` (basic info)
 
-Запрос:
+Request:
 
 ```
 DD A5 03 00 FF FD 77
 ```
 
-Ответ: `DD 03 <status> <len> <payload> <cs:2> 77`.  
-`status == 0` — ок, `0x80` — отказ, `0x83` — нужен пароль.
+Reply: `DD 03 <status> <len> <payload> <cs:2> 77`.  
+`status == 0` — ok, `0x80` — denied, `0x83` — password required.
 
-| Смещение payload | Тип | Масштаб | Плагин | Поле |
+| Payload offset | Type | Scale | Plugin | Field |
 |---|---|---|:---:|---|
-| 0…1 | u16 BE | ×10 мВ | да | напряжение пакета |
-| 2…3 | s16 BE | ×10 мА | да | ток (+ заряд / − разряд) |
-| 4…5 | u16 BE | ×10 мА·ч | да | остаток |
-| 6…7 | u16 BE | ×10 мА·ч | да | полная ёмкость |
-| 8…9 | u16 BE | 1 | да | циклы |
-| 10…11 | u16 | дата | **нет** | дата производства |
-| 12…15 | u32 | биты | **нет** | флаги балансировки |
-| 16…17 | u16 | биты | **нет** | защита (OV/UV/OT/UT/OC…) |
-| 18 | u8 |  | **нет** | версия ПО |
-| 19 | u8 | % | да | SOC BMS |
-| 20 | u8 | биты | да | FET: bit0 заряд, bit1 разряд |
-| 21 | u8 |  | да | число ячеек |
-| 22 | u8 |  | да | число NTC |
-| 23+ | u16 BE × N | `(raw − 2731) / 10` °C | да | температуры |
+| 0…1 | u16 BE | ×10 mV | yes | pack voltage |
+| 2…3 | s16 BE | ×10 mA | yes | current (+ charge / − discharge) |
+| 4…5 | u16 BE | ×10 mAh | yes | remaining |
+| 6…7 | u16 BE | ×10 mAh | yes | full capacity |
+| 8…9 | u16 BE | 1 | yes | cycles |
+| 10…11 | u16 | date | **no** | manufacture date |
+| 12…15 | u32 | bits | **no** | balance flags |
+| 16…17 | u16 | bits | **no** | protection (OV/UV/OT/UT/OC…) |
+| 18 | u8 |  | **no** | firmware version |
+| 19 | u8 | % | yes | BMS SOC |
+| 20 | u8 | bits | yes | FET: bit0 charge, bit1 discharge |
+| 21 | u8 |  | yes | cell count |
+| 22 | u8 |  | yes | NTC count |
+| 23+ | u16 BE × N | `(raw − 2731) / 10` °C | yes | temperatures |
 
-Минимальная длина payload, которую парсер принимает: **23 байта**.
+Minimum payload length the parser accepts: **23 bytes**.
 
-### 3.3. JBD UART V4 — регистр `0x04` (ячейки)
+### 3.3. JBD UART V4 — register `0x04` (cells)
 
-Запрос:
+Request:
 
 ```
 DD A5 04 00 FF FC 77
 ```
 
-Каждая ячейка — u16 BE в **милливольтах** → вольты `/ 1000`. Число ячеек = `len / 2`. Полный массив хранится в `lastCells`; в CSV/виджеты уходят min, max и разбаланс, не каждая ячейка по отдельности.
+Each cell is u16 BE in **millivolts** → volts `/ 1000`. Cell count = `len / 2`. The full array is stored in `lastCells`; CSV/widgets get min, max, and imbalance, not every cell separately.
 
-### 3.4. ANT — кадр статуса `0x11`
+### 3.4. ANT — status frame `0x11`
 
-Запрос (CRC16-MODBUS little-endian на лету):
+Request (CRC16-MODBUS little-endian on the fly):
 
 ```
 7E A1 01 00 00 BE <crc_lo> <crc_hi> AA 55
 ```
 
-Ответ: `7E A1 11 … <crc16> AA 55`.
+Reply: `7E A1 11 … <crc16> AA 55`.
 
-| Смещение в кадре | Тип | Масштаб | Плагин | Поле |
+| Frame offset | Type | Scale | Plugin | Field |
 |---|---|---|:---:|---|
-| 8 | u8 |  | да | число датчиков температуры (≤ 8) |
-| 9 | u8 |  | да | число ячеек (1…32) |
-| 34 + n×2 | u16 LE | мВ | да | ячейка n |
-| далее × tempSensors | s16 LE | °C | да | NTC, только −40…120 |
-| +2 и +4 после NTC | s16 LE | °C | да | ещё два датчика (часто MOSFET / баланс) |
-| 38 + offset | u16 LE | ×0.01 В | да | напряжение пакета |
-| 40 + offset | s16 LE | ×0.1 А | да | ток |
-| 42 + offset | u16 LE | % | да | SOC |
-| 46 + offset | u8 | `0x01` = вкл | да | MOSFET заряда |
-| 47 + offset | u8 | `0x01` = вкл | да | MOSFET разряда |
-| 50 + offset | u32 LE | ×10⁻⁶ А·ч | да | полная ёмкость |
-| 54 + offset | u32 LE | ×10⁻⁶ А·ч | да | остаток |
-| циклы | — | — | **нет** | в `BmsSnapshot.cycles = 0` |
+| 8 | u8 |  | yes | temperature sensor count (≤ 8) |
+| 9 | u8 |  | yes | cell count (1…32) |
+| 34 + n×2 | u16 LE | mV | yes | cell n |
+| then × tempSensors | s16 LE | °C | yes | NTC, only −40…120 |
+| +2 and +4 after NTCs | s16 LE | °C | yes | two more sensors (often MOSFET / balance) |
+| 38 + offset | u16 LE | ×0.01 V | yes | pack voltage |
+| 40 + offset | s16 LE | ×0.1 A | yes | current |
+| 42 + offset | u16 LE | % | yes | SOC |
+| 46 + offset | u8 | `0x01` = on | yes | charge MOSFET |
+| 47 + offset | u8 | `0x01` = on | yes | discharge MOSFET |
+| 50 + offset | u32 LE | ×10⁻⁶ Ah | yes | full capacity |
+| 54 + offset | u32 LE | ×10⁻⁶ Ah | yes | remaining |
+| cycles | — | — | **no** | `BmsSnapshot.cycles = 0` |
 
-`offset = 2×cellCount + 2×tempSensors`. Кадр без CRC или с числом ячеек вне 1…32 отбрасывается.
+`offset = 2×cellCount + 2×tempSensors`. A frame without CRC, or with a cell count outside 1…32, is dropped.
 
-### 3.5. Что есть на проводе, но не в UI
+### 3.5. On the wire, not in the UI
 
-| Источник | Данные | Зачем не берём |
+| Source | Data | Why unused |
 |---|---|---|
-| JBD `0x03` | дата, баланс-биты, защита, версия | виджеты и запас хода их не используют |
-| JBD | регистры настроек, EEPROM, серийник | нет запросов кроме `0x03` / `0x04` / `0x06` |
-| ANT | циклы, серийник, прочие функции ≠ `0x11` | парсится только status |
-| Оба | по-ячейковые графики | в телеметрию идут min / max / Δ |
+| JBD `0x03` | date, balance bits, protection, version | widgets and remaining range do not use them |
+| JBD | settings registers, EEPROM, serial | no requests except `0x03` / `0x04` / `0x06` |
+| ANT | cycles, serial, functions other than `0x11` | only status is parsed |
+| Both | per-cell charts | telemetry gets min / max / Δ |
 
 ```mermaid
 flowchart TB
-  subgraph Wire["Кадр BMS"]
-    V[Напряжение пакета]
-    I[Ток со знаком JBD]
-    Ah[Остаток / полная А·ч]
-    SOC[SOC байт]
+  subgraph Wire["BMS frame"]
+    V[Pack voltage]
+    I[Current with JBD sign]
+    Ah[Remaining / full Ah]
+    SOC[SOC byte]
     T[NTC]
-    C[Ячейки]
+    C[Cells]
     FET[MOSFET]
-    CYC[Циклы]
+    CYC[Cycles]
   end
   subgraph Snap["BmsSnapshot"]
     S1[voltageV currentA remainingMah fullMah]
     S2[socPercent temperaturesC cells FET]
-    S3[cycles · только JBD]
+    S3[cycles · JBD only]
   end
-  subgraph App["EvTelemetry / виджеты"]
+  subgraph App["EvTelemetry / widgets"]
     W1[V I SOC Ah T min/max Δ]
-    W2["SOC OCV · запас хода · энергия"]
+    W2["SOC OCV · remaining range · energy"]
   end
   V --> S1
   I --> S1
@@ -265,17 +265,17 @@ flowchart TB
 
 ---
 
-## 4. Соединение BLE
+## 4. BLE connection
 
-Класс: `ble/EvBleUartClient`, роль `BMS`. Отдельный GATT от контроллера и CSC.
+Class: `ble/EvBleUartClient`, role `BMS`. Separate GATT from the controller and CSC.
 
-### 4.1. Выбор устройства
+### 4.1. Device picker
 
-1. Пользователь сканирует BLE (low latency). В список попадают имена JBD/ANT и сервисы `FF00` / `FFE0`.
-2. Сохраняются **MAC** (`BMS_ADDRESS`) и при необходимости протокол.
-3. При старте плагина: `connect(activity, mac)` если адрес не пустой.
+1. The user scans BLE (low latency). JBD/ANT names and services `FF00` / `FFE0` appear in the list.
+2. **MAC** (`BMS_ADDRESS`) and optionally the protocol are stored.
+3. On plugin start: `connect(activity, mac)` if the address is not empty.
 
-### 4.2. GATT-сессия
+### 4.2. GATT session
 
 ```mermaid
 sequenceDiagram
@@ -287,98 +287,98 @@ sequenceDiagram
 
     P->>C: connect(MAC)
     C->>G: connectGatt(autoConnect=false)
-    Note over C,G: таймаут 8 с; HIGH priority
+    Note over C,G: 8 s timeout, HIGH priority
     G-->>C: STATE_CONNECTED
     C->>G: discoverServices()
-    G-->>C: FF00+FF01/FF02 или FFE0+FFE1
+    G-->>C: FF00+FF01/FF02 or FFE0+FFE1
     C->>G: setCharacteristicNotification + CCCD
-    alt CCCD подтверждён или fallback 2 с
+    alt CCCD confirmed or 2 s fallback
         C-->>P: onNotifyReady(BMS)
     end
-    P->>C: WRITE команды
-    D-->>G: NOTIFY байты
+    P->>C: WRITE commands
+    D-->>G: NOTIFY bytes
     G-->>P: onBytes → drainBmsBuffer()
-    Note over C,G: обрыв: backoff 0.4…15 с,<br/>scan 5 с или autoConnect каждый 3-й раз
+    Note over C,G: drop: backoff 0.4…15 s,<br/>scan 5 s or autoConnect every 3rd try
 ```
 
-| Шаг | Деталь в коде |
+| Step | Detail in code |
 |---|---|
-| Приоритет линка | `CONNECTION_PRIORITY_HIGH` сразу после CONNECT |
-| MTU | **не запрашивается** — кадры короткие, хватает 20–23 байт ATT |
-| Write type | `WRITE_NO_RESPONSE`, если characteristic это умеет, иначе default |
-| Notify ready | CCCD write callback **или** fallback через 2 с (модули без подтверждения) |
-| Первое соединение | `connectGatt(autoConnect=false)`, таймаут **8 с** |
-| Повтор | scan 5 с по MAC, либо `autoConnect=true` на попытках 2, 5, 8…, таймаут **25 с** |
-| Backoff | 400 мс → … → 15 с |
-| Живой GATT | **не рвётся**, если UART молчит: unlock и poll продолжаются |
-| Watchdog | нет notify после connect → `forceReconnect("no-notify")` |
+| Link priority | `CONNECTION_PRIORITY_HIGH` right after CONNECT |
+| MTU | **not requested** — frames are short, 20–23 ATT bytes is enough |
+| Write type | `WRITE_NO_RESPONSE` if the characteristic supports it, else default |
+| Notify ready | CCCD write callback **or** 2 s fallback (modules that never confirm) |
+| First connection | `connectGatt(autoConnect=false)`, timeout **8 s** |
+| Retry | 5 s scan by MAC, or `autoConnect=true` on attempts 2, 5, 8…, timeout **25 s** |
+| Backoff | 400 ms → … → 15 s |
+| Live GATT | **not torn down** if UART is silent: unlock and poll continue |
+| Watchdog | no notify after connect → `forceReconnect("no-notify")` |
 
-Выбор characteristic для BMS:
+Choosing the BMS characteristic:
 
 ```mermaid
 flowchart TD
-    A[onServicesDiscovered] --> B{preferred = ANT<br/>или нет FF01, есть FFE1?}
-    B -->|да| ANT[notify+write FFE1<br/>detected = ANT]
-    B -->|нет| C{есть FF01 / FF02?}
-    C -->|да| JBD[notify FF01 write FF02<br/>detected = JBD]
-    C -->|нет| D{есть FFE1?}
-    D -->|да| ANT
-    D -->|нет| F[первый notify/write наугад]
+    A[onServicesDiscovered] --> B{preferred = ANT<br/>or no FF01, has FFE1?}
+    B -->|yes| ANT[notify+write FFE1<br/>detected = ANT]
+    B -->|no| C{has FF01 / FF02?}
+    C -->|yes| JBD[notify FF01 write FF02<br/>detected = JBD]
+    C -->|no| D{has FFE1?}
+    D -->|yes| ANT
+    D -->|no| F[first notify/write found]
 ```
 
-ANT часто сидит на том же `FFE0`, что и FarDriver. Роль клиента (`BMS` vs `CONTROLLER`) разводит два GATT: на BMS тогда берётся `FFE1`, на контроллере — `FFEC`.
+ANT often sits on the same `FFE0` as FarDriver. Client role (`BMS` vs `CONTROLLER`) splits two GATTs: BMS then uses `FFE1`, the controller uses `FFEC`.
 
 ---
 
-## 5. Авторизация JBD / Xiaoxiang
+## 5. JBD / Xiaoxiang authorization
 
-Два замка подряд. ANT сюда не входит: после CCCD сразу `statusRequest()`.
+Two locks in a row. ANT is not in this path: after CCCD it immediately sends `statusRequest()`.
 
-| Слой | Кадры | Зачем |
+| Layer | Frames | Why |
 |---|---|---|
-| **A. BLE-модуль** | `FF AA <cmd> <len> <payload> <sum>` | донгл Xiaoxiang не пускает UART, пока не принят appkey / пароль |
-| **B. UART BMS** | `DD 5A 06 06 <6 цифр 0–9> <cs> 77` | регистр `0x06` USE PASSWORD у самой платы JBD |
+| **A. BLE module** | `FF AA <cmd> <len> <payload> <sum>` | Xiaoxiang dongle blocks UART until an appkey / password is accepted |
+| **B. UART BMS** | `DD 5A 06 06 <6 digits 0–9> <cs> 77` | register `0x06` USE PASSWORD on the JBD board itself |
 
-Пароль в настройках: **ровно 6 цифр**. Иначе слой B не шлётся; слой A тоже не стартует (`advanceJbdAuth` сразу `false`).
+Password in settings: **exactly 6 digits**. Otherwise layer B is not sent; layer A does not start either (`advanceJbdAuth` is immediately `false`).
 
-### 5.1. Кадры BLE-модуля (`JbdBleModuleProtocol`)
+### 5.1. BLE-module frames (`JbdBleModuleProtocol`)
 
-Формат: `FF AA`, сумма `cmd + len + payload` по модулю 256.
+Format: `FF AA`, checksum `cmd + len + payload` mod 256.
 
-| cmd | Имя | Назначение |
+| cmd | Name | Purpose |
 |---|---|---|
-| `0x21` | APPKEY_VERIFY | новый appkey: `(MAC[i] XOR key[i]) + random`, плюс байт random |
-| `0x15` | OLD_APPKEY | старый: 6 ASCII-цифр ключа |
-| `0x17` | RANDOM | запрос nonce |
-| `0x18` / `0x1B` | VERIFY | `(MAC[i] XOR pwd[i]) + random` без хвоста random |
-| `0x19` | BROADCAST | в плагине собирается, в unlock-цикле не используется |
+| `0x21` | APPKEY_VERIFY | new appkey: `(MAC[i] XOR key[i]) + random`, plus a random byte |
+| `0x15` | OLD_APPKEY | old: 6 ASCII key digits |
+| `0x17` | RANDOM | nonce request |
+| `0x18` / `0x1B` | VERIFY | `(MAC[i] XOR pwd[i]) + random` without a trailing random byte |
+| `0x19` | BROADCAST | assembled in the plugin, unused in the unlock loop |
 
-Ключи appkey по очереди: **`000000`**, **`765890`**, затем 6-значный пароль из настроек, если он другой.
+Appkey order: **`000000`**, **`765890`**, then the 6-digit settings password if it is different.
 
-Таймауты: appkey/verify **1.5 с**, random **1.2 с**, не больше **3** попыток random/verify, затем переход к UART `0x06`.
+Timeouts: appkey/verify **1.5 s**, random **1.2 s**, at most **3** random/verify tries, then UART `0x06`.
 
-Принятие: последний байт payload **`0`**.
+Accepted: last payload byte **`0`**.
 
-### 5.2. Машина состояний
+### 5.2. State machine
 
 ```mermaid
 stateDiagram-v2
-    [*] --> IDLE: notify ready + пароль 6 цифр
-    IDLE --> WAIT_APPKEY: TX 0x21 ключ i, random 1…99
-    WAIT_APPKEY --> IDLE: reject / timeout → следующий ключ
+    [*] --> IDLE: notify ready + 6-digit password
+    IDLE --> WAIT_APPKEY: TX 0x21 key i, random 1…99
+    WAIT_APPKEY --> IDLE: reject / timeout → next key
     WAIT_APPKEY --> WAIT_VERIFY: 0x21 accepted → TX 0x18 newKey
-    WAIT_APPKEY --> WAIT_APPKEY: все 0x21 исчерпаны → TX 0x15
+    WAIT_APPKEY --> WAIT_APPKEY: all 0x21 exhausted → TX 0x15
     WAIT_APPKEY --> WAIT_RANDOM: 0x15 status=0 → TX 0x17
     WAIT_APPKEY --> DONE: 0x15 fail → UART 0x06
     WAIT_RANDOM --> WAIT_VERIFY: RX 0x17 random → TX 0x18
     WAIT_RANDOM --> WAIT_RANDOM: timeout, try < 3
     WAIT_RANDOM --> DONE: 3 fail → UART 0x06
     WAIT_VERIFY --> DONE: payload last == 0
-    WAIT_VERIFY --> REJECT: last != 0 → стоп, тост «неверный пароль»
+    WAIT_VERIFY --> REJECT: last != 0 → stop, toast wrong password
     WAIT_VERIFY --> WAIT_VERIFY: timeout, try < 3
     WAIT_VERIFY --> DONE: 3 fail → UART 0x06
-    DONE --> DONE: TX DD 5A 06 … пароль
-    DONE --> [*] : пришёл DD 03 status=0
+    DONE --> DONE: TX DD 5A 06 … password
+    DONE --> [*] : DD 03 status=0 arrived
 ```
 
 ```mermaid
@@ -388,61 +388,61 @@ sequenceDiagram
     participant M as Dongle FF AA
     participant U as JBD UART DD
 
-    Note over P,M: Слой A · BLE-модуль
+    Note over P,M: Layer A · BLE module
     P->>M: 0x21 APPKEY 000000 + random
-    alt принят
+    alt accepted
         M-->>P: 0x21 status=0
-        P->>M: 0x18 VERIFY пароль пользователя
-    else отказ
+        P->>M: 0x18 VERIFY user password
+    else rejected
         P->>M: 0x21 APPKEY 765890 …
-        P->>M: 0x21 APPKEY пароль из настроек
-        P->>M: 0x15 OLD_APPKEY по тем же ключам
+        P->>M: 0x21 APPKEY settings password
+        P->>M: 0x15 OLD_APPKEY with the same keys
         P->>M: 0x17 RANDOM
         M-->>P: random byte
         P->>M: 0x18 VERIFY MAC⊕pwd + random
     end
-    M-->>P: 0x18 status=0 · модуль открыт
-    Note over P,U: Слой B · плата BMS
+    M-->>P: 0x18 status=0 · module unlocked
+    Note over P,U: Layer B · BMS board
     P->>U: DD 5A 06 06 d0..d5 cs 77
-    loop пока нет свежего 0x03, не дольше 10 с
-        P->>U: повтор 0x06 через 1.5 с
+    loop until a fresh 0x03, at most 10 s
+        P->>U: repeat 0x06 every 1.5 s
     end
     P->>U: DD A5 03 …  /  DD A5 04 …
-    U-->>P: DD 03 / DD 04 телеметрия
+    U-->>P: DD 03 / DD 04 telemetry
 ```
 
-Формула verify (оба варианта appkey):
+Verify formula (both appkey variants):
 
 ```
-coded[i] = (MAC[i] XOR password[i]) + random     // i = 0…5, MAC из 6 октетов GATT
+coded[i] = (MAC[i] XOR password[i]) + random     // i = 0…5, MAC from 6 GATT octets
 payload  = coded            // cmd 0x18 / 0x1B
 payload  = coded + random   // cmd 0x21, newAppKey
 ```
 
-Цифры UART `0x06` кодируются **как числа 0…9**, не ASCII (`'1'` → байт `0x01`).
+UART `0x06` digits are encoded **as numbers 0…9**, not ASCII (`'1'` → byte `0x01`).
 
-### 5.3. Ошибки UART
+### 5.3. UART errors
 
-| `status` в `DD <reg> <status>` | Код | Поведение |
+| `status` in `DD <reg> <status>` | Code | Behaviour |
 |---|---|---|
-| `0x00` | OK | кадр `0x03`/`0x04` разбирается |
-| `0x80` | DENIED | тост «нужен пароль», если в настройках пусто |
-| `0x83` | PASSWORD | тост «неверный пароль», `jbdPasswordRejected = true`, unlock останавливается |
+| `0x00` | OK | `0x03`/`0x04` frame is parsed |
+| `0x80` | DENIED | toast “password required” if settings are empty |
+| `0x83` | PASSWORD | toast “wrong password”, `jbdPasswordRejected = true`, unlock stops |
 
-Повтор UART-пароля: сразу после DONE, затем не чаще чем раз в **1.5 с**, и снова только если за **10 с** так и не появился свежий `0x03`.
+UART password retry: immediately after DONE, then at most once per **1.5 s**, and only again if **10 s** passed without a fresh `0x03`.
 
-Смена пароля в настройках сбрасывает машину (`resetJbdAuth`) и запускает unlock заново, если BMS уже connected.
+Changing the password in settings resets the machine (`resetJbdAuth`) and starts unlock again if the BMS is already connected.
 
 ---
 
-## 6. От байта до виджета
+## 6. From byte to widget
 
 ```mermaid
 flowchart LR
   RX[NOTIFY bytes] --> BUF[bmsBuffer]
   BUF --> FF{FF AA?}
-  FF -->|да| MOD[handleJbdModuleFrame]
-  FF -->|нет| SOF{Авто: 7E A1 / DD}
+  FF -->|yes| MOD[handleJbdModuleFrame]
+  FF -->|no| SOF{Auto: 7E A1 / DD}
   SOF -->|ANT| ANT[parseStatus → BmsSnapshot + cells]
   SOF -->|JBD 03| BASIC[parseBasicInfo]
   SOF -->|JBD 04| CELLS[parseCellVoltages → lastCells]
@@ -451,39 +451,39 @@ flowchart LR
   SNAP --> PUB[publishSample ~ tick]
   CELLS --> PUB
   PUB --> T[EvTelemetry]
-  T --> W[виджеты · голос · CSV/GPX · RangeEstimator]
+  T --> W[widgets · voice · CSV/GPX · RangeEstimator]
 ```
 
-`publishSample()` вызывается на **каждом тике** (`min` интервалов BMS и контроллера), даже если новый кадр BMS ещё не пришёл: виджеты держат последнее свежее значение, пока не истечёт `dataStaleMs`.
+`publishSample()` runs on **every tick** (`min` of BMS and controller intervals), even if no new BMS frame arrived: widgets keep the last fresh value until `dataStaleMs` expires.
 
-Запас хода берёт `currentA` **только если BMS fresh** — иначе интеграл энергии на этом шаге без тока.
-
----
-
-## 7. Практические следствия
-
-| Тема | Вывод |
-|---|---|
-| Запас хода и энергия | нужен **живой ток JBD/ANT**; ток контроллера не подставляется |
-| Мин. ячейка / разбаланс | JBD обновляется **вдвое реже** пакета при том же poll |
-| 5 Гц BMS | имеет смысл для тока/мощности на графике; ячейки JBD всё равно 2.5 Гц; CSV лучше оставить 1 с |
-| ANT vs JBD | ANT отдаёт ячейки в каждом кадре — разбаланс свежее при том же poll |
-| Пароль JBD | без 6 цифр Xiaoxiang часто даёт GATT, но пустой UART; не путать с PIN Android |
-| ANT | пароля в плагине нет; если модуль закрыт прошивкой — соединение не поможет |
-| Два BLE | BMS и контроллер — **два** `BluetoothGatt`; не вешать оба на один MAC |
+Remaining range takes `currentA` **only if the BMS is fresh** — otherwise that energy step has no current.
 
 ---
 
-## 8. Файлы в репозитории
+## 7. Practical consequences
 
-| Файл | Роль |
+| Topic | Takeaway |
 |---|---|
-| `protocol/JbdBmsProtocol.kt` | кадры `DD`, `0x03` / `0x04` / `0x06` |
-| `protocol/JbdBleModuleProtocol.kt` | кадры `FF AA`, appkey / random / verify |
+| Remaining range and energy | need **live JBD/ANT current**; controller current is not substituted |
+| Min cell / imbalance | on JBD this updates **half as often** as the pack at the same poll |
+| 5 Hz BMS | useful for current/power on the chart; JBD cells stay at 2.5 Hz; keep CSV at 1 s |
+| ANT vs JBD | ANT sends cells every frame — imbalance is fresher at the same poll |
+| JBD password | without 6 digits Xiaoxiang often gives GATT but empty UART; not the Android PIN |
+| ANT | no password in the plugin; if the module is locked in firmware, connecting will not help |
+| Two BLE links | BMS and controller are **two** `BluetoothGatt`s; do not hang both on one MAC |
+
+---
+
+## 8. Files in the repository
+
+| File | Role |
+|---|---|
+| `protocol/JbdBmsProtocol.kt` | `DD` frames, `0x03` / `0x04` / `0x06` |
+| `protocol/JbdBleModuleProtocol.kt` | `FF AA` frames, appkey / random / verify |
 | `protocol/AntBmsProtocol.kt` | `7E A1` status `0x11` |
-| `protocol/BmsSnapshot.kt` | общий снимок |
-| `ble/EvBleUartClient.kt` | GATT, UUID, reconnect |
+| `protocol/BmsSnapshot.kt` | shared snapshot |
+| `ble/EvBleUartClient.kt` | GATT, UUIDs, reconnect |
 | `EvBmsPlugin.kt` | poll, unlock, `drainBmsBuffer`, `publishSample` |
-| `EvTelemetry.kt` / `TelemetryField.kt` | поля UI / CSV |
+| `EvTelemetry.kt` / `TelemetryField.kt` | UI / CSV fields |
 
-Штамп описания соответствует коду ветки `feature/ev-bms-fardriver-plugin`.
+This description matches the code on `feature/ev-bms-fardriver-plugin`.
