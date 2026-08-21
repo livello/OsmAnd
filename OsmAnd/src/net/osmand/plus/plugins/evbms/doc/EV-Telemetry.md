@@ -2,7 +2,7 @@
 
 This document lists **every field** the plugin writes into `EvTelemetry` and shows in the fields tab, CSV, and live charts.
 
-Code: `OsmAnd/src/net/osmand/plus/plugins/evbms/`  
+Code: `net/osmand/plus/plugins/evbms/` (this directory).  
 Field list: `TelemetryField.kt`. Snapshot: `EvBmsPlugin.publishSample()`.
 
 BMS wire protocol (JBD / ANT frames, auth, GATT) is in [`BMS_DATA_ABOUT.md`](BMS_DATA_ABOUT.md).
@@ -261,4 +261,4 @@ Cadence (`cadence_rpm`) is on by default in the field list and charts.
 | `protocol/CscWheelTracker.kt`, `CscCadenceTracker.kt` | CSC |
 | `ble/EvBleUartClient.kt` | four GATT roles |
 | `TelemetryRecorder.kt` | CSV / GPX |
-| `BMS_DATA_ABOUT.md` | JBD/ANT frames and BMS BLE session |
+| `doc/BMS_DATA_ABOUT.md` | JBD/ANT frames and BMS BLE session |
