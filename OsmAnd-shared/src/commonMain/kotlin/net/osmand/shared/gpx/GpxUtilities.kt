@@ -124,6 +124,7 @@ object GpxUtilities {
 		"speed_sensor" to PointAttributes.SENSOR_TAG_SPEED,
 		"cad" to PointAttributes.SENSOR_TAG_CADENCE,
 		"cadence" to PointAttributes.SENSOR_TAG_CADENCE,
+		"power" to PointAttributes.SENSOR_TAG_BIKE_POWER,
 		"temp" to PointAttributes.SENSOR_TAG_TEMPERATURE_W,
 		"wtemp" to PointAttributes.SENSOR_TAG_TEMPERATURE_W,
 		"atemp" to PointAttributes.SENSOR_TAG_TEMPERATURE_A,
@@ -1776,9 +1777,7 @@ object GpxUtilities {
 				point.setColor(pointsGroup.color)
 			}
 			val iconName = point.getIconName()
-			if (KAlgorithms.isEmpty(pointsGroup.iconName) && !KAlgorithms.isEmpty(iconName)) {
-				pointsGroup.iconName = iconName
-			} else if (!KAlgorithms.isEmpty(pointsGroup.iconName) && KAlgorithms.isEmpty(iconName)) {
+			if (!KAlgorithms.isEmpty(pointsGroup.iconName) && KAlgorithms.isEmpty(iconName)) {
 				point.setIconName(pointsGroup.iconName)
 			}
 			val backgroundType = point.getBackgroundType()

@@ -373,7 +373,7 @@ class GpxTrackAnalysis {
 	}
 
 	fun hasElevationMetrics(): Boolean {
-		return hasElevationMetricsInGpx || hasElevationData()
+		return hasElevationMetricsInGpx || hasElevationData() || isElevationSpecified()
 	}
 
 	fun hasData(tag: String): Boolean {

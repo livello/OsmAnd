@@ -186,7 +186,8 @@ public class ElevationProfileWidget extends MapWidget {
 
 	@Override
 	public void updateInfo(@NonNull View view, @Nullable DrawSettings drawSettings) {
-		boolean visible = visibilityHelper.shouldShowElevationProfileWidget();
+		boolean visible = visibilityHelper.shouldShowElevationProfileWidget()
+				&& !(panel == WidgetsPanel.BOTTOM && visibilityHelper.shouldHideBottomWidgets());
 		updateVisibility(visible);
 		if (visible) {
 			updateInfoImpl();
@@ -505,15 +506,16 @@ public class ElevationProfileWidget extends MapWidget {
 		lastPointIndex = Math.min(points.size() - 1, lastPointIndex + 1);
 		if (lastPointIndex > firstPointIndex) {
 			int pointsCount = lastPointIndex - firstPointIndex + 1;
+			final int startIndex = firstPointIndex;
 			ElevationDiffsCalculator elevationDiffsCalc = new ElevationDiffsCalculator() {
 				@Override
 				public double getPointDistance(int index) {
-					return points.get(index).getDistance();
+					return points.get(startIndex + index).getDistance();
 				}
 
 				@Override
 				public double getPointElevation(int index) {
-					return points.get(index).getEle();
+					return points.get(startIndex + index).getEle();
 				}
 
 				@Override
