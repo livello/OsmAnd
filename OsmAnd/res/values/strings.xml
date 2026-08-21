@@ -1000,13 +1000,9 @@ Charge sessions: duration, Ah from the BMS, start/end battery temperature, weak-
 Distance-on-charge rides: distance, charge used (Ah), total and specific consumption, start/end pack voltage, average moving speed, stop time, battery and motor temperatures. 📈 opens power, Wh/km, motor temperature and min cell voltage. 🗑️ deletes a row and its chart.<br/>
 Charge sessions appear in history as soon as charging starts (shown as in progress) and close only after charge current stops and the vehicle has moved about 1 km.<br/>
 <b>🔌 Distance on charge</b><br/>
-Counts as soon as the vehicle starts moving with telemetry recording on. GPS, controller odometer or OsmAnd trip recording supply the distance. Optional filter caps GPS distance at the controller odometer (with calibration) times 100–150 percent. The counter resets to zero when a real charge cycle starts (standstill, positive BMS current into the pack, and near-zero controller current). While charging it stays at 0. A dash means recording is off or motion has not started yet.<br/><br/>
+Starts with motion while telemetry recording is on. The same distance order as remaining range: front-wheel BLE, then filtered GPS, then controller odometer. The counter resets when a real charge cycle starts. While charging the widget shows 0. A dash means recording is off or motion has not started yet.<br/><br/>
 <b>📏 Remaining range</b><br/>
-Primary range (widget) is remaining energy divided by average Wh/km over the last 10 km. A separate widget/field is the 5-minute window. Distance-on-charge range (DOC) uses the current charge-trip average. Settings choose which estimate feeds range reserve and alerts. Distance is integrated from GPS or speed×time and does not use OsmAnd track length or the controller odometer absolute value.<br/>
-Remaining energy is remaining Ah × rest pack voltage, then reduced by:<br/>
-• Weak cell: rest min cell between 3.00 V (cutoff) and 3.50 V, compared with remaining Ah.<br/>
-• Temperature: full above 20 °C, down to about 50 percent in frost.<br/>
-Optional route profile adds climb energy and credits 55 percent of descent regen for the combined vehicle and driver mass from settings.<br/><br/>
+Primary widget: remaining energy / Wh/km over the last 10 km. Separate widget: 5-minute window. DOC (ПНЗ): average since this charge trip. Settings choose which estimate feeds range reserve and alerts. Full formulas: see <b>Range methodology</b> below.<br/><br/>
 <b>🛣️ Range reserve</b><br/>
 Remaining range minus remaining navigation distance. Speak the current value when stopped. Small and low shortfall alerts use thresholds (default 5 km and 15 km short) and only the worse level is spoken, with hysteresis.<br/><br/>
 <b>🗣️ Voice alerts</b> (plugin settings)<br/>
@@ -1028,8 +1024,48 @@ Controller speed and distance can be auto-calibrated against a GPS ride; the fac
 Optional DEBUG log of plugin and BLE actions. Controller RX hex is limited to one frame per second; BMS replies are logged in full. Export or clear from the journal tab.<br/><br/>
 <b>🥾 Hike mode</b><br/>
 Keeps range, GPS and telemetry (every 5 s), slows BLE polling to at least 5 s, and turns off heavy map layers, 3D, weather, online tiles and extra Bluetooth plugins.]]></string>
+    <string name="ev_bms_plugin_range_method"><![CDATA[<br/><br/><b>📐 Range methodology</b><br/>
+Energy (Wh) and distance (km) are integrated independently. Remaining range is remaining pack energy divided by Wh/km. The three estimates share the same remaining energy; they differ only in which consumption window they use.<br/><br/>
+<b>Energy (Wh)</b><br/>
+Each sample: ΔAh = remainingAh(previous) − remainingAh(current). If Ah barely moved, ΔAh = −I × Δt in hours. Current sign is the JBD BMS convention: plus is charge into the pack, minus is discharge. Controller current is not used here (VESC/FarDriver signs differ). ΔWh = ΔAh × average pack voltage. A sudden Ah rise (&gt; 0.25 Ah) is treated as charging or a BMS glitch: that segment is skipped, the trip is not wiped. While the plugin has detected charging, range samples are not added. After a finished charge every window is cleared.<br/><br/>
+<b>Distance (same order for range and distance-on-charge)</b><br/>
+1. Front-wheel BLE CSC odometer (Cycplus BK467, Magene S3). The driven rear wheel can slip on launch and inflate kilometres.<br/>
+2. GPS haversine if the fix is trustworthy: accuracy ≤ 40 m, implied speed ≤ 160 km/h, and not a jump versus the wheel or controller step (GPS farther than 50 m and more than 3× the odo step + 30 m).<br/>
+3. Motor-controller odometer (with speed calibration), last because of rear-wheel slip.<br/>
+4. Speed × time only if the three above are missing.<br/>
+A step larger than 160 km/h × Δt (capped at 500 m) is dropped so a BLE gap does not invent kilometres. A zero wheel delta (frozen CSC notifications) falls through to GPS.<br/><br/>
+<b>Specific consumption (Wh/km)</b><br/>
+• Rolling 10 km (≥ 1 km and &gt; 10 Wh) — primary remaining-range widget.<br/>
+• Last 5 minutes of samples — reacts faster to hills and wind.<br/>
+• Distance-on-charge (DOC / ПНЗ): trip Wh / trip km since charge end (≥ 2 km and &gt; 50 Wh).<br/>
+Parked accessory load increases DOC Wh without adding km; the 10 km window ignores those idle segments. The coverage field shows rolling, else 5 min, else DOC, else the controller lifetime average if present.<br/><br/>
+<b>Remaining energy</b><br/>
+remainingAh × rest pack voltage × weak-cell factor × temperature factor. Weak cell: min cell between 3.00 V (cutoff) and 3.50 V compared with remaining Ah / full Ah. Temperature derate (full above 20 °C, down to about 50%% in frost) applies only until 3 km of measured driving — after that cold is already in Wh/km.<br/><br/>
+<b>Range (km)</b><br/>
+remainingWh / effective Wh/km. Optional route profile adds remaining-route climb as m·g·h / 3600 / 0.80 (drivetrain) and credits 55%% of descent potential energy. Measured regen is not reduced a second time. Primary range is smoothed (70/30 blend, max step 15%%). Range reserve = the selected estimate minus remaining navigation distance. Charge-end GPX waypoints sit at the charger coordinates and show watt-hours into the pack.]]></string>
+    <string name="ev_bms_plugin_architecture"><![CDATA[<br/><br/><b>🏗️ Plugin architecture</b><br/>
+OsmAnd plugin class <b>EvBmsPlugin</b> (extends OsmandPlugin). BLE callbacks deliver UART frames; the plugin publishes an <b>EvTelemetry</b> snapshot on the UI thread. Widgets, the HUD, voice, CSV/GPX, history and the settings sheet all read that snapshot. Range uses about 1 s samples even when BLE polls faster, so GPS jitter does not inflate distance.<br/><br/>
+<b>Data flow</b><br/>
+BMS UART (JBD / ANT) + controller UART (FarDriver / VESC) + BLE CSC wheel + GPS + OsmAnd remaining route → EvBmsPlugin → SocCalibrator, RangeEstimator, charge/trip session → map widgets, speedometer HUD, voice, TelemetryRecorder, OsmAnd GPX waypoints and charts.<br/><br/>
+<b>Source tree</b> — <i>OsmAnd/src/net/osmand/plus/plugins/evbms/</i><br/>
+• <b>EvBmsPlugin.kt</b> — BLE lifecycle, charge detection, distance-on-charge session, widget factory, voice hooks, OsmAnd GPX analyser<br/>
+• <b>RangeEstimator.kt</b> — Wh, km, 10 km / 5 min / DOC range<br/>
+• <b>SocCalibrator.kt</b> — OCV SOC from min cell, per BMS MAC, I·R while charging<br/>
+• <b>protocol/CscWheelTracker.kt</b> — CSC wheel revolutions → speed and odometer<br/>
+• <b>TelemetryRecorder.kt</b> — semicolon CSV and GPX 1.1, including charge &lt;wpt&gt; markers<br/>
+• <b>EvGpx.kt</b> — OsmAnd track charts: Wh/km, V, I, SOC, distance-on-charge<br/>
+• <b>EvHistoryStore.kt</b>, <b>EvHistoryChartStore.kt</b> — charge and ride history<br/>
+• <b>EvVoiceAnnouncer.kt</b>, <b>HikeModeController.kt</b><br/>
+• <b>EvBmsSettingsBottomSheet.kt</b>, <b>EvBmsSettingsFragment.kt</b>, <b>EvBmsSheetTab.kt</b> — hub UI<br/>
+• <b>EvBmsTextWidget.kt</b>, <b>EvHikeWidget.kt</b>, <b>EvSpeedometerWidget.kt</b>, <b>EvSpeedometerHudView.kt</b>, <b>EvWidgetChrome.kt</b>, <b>EvWidgetLinkFrame.kt</b><br/>
+• <b>ble/EvBleUartClient.kt</b> — GATT UART for BMS, controller and speed sensor<br/>
+• <b>protocol/</b> — JbdBmsProtocol, JbdBleModuleProtocol, AntBmsProtocol, FarDriverProtocol, VescProtocol, BmsSnapshot<br/>
+Layouts: <i>res/layout/ev_bms_*.xml</i>. Preferences: <i>res/xml/ev_bms_settings.xml</i>. Strings: <i>res/values/strings.xml</i> and <i>values-ru</i>.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
-• 🖐️ Side widget panel ignores taps on empty space; EV widgets open settings only from the top EV row, long-press still works on every EV widget<br/>
+• 📐 About tab: full remaining-range methodology and plugin file map<br/>
+• 📏 Distance for range and DOC: front-wheel BLE, then filtered GPS, then controller odometer (rear wheel can slip)<br/>
+• 🔌 Charge-end GPX waypoints on the trip track, labeled with Wh into the pack<br/>
+• 🖐️ Side widget panel ignores taps on empty space and on lower EV rows; only the top EV widget takes a single tap<br/>
 • ☑️ Fields tab: title stays on the select-all row; a GPX radio after each checkbox writes that field into the plugin trip GPX<br/>
 • 🚲 BLE CSC front-wheel speed (Cycplus BK467, Magene S3): primary speedometer and odometer; GPS auto-calibrates wheel circumference from revolutions<br/>
 • 🛵 FarDriver reconnect binds by BLE name and updates the saved MAC after a power cycle<br/>

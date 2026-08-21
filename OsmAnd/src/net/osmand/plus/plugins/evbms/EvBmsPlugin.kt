@@ -509,10 +509,15 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		return app.getString(R.string.ev_bms_plugin_name)
 	}
 
-	override fun getDescription(linksEnabled: Boolean): CharSequence {
-		val html = app.getString(R.string.ev_bms_plugin_description) +
+	fun descriptionHtml(): String {
+		return app.getString(R.string.ev_bms_plugin_description) +
+				app.getString(R.string.ev_bms_plugin_range_method) +
+				app.getString(R.string.ev_bms_plugin_architecture) +
 				app.getString(R.string.ev_bms_changelog, EvBmsRevision.GIT_HASH)
-		return HtmlCompat.fromHtml(html, HtmlCompat.FROM_HTML_MODE_LEGACY)
+	}
+
+	override fun getDescription(linksEnabled: Boolean): CharSequence {
+		return HtmlCompat.fromHtml(descriptionHtml(), HtmlCompat.FROM_HTML_MODE_LEGACY)
 	}
 
 	override fun getLogoResourceId(): Int {

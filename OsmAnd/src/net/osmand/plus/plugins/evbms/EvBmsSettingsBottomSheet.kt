@@ -964,8 +964,7 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		}
 		val text = view?.findViewById<TextView>(R.id.ev_bms_about_text) ?: return
 		val html = try {
-			app.getString(R.string.ev_bms_plugin_description) +
-					app.getString(R.string.ev_bms_changelog, EvBmsRevision.GIT_HASH)
+			plugin.descriptionHtml()
 		} catch (e: Exception) {
 			app.getString(R.string.ev_bms_plugin_description) +
 					"<br/><br/>Changelog · ${EvBmsRevision.GIT_HASH}"
