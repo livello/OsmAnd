@@ -23,6 +23,7 @@ import net.osmand.plus.plugins.OsmandPlugin
 import net.osmand.plus.plugins.evbms.ble.EvBleUartClient
 import net.osmand.plus.plugins.evbms.protocol.AntBmsProtocol
 import net.osmand.plus.plugins.evbms.protocol.BmsSnapshot
+import net.osmand.plus.plugins.evbms.protocol.CscCadenceTracker
 import net.osmand.plus.plugins.evbms.protocol.CscWheelTracker
 import net.osmand.plus.plugins.evbms.protocol.FarDriverProtocol
 import net.osmand.plus.plugins.evbms.protocol.JbdBmsProtocol
@@ -244,6 +245,14 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerFloatPreference("ev_bms_speed_sensor_cal_factor", 1f).makeGlobal().makeShared()
 	val SPEED_SENSOR_ODO_KM: CommonPreference<Float> =
 		registerFloatPreference("ev_bms_speed_sensor_odo_km", 0f).makeGlobal().makeShared()
+	val SPEED_SENSOR_TRIP_KM: CommonPreference<Float> =
+		registerFloatPreference("ev_bms_speed_sensor_trip_km", 0f).makeGlobal().makeShared()
+	val CTRL_TRIP_START_KM: CommonPreference<Float> =
+		registerFloatPreference("ev_bms_ctrl_trip_start_km", -1f).makeGlobal().makeShared()
+	val CADENCE_SENSOR_ADDRESS: CommonPreference<String> =
+		registerStringPreference("ev_cadence_sensor_address", "").makeGlobal().makeShared()
+	val CADENCE_SENSOR_NAME: CommonPreference<String> =
+		registerStringPreference("ev_cadence_sensor_name", "").makeGlobal().makeShared()
 	val FILTER_CTRL_ODO: CommonPreference<Boolean> =
 		registerBooleanPreference("ev_bms_filter_ctrl_odo", true).makeGlobal().makeShared()
 	val CTRL_ODO_EXCESS_PERCENT: CommonPreference<Int> =
@@ -325,8 +334,11 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private var bmsClient: EvBleUartClient? = null
 	private var controllerClient: EvBleUartClient? = null
 	private var speedSensorClient: EvBleUartClient? = null
+	private var cadenceSensorClient: EvBleUartClient? = null
 	private val wheelTracker = CscWheelTracker()
+	private val cadenceTracker = CscCadenceTracker()
 	private var lastSpeedSensorRxMs = 0L
+	private var lastCadenceRxMs = 0L
 	private var speedCalWheelStartRevs: Long? = null
 	private var speedCalUseWheel = false
 	private var bmsBuffer = ByteArray(0)
@@ -536,8 +548,14 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		bmsClient = EvBleUartClient(app, EvBleUartClient.Role.BMS, this, journal)
 		controllerClient = EvBleUartClient(app, EvBleUartClient.Role.CONTROLLER, this, journal)
 		speedSensorClient = EvBleUartClient(app, EvBleUartClient.Role.SPEED, this, journal)
+		cadenceSensorClient = EvBleUartClient(app, EvBleUartClient.Role.CADENCE, this, journal)
 		configureWheelTracker()
 		wheelTracker.restoreOdometerKm(SPEED_SENSOR_ODO_KM.get().toDouble())
+		wheelTracker.restoreTripKm(SPEED_SENSOR_TRIP_KM.get().toDouble())
+		val savedCtrlStart = CTRL_TRIP_START_KM.get().toDouble()
+		if (savedCtrlStart >= 0.0) {
+			farTripStartKm = savedCtrlStart
+		}
 		journal.enabled = DEBUG_JOURNAL.get()
 		if (journal.enabled) {
 			journal.i("plugin", "init hash=${EvBmsRevision.GIT_HASH}")
@@ -546,6 +564,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		voice.init()
 		socCalibrator.decode(SOC_CAL_STORE.get())
 		migratePollPreferences()
+		migrateCadenceTelemetryField()
 		restoreSessions()
 		restoreTelemetrySession()
 		return true
@@ -561,6 +580,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		bmsClient?.disconnect()
 		controllerClient?.disconnect()
 		speedSensorClient?.disconnect()
+		cadenceSensorClient?.disconnect()
 		persistWheelOdometer()
 	}
 
@@ -615,17 +635,25 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		}
 	}
 
-	fun farTripKm(): Double? {
-		if (isSpeedSensorFresh()) {
-			return wheelTracker.tripKm.takeIf { it >= 0.0 }
-		}
+	fun farTripKm(): Double? = sessionControllerTripKm()
+
+	private fun sessionControllerTripKm(): Double? {
 		val odo = rawCtrlOdometerKm() ?: return null
 		val start = farTripStartKm
 		if (start == null) {
-			farTripStartKm = odo
+			setControllerTripStart(odo)
 			return 0.0
 		}
 		return ((odo - start) * controllerCalFactor()).coerceAtLeast(0.0)
+	}
+
+	private fun sessionOdometerKm(): Double? {
+		return sessionControllerTripKm() ?: wheelTracker.tripKm.takeIf { it >= 0.0 }
+	}
+
+	private fun setControllerTripStart(odoKm: Double?) {
+		farTripStartKm = odoKm
+		CTRL_TRIP_START_KM.set((odoKm ?: -1.0).toFloat())
 	}
 
 	fun isCharging(): Boolean = charging
@@ -1860,10 +1888,15 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		speedSensorClient?.startScan(activity)
 	}
 
+	fun startCadenceSensorScan(activity: Activity) {
+		cadenceSensorClient?.startScan(activity)
+	}
+
 	fun stopScans() {
 		bmsClient?.stopScan()
 		controllerClient?.stopScan()
 		speedSensorClient?.stopScan()
+		cadenceSensorClient?.stopScan()
 	}
 
 	fun connectBms(activity: Activity, name: String, address: String) {
@@ -1894,6 +1927,14 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		speedSensorClient?.connect(activity, address, name)
 	}
 
+	fun connectCadenceSensor(activity: Activity, name: String, address: String) {
+		journal.i("link", "connect CADENCE name=$name addr=$address")
+		CADENCE_SENSOR_NAME.set(name)
+		CADENCE_SENSOR_ADDRESS.set(address)
+		cadenceSensorClient?.preferredDeviceName = name.takeIf { it.isNotBlank() }
+		cadenceSensorClient?.connect(activity, address, name)
+	}
+
 	fun disconnectBms() {
 		bmsClient?.disconnect()
 	}
@@ -1908,6 +1949,12 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		wheelTracker.resetBaseline()
 	}
 
+	fun disconnectCadenceSensor() {
+		cadenceSensorClient?.disconnect()
+		lastCadenceRxMs = 0L
+		cadenceTracker.resetBaseline()
+	}
+
 	private fun isJbdAuthInProgress(): Boolean {
 		return !preferAntProtocol() &&
 				!jbdPasswordRejected &&
@@ -1920,6 +1967,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			EvBleUartClient.Role.BMS -> bmsClient
 			EvBleUartClient.Role.CONTROLLER -> controllerClient
 			EvBleUartClient.Role.SPEED -> speedSensorClient
+			EvBleUartClient.Role.CADENCE -> cadenceSensorClient
 		}
 		return client?.linkStats()
 	}
@@ -1929,6 +1977,12 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	fun isControllerConnected(): Boolean = controllerClient?.connected == true
 
 	fun isSpeedSensorConnected(): Boolean = speedSensorClient?.connected == true
+
+	fun isCadenceSensorConnected(): Boolean = cadenceSensorClient?.connected == true
+
+	fun isCadenceSensorSelected(): Boolean {
+		return !CADENCE_SENSOR_ADDRESS.get().isNullOrBlank() || !CADENCE_SENSOR_NAME.get().isNullOrBlank()
+	}
 
 	fun isSpeedSensorSelected(): Boolean {
 		return !SPEED_SENSOR_ADDRESS.get().isNullOrBlank() || !SPEED_SENSOR_NAME.get().isNullOrBlank()
@@ -1970,6 +2024,12 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		if ((!speed.isNullOrEmpty() || !speedName.isNullOrEmpty()) && speedSensorClient?.connected != true) {
 			speedSensorClient?.preferredDeviceName = speedName?.takeIf { it.isNotBlank() }
 			speedSensorClient?.connect(activity, speed.orEmpty(), speedName)
+		}
+		val cadenceName = CADENCE_SENSOR_NAME.get()
+		val cadence = CADENCE_SENSOR_ADDRESS.get()
+		if ((!cadence.isNullOrEmpty() || !cadenceName.isNullOrEmpty()) && cadenceSensorClient?.connected != true) {
+			cadenceSensorClient?.preferredDeviceName = cadenceName?.takeIf { it.isNotBlank() }
+			cadenceSensorClient?.connect(activity, cadence.orEmpty(), cadenceName)
 		}
 	}
 
@@ -2017,6 +2077,15 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			if (!name.isNullOrBlank() && SPEED_SENSOR_NAME.get().isNullOrBlank()) {
 				SPEED_SENSOR_NAME.set(name)
 			}
+		} else if (role == EvBleUartClient.Role.CADENCE) {
+			val old = CADENCE_SENSOR_ADDRESS.get()
+			if (old != address) {
+				journal.i("link", "CADENCE MAC ${old.orEmpty()} → $address name=${name.orEmpty()}")
+				CADENCE_SENSOR_ADDRESS.set(address)
+			}
+			if (!name.isNullOrBlank() && CADENCE_SENSOR_NAME.get().isNullOrBlank()) {
+				CADENCE_SENSOR_NAME.set(name)
+			}
 		}
 	}
 
@@ -2026,7 +2095,6 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		if (connected) {
 			app.showToastMessage(app.getString(R.string.ev_bms_connected, label))
 			if (role == EvBleUartClient.Role.CONTROLLER) {
-				farTripStartKm = null
 				farStatusStarted = false
 				vescPollSetup = false
 				vescSnapshot.reset()
@@ -2037,6 +2105,9 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			if (role == EvBleUartClient.Role.SPEED) {
 				configureWheelTracker()
 				wheelTracker.resetBaseline()
+			}
+			if (role == EvBleUartClient.Role.CADENCE) {
+				cadenceTracker.resetBaseline()
 			}
 			startPolling()
 			applyHikeTelemetryState()
@@ -2049,11 +2120,16 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 					persistWheelOdometer()
 					wheelTracker.resetBaseline()
 				}
+				EvBleUartClient.Role.CADENCE -> {
+					lastCadenceRxMs = 0L
+					cadenceTracker.resetBaseline()
+				}
 			}
 			val auto = when (role) {
 				EvBleUartClient.Role.BMS -> bmsClient?.isAutoReconnectEnabled() == true
 				EvBleUartClient.Role.CONTROLLER -> controllerClient?.isAutoReconnectEnabled() == true
 				EvBleUartClient.Role.SPEED -> speedSensorClient?.isAutoReconnectEnabled() == true
+				EvBleUartClient.Role.CADENCE -> cadenceSensorClient?.isAutoReconnectEnabled() == true
 			}
 			if (!auto) {
 				app.showToastMessage(app.getString(R.string.ev_bms_disconnected, label))
@@ -2080,6 +2156,14 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			speedSensorClient?.preferredDeviceName = speedName?.takeIf { it.isNotBlank() }
 			ensureBleLink(speed, speedSensorClient, lastSpeedSensorRxMs, speedName) {
 				lastSpeedSensorRxMs = 0L
+			}
+		}
+		val cadenceName = CADENCE_SENSOR_NAME.get()
+		val cadence = CADENCE_SENSOR_ADDRESS.get()
+		if (!cadence.isNullOrEmpty() || !cadenceName.isNullOrEmpty()) {
+			cadenceSensorClient?.preferredDeviceName = cadenceName?.takeIf { it.isNotBlank() }
+			ensureBleLink(cadence, cadenceSensorClient, lastCadenceRxMs, cadenceName) {
+				lastCadenceRxMs = 0L
 			}
 		}
 	}
@@ -2111,9 +2195,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				// Module still answers FF AA 17; UART silence is not a dead radio.
 				return
 			}
-			if (client.role == EvBleUartClient.Role.SPEED) {
-				// CSC sensors stop notifying at rest and often rename BK6LC/BK6LS.
-				// Tearing GATT down here zeros the odometer widget until the next ride.
+			if (client.role == EvBleUartClient.Role.SPEED || client.role == EvBleUartClient.Role.CADENCE) {
+				// CSC sensors stop notifying at rest. Do not tear GATT down here.
 				return
 			}
 			val now = System.currentTimeMillis()
@@ -2148,6 +2231,16 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				lastSpeedSensorRxMs = System.currentTimeMillis()
 				if (wheelTracker.ingest(data)) {
 					persistWheelOdometer()
+					handler.post { publishWheelLive() }
+				}
+				if (cadenceTracker.ingest(data)) {
+					lastCadenceRxMs = cadenceTracker.lastRxMs
+					handler.post { publishWheelLive() }
+				}
+			}
+			EvBleUartClient.Role.CADENCE -> {
+				lastCadenceRxMs = System.currentTimeMillis()
+				if (cadenceTracker.ingest(data)) {
 					handler.post { publishWheelLive() }
 				}
 			}
@@ -2660,13 +2753,13 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			return
 		}
 		val speed = wheelSpeedKmh()
-		val odo = wheelTracker.odometerKm
 		latestTelemetry = prev.copy(
-			farOdometerKm = ctrlOdometerKm() ?: prev.farOdometerKm,
+			farOdometerKm = sessionOdometerKm() ?: prev.farOdometerKm,
 			farTripKm = farTripKm() ?: prev.farTripKm,
 			farSpeedKmh = ctrlSpeedKmh() ?: prev.farSpeedKmh,
 			wheelSpeedKmh = speed,
-			wheelOdometerKm = odo
+			wheelOdometerKm = wheelTracker.tripKm,
+			cadenceRpm = cadenceRpm()
 		)
 	}
 
@@ -2771,12 +2864,13 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			consumptionWhPerKm = rangeEstimator.consumptionWhPerKm,
 			coverageWhPerKm = rangeEstimator.coverageWhPerKm,
 			weakCellFactor = rangeEstimator.weakCellFactor,
-			farOdometerKm = ctrlOdometerKm(),
+			farOdometerKm = sessionOdometerKm(),
 			farTripKm = farTripKm(),
 			chargeTripKm = chargeTripKm(),
 			farSpeedKmh = ctrlSpeedKmh(),
 			wheelSpeedKmh = wheelSpeedKmh(),
-			wheelOdometerKm = wheelTracker.odometerKm,
+			wheelOdometerKm = wheelTracker.tripKm,
+			cadenceRpm = cadenceRpm(),
 			farAvgWhPerKm = ctrlAvgWhPerKm(),
 			gpsUnreliable = rangeEstimator.gpsUnreliable,
 			usedFarDriverDistance = rangeEstimator.usedFarDriverDistance,
@@ -3529,9 +3623,11 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		applyHikeTelemetryState()
 		val ok = recorder.startNewSession()
 		if (ok) {
+			resetSessionOdometers()
 			RECORD_TELEMETRY.set(true)
 			persistTelemetrySession(SESSION_RECORDING)
 			beginTelemetryCalculations()
+			publishSample()
 		}
 		return ok
 	}
@@ -3742,10 +3838,24 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	}
 
 	private fun persistWheelOdometer() {
-		val km = wheelTracker.odometerKm ?: return
-		if (km.isFinite() && km >= 0.0) {
+		val km = wheelTracker.odometerKm
+		if (km != null && km.isFinite() && km >= 0.0) {
 			SPEED_SENSOR_ODO_KM.set(km.toFloat())
 		}
+		SPEED_SENSOR_TRIP_KM.set(wheelTracker.tripKm.toFloat())
+	}
+
+	private fun resetSessionOdometers() {
+		wheelTracker.resetTripDistance()
+		SPEED_SENSOR_TRIP_KM.set(0f)
+		setControllerTripStart(rawCtrlOdometerKm())
+	}
+
+	private fun cadenceRpm(): Double? {
+		if (!cadenceTracker.hasData) {
+			return null
+		}
+		return cadenceTracker.rpm
 	}
 
 	private fun tickSpeedCalibration(loc: Location?) {
@@ -3841,6 +3951,18 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		}
 	}
 
+	private fun migrateCadenceTelemetryField() {
+		val raw = TELEMETRY_FIELDS.get() ?: return
+		if (raw.isBlank()) {
+			return
+		}
+		val ids = raw.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+		if (ids.contains(TelemetryField.CADENCE.id)) {
+			return
+		}
+		TELEMETRY_FIELDS.set((ids + TelemetryField.CADENCE.id).joinToString(","))
+	}
+
 	private fun activeBmsPollMs(): Long = coercePollMs(BMS_POLL_MS.get())
 
 	private fun activeCtrlPollMs(): Long = coercePollMs(CONTROLLER_POLL_MS.get())
@@ -3870,7 +3992,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		return when (role) {
 			EvBleUartClient.Role.BMS -> linkDeadMs(activeBmsPollMs())
 			EvBleUartClient.Role.CONTROLLER -> linkDeadMs(activeCtrlPollMs())
-			EvBleUartClient.Role.SPEED -> 12_000L
+			EvBleUartClient.Role.SPEED, EvBleUartClient.Role.CADENCE -> 12_000L
 		}
 	}
 

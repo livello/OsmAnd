@@ -4562,7 +4562,7 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
 • <b>protocol/</b> — JbdBmsProtocol, JbdBleModuleProtocol, AntBmsProtocol, FarDriverProtocol, VescProtocol, BmsSnapshot<br/>
 Вёрстка: <i>res/layout/ev_bms_*.xml</i>. Настройки: <i>res/xml/ev_bms_settings.xml</i>. Строки: <i>res/values/strings.xml</i> и <i>values-ru</i>.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Список изменений</b> · %1$s<br/>
-• 🚲 Одометр колеса держит последний пробег на остановке и после сна CSC; BK6LC/BK6LS — одно устройство; тап по графику показывает точку<br/>
+• 🚴 Датчик каденса BK6LC отдельно от датчика колеса BK6LS; поле «каденс» и графики; одометры поездки сбрасываются только при старте новой записи телеметрии<br/>
 • 📐 Вкладка «О плагине»: полная методика запаса хода и карта файлов<br/>
 • 📏 Дистанция для запаса хода и ПНЗ: BLE переднего колеса, затем GPS с фильтром, затем одометр контроллера (заднее может буксовать)<br/>
 • 🔌 Точки зарядки на GPX-треке поездки с подписью закачанных Вт·ч<br/>
@@ -4665,6 +4665,7 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
     <string name="ev_bms_jbd_title">BMS батареи</string>
     <string name="ev_bms_controller_title">Контроллер</string>
     <string name="ev_bms_speed_sensor_title">Датчик скорости переднего колеса</string>
+    <string name="ev_bms_cadence_sensor_title">Датчик каденса</string>
     <string name="ev_bms_controller_protocol">Протокол контроллера</string>
     <string name="ev_bms_protocol_fardriver">FarDriver</string>
     <string name="ev_bms_protocol_vesc">VESC</string>
@@ -4764,6 +4765,7 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
     <string name="ev_bms_field_ctrl_speed">Скорость контроллера</string>
     <string name="ev_bms_field_wheel_speed">Скорость колеса</string>
     <string name="ev_bms_field_wheel_odometer">Одометр колеса</string>
+    <string name="ev_bms_field_cadence">Каденс</string>
     <string name="ev_bms_announce_soc">Озвучивать полное напряжение батареи</string>
     <string name="ev_bms_soc_step">Шаг объявления напряжения</string>
     <string name="ev_bms_announce_range_on_stop">Озвучивать основной запас хода на остановках</string>

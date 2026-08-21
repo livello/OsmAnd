@@ -237,6 +237,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		decorate(plugin.CONTROLLER_ADDRESS.id, "🛵", R.drawable.ic_action_car_info)
 		decorate(plugin.CONTROLLER_PROTOCOL.id, "⚙️", R.drawable.ic_action_settings)
 		decorate(plugin.SPEED_SENSOR_ADDRESS.id, "🚲", R.drawable.ic_action_bicycle_dark)
+		decorate(plugin.CADENCE_SENSOR_ADDRESS.id, "🚴", R.drawable.ic_action_bicycle_dark)
 		decorate(plugin.WHEEL_CIRCUMFERENCE_MM.id, "⭕", R.drawable.ic_action_distance)
 		decorate(plugin.HIKE_MODE.id, "🥾", R.drawable.ic_action_trekking_dark)
 		decorate(plugin.SPEED_PROFILE_AUTO.id, "🏍️", R.drawable.ic_action_speed)
@@ -355,6 +356,12 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			plugin.SPEED_SENSOR_ADDRESS.get(),
 			plugin.isSpeedSensorConnected()
 		)
+		setupDevicePref(
+			plugin.CADENCE_SENSOR_ADDRESS.id,
+			plugin.CADENCE_SENSOR_NAME.get(),
+			plugin.CADENCE_SENSOR_ADDRESS.get(),
+			plugin.isCadenceSensorConnected()
+		)
 	}
 
 	private fun setupDevicePref(key: String, name: String?, address: String?, connected: Boolean) {
@@ -363,6 +370,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		val role = when (key) {
 			plugin.BMS_ADDRESS.id -> EvBleUartClient.Role.BMS
 			plugin.SPEED_SENSOR_ADDRESS.id -> EvBleUartClient.Role.SPEED
+			plugin.CADENCE_SENSOR_ADDRESS.id -> EvBleUartClient.Role.CADENCE
 			else -> EvBleUartClient.Role.CONTROLLER
 		}
 		val stats = plugin.bleLinkStats(role)
@@ -992,6 +1000,10 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 				startScan(activity, EvBleUartClient.Role.SPEED)
 				return true
 			}
+			plugin.CADENCE_SENSOR_ADDRESS.id -> {
+				startScan(activity, EvBleUartClient.Role.CADENCE)
+				return true
+			}
 			plugin.TELEMETRY_FIELDS.id, "ev_bms_telemetry_fields" -> {
 				val sheet = parentFragment as? EvBmsSettingsBottomSheet
 				if (sheet != null) {
@@ -1466,6 +1478,8 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			plugin.startBmsScan(activity)
 		} else if (role == EvBleUartClient.Role.SPEED) {
 			plugin.startSpeedSensorScan(activity)
+		} else if (role == EvBleUartClient.Role.CADENCE) {
+			plugin.startCadenceSensorScan(activity)
 		} else {
 			plugin.startControllerScan(activity)
 		}
@@ -1486,6 +1500,8 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 						plugin.connectBms(activity, selected.name, selected.address)
 					} else if (role == EvBleUartClient.Role.SPEED) {
 						plugin.connectSpeedSensor(activity, selected.name, selected.address)
+					} else if (role == EvBleUartClient.Role.CADENCE) {
+						plugin.connectCadenceSensor(activity, selected.name, selected.address)
 					} else if (role == EvBleUartClient.Role.CONTROLLER) {
 						plugin.connectController(activity, selected.name, selected.address)
 					}

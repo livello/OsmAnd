@@ -38,7 +38,7 @@ class EvBleUartClient(
 ) {
 
 	enum class Role {
-		BMS, CONTROLLER, SPEED
+		BMS, CONTROLLER, SPEED, CADENCE
 	}
 
 	enum class BmsKind {
@@ -154,13 +154,21 @@ class EvBleUartClient(
 			if (a.equals(b, ignoreCase = true)) {
 				return true
 			}
-			val compactA = normalizeSpeedSensorName(a)
-			val compactB = normalizeSpeedSensorName(b)
+			val compactA = a.replace(" ", "")
+			val compactB = b.replace(" ", "")
 			return compactA.equals(compactB, ignoreCase = true)
 		}
 
-		fun normalizeSpeedSensorName(name: String): String {
-			return name.replace(" ", "").replace(Regex("(?i)BK6L[CS]"), "BK6L")
+		fun matchesCadenceSensorName(name: String?): Boolean {
+			if (name.isNullOrBlank()) {
+				return false
+			}
+			val n = name.lowercase(Locale.US)
+			if (n.contains("bk6ls")) {
+				return false
+			}
+			return n.contains("bk6lc") || n.contains("cadence") || n.contains("crank") ||
+					n.contains("bk-cad") || n.startsWith("cad")
 		}
 
 		fun matchesSpeedSensorName(name: String?): Boolean {
@@ -168,10 +176,12 @@ class EvBleUartClient(
 				return false
 			}
 			val n = name.lowercase(Locale.US)
+			if (n.contains("bk6lc") || (matchesCadenceSensorName(name) && !n.contains("speed"))) {
+				return false
+			}
 			return n.contains("cycplus") || n.contains("coospo") || n.contains("bk467") ||
-					n.contains("bk6l") || n.contains("bk-467") || n.contains("magene") || n.contains("gemini") ||
+					n.contains("bk6ls") || n.contains("bk-467") || n.contains("magene") || n.contains("gemini") ||
 					n.contains("s3+") || n.contains("magene_s3") ||
-					n.contains("speed cadence") || n.contains("cadence") ||
 					n.contains("bike spd") || n.contains("spd cad") || n.startsWith("csc") ||
 					(n.contains("speed") && (n.contains("sensor") || n.contains("wheel")))
 		}
@@ -179,8 +189,10 @@ class EvBleUartClient(
 		fun describeBleServices(name: String?, serviceUuids: List<UUID>?, role: Role): String {
 			val ids = serviceUuids ?: emptyList()
 			return when {
+				ids.contains(GattAttributes.UUID_SERVICE_CYCLING_SPEED_AND_CADENCE) &&
+						(role == Role.CADENCE || matchesCadenceSensorName(name)) -> "CSC cad"
 				ids.contains(GattAttributes.UUID_SERVICE_CYCLING_SPEED_AND_CADENCE) ||
-						role == Role.SPEED || matchesSpeedSensorName(name) -> "CSC"
+						role == Role.SPEED || matchesSpeedSensorName(name) -> "CSC spd"
 				ids.contains(JBD_SERVICE) || (role == Role.BMS && matchesBmsName(name) && !matchesAntName(name)) -> "JBD"
 				matchesAntName(name) -> "ANT BMS"
 				ids.contains(NUS_SERVICE) || matchesVescName(name) -> "VESC"
@@ -428,7 +440,7 @@ class EvBleUartClient(
 				scheduleReconnect()
 				return
 			}
-			if (role == Role.SPEED) {
+			if (role == Role.SPEED || role == Role.CADENCE) {
 				enableCscNotifications(gatt)
 				return
 			}
@@ -619,15 +631,24 @@ class EvBleUartClient(
 		if (role == Role.BMS && matchesControllerName(name) && !matchesBmsName(name)) {
 			return
 		}
-		if (role == Role.SPEED && (matchesBmsName(name) || matchesControllerName(name)) &&
-			!matchesSpeedSensorName(name)
+		if (role == Role.SPEED && (
+				matchesCadenceSensorName(name) && !matchesSpeedSensorName(name) ||
+					(matchesBmsName(name) || matchesControllerName(name)) && !matchesSpeedSensorName(name)
+			)
+		) {
+			return
+		}
+		if (role == Role.CADENCE && (
+				matchesSpeedSensorName(name) && !matchesCadenceSensorName(name) ||
+					(matchesBmsName(name) || matchesControllerName(name)) && !matchesCadenceSensorName(name)
+			)
 		) {
 			return
 		}
 		val hasService = when (role) {
 			Role.BMS -> serviceUuids?.any { it == JBD_SERVICE || it == FAR_SERVICE } == true
 			Role.CONTROLLER -> serviceUuids?.any { it == FAR_SERVICE || it == NUS_SERVICE } == true
-			Role.SPEED -> serviceUuids?.any {
+			Role.SPEED, Role.CADENCE -> serviceUuids?.any {
 				it == GattAttributes.UUID_SERVICE_CYCLING_SPEED_AND_CADENCE
 			} == true
 		}
@@ -635,6 +656,7 @@ class EvBleUartClient(
 			Role.BMS -> matchesBmsName(name)
 			Role.CONTROLLER -> matchesControllerName(name)
 			Role.SPEED -> matchesSpeedSensorName(name)
+			Role.CADENCE -> matchesCadenceSensorName(name)
 		}
 		if (!match && !hasService && !name.isNullOrBlank()) {
 			return
@@ -839,7 +861,7 @@ class EvBleUartClient(
 	}
 
 	private fun shouldBindByName(): Boolean {
-		if (role == Role.SPEED) {
+		if (role == Role.SPEED || role == Role.CADENCE) {
 			return !preferredDeviceName.isNullOrBlank()
 		}
 		if (role != Role.CONTROLLER || preferredDeviceName.isNullOrBlank()) {
@@ -851,6 +873,13 @@ class EvBleUartClient(
 	}
 
 	private fun advertisementMatches(address: String?, advertisedName: String?): Boolean {
+		if (role == Role.SPEED || role == Role.CADENCE) {
+			if (shouldBindByName()) {
+				return advertisedNamesMatch(preferredDeviceName, advertisedName)
+			}
+			return !address.isNullOrBlank() && !deviceAddress.isNullOrBlank() &&
+					address.equals(deviceAddress, ignoreCase = true)
+		}
 		if (!address.isNullOrBlank() && !deviceAddress.isNullOrBlank() &&
 			address.equals(deviceAddress, ignoreCase = true)
 		) {
@@ -1044,7 +1073,7 @@ class EvBleUartClient(
 
 	@SuppressLint("MissingPermission")
 	fun write(bytes: ByteArray): Boolean {
-		if (role == Role.SPEED) {
+		if (role == Role.SPEED || role == Role.CADENCE) {
 			return false
 		}
 		val g = gatt ?: run {

@@ -1062,7 +1062,7 @@ BMS UART (JBD / ANT) + controller UART (FarDriver / VESC) + BLE CSC wheel + GPS 
 • <b>protocol/</b> — JbdBmsProtocol, JbdBleModuleProtocol, AntBmsProtocol, FarDriverProtocol, VescProtocol, BmsSnapshot<br/>
 Layouts: <i>res/layout/ev_bms_*.xml</i>. Preferences: <i>res/xml/ev_bms_settings.xml</i>. Strings: <i>res/values/strings.xml</i> and <i>values-ru</i>.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
-• 🚲 Wheel odometer keeps the last distance at rest and after CSC sleep; BK6LC/BK6LS names match; charts show the tapped point<br/>
+• 🚴 Cadence sensor (BK6LC) is separate from the wheel sensor (BK6LS); cadence_rpm field and charts; trip odometers reset only when a new telemetry recording starts<br/>
 • 📐 About tab: full remaining-range methodology and plugin file map<br/>
 • 📏 Distance for range and DOC: front-wheel BLE, then filtered GPS, then controller odometer (rear wheel can slip)<br/>
 • 🔌 Charge-end GPX waypoints on the trip track, labeled with Wh into the pack<br/>
@@ -1165,6 +1165,7 @@ Layouts: <i>res/layout/ev_bms_*.xml</i>. Preferences: <i>res/xml/ev_bms_settings
     <string name="ev_bms_jbd_title">Battery BMS</string>
     <string name="ev_bms_controller_title">Motor controller</string>
     <string name="ev_bms_speed_sensor_title">Front wheel speed sensor</string>
+    <string name="ev_bms_cadence_sensor_title">Cadence sensor</string>
     <string name="ev_bms_controller_protocol">Controller protocol</string>
     <string name="ev_bms_protocol_fardriver">FarDriver</string>
     <string name="ev_bms_protocol_vesc">VESC</string>
@@ -1264,6 +1265,7 @@ Layouts: <i>res/layout/ev_bms_*.xml</i>. Preferences: <i>res/xml/ev_bms_settings
     <string name="ev_bms_field_ctrl_speed">Controller speed</string>
     <string name="ev_bms_field_wheel_speed">Wheel speed</string>
     <string name="ev_bms_field_wheel_odometer">Wheel odometer</string>
+    <string name="ev_bms_field_cadence">Cadence</string>
     <string name="ev_bms_announce_soc">Announce full pack voltage</string>
     <string name="ev_bms_soc_step">Voltage announcement step</string>
     <string name="ev_bms_announce_range_on_stop">Announce primary range when stopped</string>

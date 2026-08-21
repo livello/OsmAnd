@@ -51,8 +51,19 @@ class CscWheelTracker {
 		odometerKm = km
 	}
 
-	fun resetTrip() {
+	fun restoreTripKm(km: Double?) {
+		if (km == null || !km.isFinite() || km < 0.0) {
+			return
+		}
+		tripKm = km
+	}
+
+	fun resetTripDistance() {
 		tripKm = 0.0
+	}
+
+	fun resetTrip() {
+		resetTripDistance()
 		resetBaseline()
 		hasWheelData = false
 		odometerKm = if (calibratedM > 0.0) calibratedM / 1000.0 else odometerKm

@@ -45,7 +45,8 @@ data class EvTelemetry(
 	val gpsUnreliable: Boolean = false,
 	val usedFarDriverDistance: Boolean = false,
 	val rangeReserveKm: Double? = null,
-	val stopTimeMs: Long? = null
+	val stopTimeMs: Long? = null,
+	val cadenceRpm: Double? = null
 ) {
 	companion object {
 		fun csvHeader(): String = VESC_HEADER

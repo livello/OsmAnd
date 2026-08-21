@@ -46,6 +46,13 @@
 		android:title="@string/ev_bms_speed_sensor_title"
 		tools:summary="@string/ev_bms_status_not_selected" />
 
+	<Preference
+		android:key="ev_cadence_sensor_address"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:persistent="false"
+		android:title="@string/ev_bms_cadence_sensor_title"
+		tools:summary="@string/ev_bms_status_not_selected" />
+
 	<net.osmand.plus.settings.preferences.EditTextPreferenceEx
 		android:key="ev_bms_wheel_circumference_mm"
 		android:layout="@layout/ev_bms_preference_with_descr"

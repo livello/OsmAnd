@@ -1,5 +1,5 @@
 package net.osmand.plus.plugins.evbms
 
 object EvBmsRevision {
-	const val GIT_HASH = "wheel-odo-chart"
+	const val GIT_HASH = "cadence-session-odo"
 }

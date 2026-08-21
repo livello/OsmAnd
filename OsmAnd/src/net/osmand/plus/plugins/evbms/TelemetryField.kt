@@ -37,6 +37,7 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 	CTRL_SPEED("controller_speed_kmh", R.string.ev_bms_field_ctrl_speed, R.string.ev_bms_field_group_controller, "🚀"),
 	WHEEL_SPEED("wheel_speed_kmh", R.string.ev_bms_field_wheel_speed, R.string.ev_bms_field_group_ride, "🚲"),
 	WHEEL_ODOMETER("wheel_odometer_km", R.string.ev_bms_field_wheel_odometer, R.string.ev_bms_field_group_ride, "🚲"),
+	CADENCE("cadence_rpm", R.string.ev_bms_field_cadence, R.string.ev_bms_field_group_ride, "🚴"),
 	CONSUMPTION("consumption_wh_km", R.string.ev_bms_widget_consumption, R.string.ev_bms_field_group_ride, "📊"),
 	USED_AH("used_ah", R.string.ev_bms_field_used_ah, R.string.ev_bms_field_group_ride, "🔋"),
 	COVERAGE("coverage_wh_km", R.string.ev_bms_field_coverage, R.string.ev_bms_field_group_ride, "📊"),
@@ -80,6 +81,7 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 			CTRL_SPEED -> n(sample.farSpeedKmh, "%.2f")
 			WHEEL_SPEED -> n(sample.wheelSpeedKmh, "%.2f")
 			WHEEL_ODOMETER -> n(sample.wheelOdometerKm, "%.3f")
+			CADENCE -> n(sample.cadenceRpm, "%.1f")
 			RANGE_RESERVE -> n(sample.rangeReserveKm, "%.2f")
 			STOP_TIME -> sample.stopTimeMs?.toString().orEmpty()
 		}
@@ -127,6 +129,7 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 			CTRL_SPEED -> unit(sample.farSpeedKmh, "%.1f", "km/h", empty)
 			WHEEL_SPEED -> unit(sample.wheelSpeedKmh, "%.1f", "km/h", empty)
 			WHEEL_ODOMETER -> unit(sample.wheelOdometerKm, "%.2f", "km", empty)
+			CADENCE -> unit(sample.cadenceRpm, "%.0f", "rpm", empty)
 			RANGE_RESERVE -> unit(sample.rangeReserveKm, "%.1f", "km", empty)
 			STOP_TIME -> formatDuration(sample.stopTimeMs, empty)
 		}
@@ -140,6 +143,7 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 			GPS_SPEED -> n(sample.gpsSpeedKmh?.let { kotlin.math.round(it * 2.0) / 2.0 }, "%.1f")
 			CTRL_SPEED -> n(sample.farSpeedKmh?.let { kotlin.math.round(it * 2.0) / 2.0 }, "%.1f")
 			WHEEL_SPEED -> n(sample.wheelSpeedKmh?.let { kotlin.math.round(it * 2.0) / 2.0 }, "%.1f")
+			CADENCE -> n(sample.cadenceRpm?.let { kotlin.math.round(it) }, "%.0f")
 			else -> csvValue(sample)
 		}
 	}
@@ -176,6 +180,7 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 			CTRL_SPEED -> sample.farSpeedKmh
 			WHEEL_SPEED -> sample.wheelSpeedKmh
 			WHEEL_ODOMETER -> sample.wheelOdometerKm
+			CADENCE -> sample.cadenceRpm
 			CONSUMPTION -> sample.energyWh
 			USED_AH -> sample.usedAh
 			COVERAGE -> sample.consumptionWhPerKm ?: sample.coverageWhPerKm
@@ -191,7 +196,7 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 		val DEFAULT_IDS = listOf(
 			TIME_MS, LAT, LON, GPS_SPEED, SOC, VOLTAGE, CURRENT,
 			BMS_TEMP, MOTOR_TEMP, CTRL_TEMP, REMAINING_AH, FULL_AH, MIN_CELL,
-			POWER, RANGE, RANGE_WINDOW, RANGE_PNZ, CONSUMPTION, CHARGE_TRIP, WHEEL_SPEED, WHEEL_ODOMETER
+			POWER, RANGE, RANGE_WINDOW, RANGE_PNZ, CONSUMPTION, CHARGE_TRIP, WHEEL_SPEED, WHEEL_ODOMETER, CADENCE
 		).joinToString(",") { it.id }
 
 		fun parse(raw: String?): List<TelemetryField> {
