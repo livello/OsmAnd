@@ -30,15 +30,24 @@ class EvBmsTextWidget(
 ) : SimpleWidget(mapActivity, widgetType, customId, widgetsPanel) {
 
 	enum class Field {
-		SOC, RANGE, RANGE_WINDOW, RANGE_PNZ, RANGE_RESERVE, CONSUMPTION, FAR_TRIP, CHARGE_TRIP, CHARGE_ETA, CHARGE_TIME, CHARGE_ENERGY, VOLTAGE, MIN_CELL, CURRENT, POWER, BATTERY_TEMP, MOTOR_TEMP, CONTROLLER_TEMP;
+		SOC, RANGE, RANGE_WINDOW, RANGE_PNZ, RANGE_RESERVE, CONSUMPTION, FAR_TRIP, CHARGE_TRIP, CHARGE_ETA, CHARGE_TIME, CHARGE_ENERGY, VOLTAGE, MIN_CELL, CURRENT, POWER, BATTERY_TEMP, MOTOR_TEMP, CONTROLLER_TEMP, TIME, LAT, LON, GPS_SPEED, SOC_OCV, REMAINING_AH, FULL_AH, CYCLES, MAX_CELL, IMBALANCE, CTRL_VOLTAGE, CTRL_CURRENT, RPM, GEAR, ODOMETER, CTRL_SPEED, WHEEL_SPEED, WHEEL_ODO, CADENCE, USED_AH, COVERAGE, STOP_TIME;
 
 		fun controllerLink(): Boolean {
-			return this == FAR_TRIP || this == POWER || this == MOTOR_TEMP || this == CONTROLLER_TEMP
+			return this == FAR_TRIP || this == POWER || this == MOTOR_TEMP || this == CONTROLLER_TEMP ||
+					this == CTRL_VOLTAGE || this == CTRL_CURRENT || this == RPM || this == GEAR ||
+					this == ODOMETER || this == CTRL_SPEED
 		}
+
+		fun wheelLink(): Boolean {
+			return this == WHEEL_SPEED || this == WHEEL_ODO
+		}
+
+		fun cadenceLink(): Boolean = this == CADENCE
 	}
 
 	companion object {
 		private const val COMPACT_PREF_ID = "ev_bms_widget_compact_"
+		private val CLOCK = java.text.SimpleDateFormat("HH:mm:ss", Locale.US)
 	}
 
 	private val plugin = PluginsHelper.requirePlugin(EvBmsPlugin::class.java)
@@ -127,6 +136,32 @@ class EvBmsTextWidget(
 			Field.BATTERY_TEMP -> sample?.bmsTempC?.let { String.format(Locale.US, "%.0f", it) } ?: NO_VALUE
 			Field.MOTOR_TEMP -> sample?.motorTempC?.let { String.format(Locale.US, "%.0f", it) } ?: NO_VALUE
 			Field.CONTROLLER_TEMP -> sample?.controllerTempC?.let { String.format(Locale.US, "%.0f", it) } ?: NO_VALUE
+			Field.TIME -> sample?.timeMs?.let { CLOCK.format(java.util.Date(it)) } ?: NO_VALUE
+			Field.LAT -> sample?.lat?.let { String.format(Locale.US, "%.6f", it) } ?: NO_VALUE
+			Field.LON -> sample?.lon?.let { String.format(Locale.US, "%.6f", it) } ?: NO_VALUE
+			Field.GPS_SPEED -> sample?.gpsSpeedKmh?.let { String.format(Locale.US, "%.1f", it) } ?: NO_VALUE
+			Field.SOC_OCV -> sample?.socVoltagePercent?.toString() ?: NO_VALUE
+			Field.REMAINING_AH -> sample?.remainingAh?.let { String.format(Locale.US, "%.2f", it) } ?: NO_VALUE
+			Field.FULL_AH -> sample?.fullAh?.let { String.format(Locale.US, "%.2f", it) } ?: NO_VALUE
+			Field.CYCLES -> sample?.cycles?.toString() ?: NO_VALUE
+			Field.MAX_CELL -> sample?.maxCellVoltageV?.let { String.format(Locale.US, "%.3f", it) } ?: NO_VALUE
+			Field.IMBALANCE -> sample?.cellImbalanceV?.let {
+				String.format(Locale.US, "%.0f", it * 1000.0)
+			} ?: NO_VALUE
+			Field.CTRL_VOLTAGE -> sample?.controllerVoltageV?.let { String.format(Locale.US, "%.1f", it) } ?: NO_VALUE
+			Field.CTRL_CURRENT -> sample?.controllerCurrentA?.let { String.format(Locale.US, "%.1f", it) } ?: NO_VALUE
+			Field.RPM -> sample?.rpm?.toString() ?: NO_VALUE
+			Field.GEAR -> sample?.gear?.toString() ?: NO_VALUE
+			Field.ODOMETER -> formatMetricKm(sample?.farOdometerKm)
+			Field.CTRL_SPEED -> sample?.farSpeedKmh?.let { String.format(Locale.US, "%.1f", it) } ?: NO_VALUE
+			Field.WHEEL_SPEED -> sample?.wheelSpeedKmh?.let { String.format(Locale.US, "%.1f", it) } ?: NO_VALUE
+			Field.WHEEL_ODO -> formatMetricKm(sample?.wheelOdometerKm)
+			Field.CADENCE -> sample?.cadenceRpm?.let { String.format(Locale.US, "%.0f", it) } ?: NO_VALUE
+			Field.USED_AH -> sample?.usedAh?.let { String.format(Locale.US, "%.2f", it) } ?: NO_VALUE
+			Field.COVERAGE -> sample?.coverageWhPerKm?.let { String.format(Locale.US, "%.0f", it) }
+				?: sample?.consumptionWhPerKm?.let { String.format(Locale.US, "%.0f", it) }
+				?: NO_VALUE
+			Field.STOP_TIME -> sample?.stopTimeMs?.let { formatStop(it) } ?: NO_VALUE
 		}
 		val compact = isCompact()
 		if (text != cacheText || compact != cacheCompact) {
@@ -153,11 +188,32 @@ class EvBmsTextWidget(
 		}
 	}
 
+	private fun formatStop(ms: Long): String {
+		val totalSec = (ms / 1000L).toInt().coerceAtLeast(0)
+		val h = totalSec / 3600
+		val m = (totalSec % 3600) / 60
+		val s = totalSec % 60
+		return if (h > 0) {
+			String.format(Locale.US, "%d:%02d:%02d", h, m, s)
+		} else {
+			String.format(Locale.US, "%d:%02d", m, s)
+		}
+	}
+
+	private fun sampleHasFix(): Boolean {
+		val sample = plugin.latestTelemetry
+		return sample?.lat != null && sample.lon != null
+	}
+
 	private fun applyLinkFrame() {
 		val linked = when {
 			field == Field.CHARGE_ETA || field == Field.CHARGE_TIME || field == Field.CHARGE_ENERGY ->
 				plugin.isCharging() || plugin.isBmsConnected()
 			field.controllerLink() -> plugin.isControllerConnected()
+			field.wheelLink() -> plugin.isSpeedSensorConnected()
+			field.cadenceLink() -> plugin.isCadenceSensorConnected()
+			field == Field.TIME || field == Field.LAT || field == Field.LON || field == Field.GPS_SPEED ->
+				sampleHasFix() || plugin.isBmsConnected()
 			else -> plugin.isBmsConnected()
 		}
 		EvWidgetLinkFrame.apply(view, linked, textView, smallTextView, widgetName)

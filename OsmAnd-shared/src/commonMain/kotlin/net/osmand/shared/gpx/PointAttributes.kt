@@ -39,6 +39,7 @@ class PointAttributes(
 		const val POINT_ELEVATION = "point_elevation"
 
 		const val EV_TAG_CONSUMPTION = "ev_wh_km"
+		const val EV_TAG_ENERGY = "ev_energy_wh"
 		const val EV_TAG_VOLTAGE = "ev_voltage"
 		const val EV_TAG_CURRENT = "ev_current"
 		const val EV_TAG_SOC = "ev_soc"
@@ -243,12 +244,17 @@ class PointAttributes(
 			SENSOR_TAG_TEMPERATURE_A,
 			POINT_ELEVATION,
 			EV_TAG_CONSUMPTION,
+			EV_TAG_ENERGY,
 			EV_TAG_VOLTAGE,
 			EV_TAG_CURRENT,
 			EV_TAG_SOC,
 			EV_TAG_CHARGE_TRIP -> !value.isNaN()
 
-			else -> value > 0f
+			else -> if (extra?.containsKey(tag) == true || tag.startsWith("ev_")) {
+				!value.isNaN()
+			} else {
+				value > 0f
+			}
 		}
 	}
 

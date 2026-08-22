@@ -47,6 +47,9 @@ Thumbs.db
 # Output files
 build
 
+# Local ride captures pulled from phones (CSV/GPX/logcat)
+/ev-telemetry-captures/
+
 #Rendering test files
 OsmAnd-java/src/test/resources/rendering/*
 OsmAnd-shared/bin

@@ -241,9 +241,11 @@ Not reset: rest, CSC sleep, BLE reconnect, recording pause, `resume`. Anchors ar
 
 ## 6. Recording and charts
 
-Selected fields (`TELEMETRY_FIELDS`) go to CSV. The GPX radio (`TELEMETRY_GPX_FIELDS`) writes the plugin track when OsmAnd’s own trip recorder is not writing.
+Selected fields (`TELEMETRY_FIELDS`) go to CSV. The GPX radio (`TELEMETRY_GPX_FIELDS`) writes the plugin track when OsmAnd’s own trip recorder is not writing. While OsmAnd trip recording is on, the same selected GPX fields are attached to that track (`EvGpx.put`). Track analysis on the map reads every chartable field id plus the legacy `ev_*` aliases, so charts are not limited to voltage/current/SOC/Wh/km.
 
-Charts use the same selected fields except `time_ms` / `lat` / `lon`. Imbalance on the chart is **mV**. Stop time is **seconds**.
+The analysis type formerly labelled “Total consumption” / “Полный расход” is **specific consumption** (Wh/km). Total energy (Wh) is a separate graph.
+
+Charts use the same selected fields except `time_ms` / `lat` / `lon`. Imbalance on the live chart is **mV**. Stop time is **seconds**.
 
 Cadence (`cadence_rpm`) is on by default in the field list and charts.
 

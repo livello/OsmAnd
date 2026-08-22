@@ -45,7 +45,7 @@ flowchart TB
   R10 --> Res[range_reserve_km = range − route left]
 ```
 
-`RangeEstimator.add()` runs **once per second while not charging**. UI odometers update on every CSC notify / poll tick.
+`RangeEstimator.add()` runs **once per second while riding**. While charging, `refreshRemaining()` updates remaining Wh/range from the new Ah without accumulating trip distance or Wh/km.
 
 ---
 
@@ -148,7 +148,7 @@ stateDiagram-v2
 | New recording | **0** | **re-anchor** | **reset** (5 min / 10 km / DOC start over) |
 | Pause / resume | keep | keep | keep |
 | BLE reconnect | keep | keep | keep |
-| Charge start | keep | keep | **no samples** while charging |
+| Charge start | keep | keep | `refreshRemaining` only (no trip km / Wh/km) |
 | Charge end + 1 km | keep | keep | new DOC session (`markTripBoundary` / trip finish) |
 
 ---
@@ -247,12 +247,12 @@ E_{\text{rem}} = Ah_{\text{rem}} \times V_{\text{energy}} \times f_{\text{cell}}
 
 | Term | Value |
 |---|---|
-| \(Ah_{\text{rem}}\) | BMS remaining Ah (required; no sample if missing) |
-| \(V_{\text{energy}}\) | **rest pack voltage** if \(\|I\| \le 5\) A was seen recently, else live pack V |
+| \(Ah_{\text{rem}}\) | effective remaining Ah: BMS coulomb, unless the BMS claims near-full while the **weak cell** is not at rest-full (NMC 4.12 V / LFP 3.45 V) — then \(Ah_{\text{full}} \times SOC_{\text{OCV}}/100\) |
+| \(V_{\text{energy}}\) | last **true rest** pack V (\(\|I\| \le 5\) A **and not charging**); else IR-compensated pack OCV; never the inflated charge voltage |
 | \(f_{\text{cell}}\) | weak-cell factor, §4.3 |
 | \(f_{T}\) | temperature factor, §4.4; **forced to 1** after 3 km in the 10 km window |
 
-Rest voltage (`updateRestMetrics`): when \(\|I\| \le 5\) A, remember pack V so sag under load does not understate remaining Wh.
+Rest voltage (`updateRestMetrics`): when \(\|I\| \le 5\) A **and the charge session is closed**, remember pack V. Charge current and BMS OV protection (near-zero I at high V) must not latch as rest.
 
 ### 4.3. Weak-cell factor
 
@@ -325,7 +325,7 @@ SOC \leftarrow 0.65 \times SOC_{\text{prev}} + 0.35 \times SOC_{\text{raw}}
 NMC lookup (V → %): 3.00→0, 3.40→5, 3.50→10, 3.62→20, 3.70→30, 3.76→40, 3.82→50, 3.87→60, 3.93→70, 4.00→80, 4.08→90, 4.20→100.  
 LFP: 2.50→0, 3.00→5, 3.20→10, 3.26→20, 3.29→40, 3.31→60, 3.33→80, 3.34→90, 3.36→95, 3.40→100.
 
-`soc_percent` prefers coulomb Ah; OCV is the fallback and a separate field.
+`soc_percent` prefers coulomb Ah from **effective** remaining Ah (weak-cell OCV when the BMS jumps to 100% on a strong-cell HVC). OCV is also a separate field. Full-voltage learning is **not** done while charging.
 
 ---
 
@@ -417,10 +417,12 @@ If the same pack had min cell 3.10 V: \(f_V = 0.20\), \(f_{\text{cell}} = 0.20/0
 ## 7. Range vs route (reserve)
 
 \[
-R_{\text{reserve}} = R_{\text{selected}} - s_{\text{left}}
+R_{\text{reserve}} = R_{10\,\text{km}} - s_{\text{next}}
 \]
 
-`RANGE_FOR_RESERVE` picks \(R_{\text{selected}}\): 10 km / 5 min / DOC. Voice thresholds default **5 km** (small) and **15 km** (low remaining reserve). No route ⇒ field empty.
+\(R_{10\,\text{km}}\) is the **primary** remaining range. \(s_{\text{next}}\) is distance to the **next intermediate** (charging stop) when one exists, otherwise remaining distance to the destination. Voice thresholds default **5 km** (small) and **15 km** (low remaining reserve). No route ⇒ field empty.
+
+The route elevation correction uses the same \(s_{\text{next}}\) cap so climb after the charging stop is not counted.
 
 ---
 
@@ -450,7 +452,7 @@ sequenceDiagram
   participant UI as Widgets / CSV
   Tick->>Tick: publishSample
   alt charging
-    Tick-->>RE: skip add
+    Tick->>RE: refreshRemaining (Ah/V only)
   else 1 s elapsed
     Tick->>RE: add remainingAh, V, I_bms, odos
     RE->>RE: distance step, ΔWh, windows, E_rem, three ranges
@@ -462,7 +464,7 @@ sequenceDiagram
 |---|---|
 | No remaining Ah or \(V \le 0\) | `add()` returns; ranges stay at previous / null |
 | Fewer than 2 samples | no recalculation |
-| Charging | no energy/range samples (charge Wh uses a separate integrator) |
+| Charging | `refreshRemaining()` so remaining range grows with Ah; Wh/km windows stay frozen. Charge session stays open until the vehicle **moves** (ride-on-charge); BMS OV / MOS-off does not end it |
 | New recording | full `reset()` |
 | Hike mode | BLE poll ≥ 5 s; range still 1 Hz when samples exist |
 

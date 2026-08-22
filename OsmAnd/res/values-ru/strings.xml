@@ -4684,12 +4684,12 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
     <string name="ev_bms_n_ms">%1$d мс</string>
     <string name="ev_bms_record_telemetry">Писать телеметрию в CSV</string>
     <string name="ev_bms_record_gpx">Писать телеметрию в GPX</string>
-    <string name="ev_bms_record_gpx_desc">Отдельный GPX пишется только если запись поездки OsmAnd выключена. Пока поездка пишется, телеметрия идёт в этот трек: точки зарядки, графики и раскраска по Wh/км.</string>
+    <string name="ev_bms_record_gpx_desc">Отдельный GPX пишется только если запись поездки OsmAnd выключена. Пока поездка пишется, выбранные поля телеметрии идут в этот трек: точки зарядки, графики и раскраска по Wh/км.</string>
     <string name="ev_bms_telemetry_fields">Поля телеметрии</string>
     <string name="ev_bms_select_all_emoji">✅</string>
     <string name="ev_bms_deselect_emoji">⬜</string>
     <string name="ev_bms_reset_emoji">↩️</string>
-    <string name="ev_bms_coloring_consumption">Расход</string>
+    <string name="ev_bms_coloring_consumption">Удельный расход</string>
     <string name="ev_bms_telemetry_fields_summary">Выбрано %1$d из %2$d</string>
     <string name="ev_bms_telemetry_fields_empty">Выберите хотя бы одно поле</string>
     <string name="ev_bms_field_write_gpx">Писать это поле в GPX плагина</string>

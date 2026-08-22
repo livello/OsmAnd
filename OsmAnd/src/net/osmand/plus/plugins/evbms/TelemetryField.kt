@@ -2,6 +2,7 @@ package net.osmand.plus.plugins.evbms
 
 import android.content.Context
 import net.osmand.plus.R
+import net.osmand.shared.gpx.PointAttributes
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -149,6 +150,36 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 	}
 
 	fun isChartable(): Boolean = this != TIME_MS && this != LAT && this != LON
+
+	fun gpxAliases(): List<String> = when (this) {
+		SOC -> listOf(PointAttributes.EV_TAG_SOC)
+		VOLTAGE -> listOf(PointAttributes.EV_TAG_VOLTAGE)
+		CURRENT -> listOf(PointAttributes.EV_TAG_CURRENT)
+		CHARGE_TRIP -> listOf(PointAttributes.EV_TAG_CHARGE_TRIP)
+		COVERAGE -> listOf(PointAttributes.EV_TAG_CONSUMPTION)
+		CONSUMPTION -> listOf(PointAttributes.EV_TAG_ENERGY)
+		else -> emptyList()
+	}
+
+	fun chartUnit(): String = when (this) {
+		GPS_SPEED, CTRL_SPEED, WHEEL_SPEED -> "km/h"
+		SOC, SOC_OCV -> "%"
+		VOLTAGE, CTRL_VOLTAGE, MIN_CELL, MAX_CELL -> "V"
+		CURRENT, CTRL_CURRENT -> "A"
+		REMAINING_AH, FULL_AH, USED_AH -> "Ah"
+		BMS_TEMP, MOTOR_TEMP, CTRL_TEMP -> "°C"
+		CELL_IMBALANCE -> "V"
+		RANGE, RANGE_WINDOW, RANGE_PNZ, ODOMETER, FAR_TRIP, CHARGE_TRIP, WHEEL_ODOMETER, RANGE_RESERVE -> "km"
+		POWER -> "W"
+		RPM, CADENCE -> "rpm"
+		CONSUMPTION -> "Wh"
+		COVERAGE -> "Wh/km"
+		STOP_TIME -> "ms"
+		else -> ""
+	}
+
+	fun allowsNegativeChart(): Boolean =
+		this == CURRENT || this == CTRL_CURRENT || this == RANGE_RESERVE
 
 	fun chartValue(sample: EvTelemetry): Double? {
 		val raw = when (this) {

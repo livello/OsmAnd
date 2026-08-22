@@ -313,7 +313,8 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 					body[tag] = value
 				}
 			}
-			addEv(TelemetryField.CONSUMPTION, PointAttributes.EV_TAG_CONSUMPTION, TelemetryField.CONSUMPTION.csvValue(sample))
+			addEv(TelemetryField.COVERAGE, PointAttributes.EV_TAG_CONSUMPTION, TelemetryField.COVERAGE.csvValue(sample))
+			addEv(TelemetryField.CONSUMPTION, PointAttributes.EV_TAG_ENERGY, TelemetryField.CONSUMPTION.csvValue(sample))
 			addEv(TelemetryField.VOLTAGE, PointAttributes.EV_TAG_VOLTAGE, TelemetryField.VOLTAGE.csvValue(sample))
 			addEv(TelemetryField.CURRENT, PointAttributes.EV_TAG_CURRENT, TelemetryField.CURRENT.csvValue(sample))
 			addEv(TelemetryField.SOC, PointAttributes.EV_TAG_SOC, TelemetryField.SOC.csvValue(sample))

@@ -153,6 +153,47 @@ class SocCalibrator {
 		return smoothedSoc!!.toInt().coerceIn(0, 100)
 	}
 
+	fun remainingAhFromOcv(fullAh: Double?, socPercent: Int?): Double? {
+		if (fullAh == null || fullAh < 0.5 || socPercent == null) {
+			return null
+		}
+		return (fullAh * socPercent / 100.0).coerceAtLeast(0.0)
+	}
+
+	fun isLfp(): Boolean {
+		val key = lastMac ?: return false
+		return profiles[key]?.lfp == true
+	}
+
+	fun cellFullThresholdV(): Double = if (isLfp()) 3.45 else 4.12
+
+	fun packOcvV(
+		mac: String?,
+		packV: Double?,
+		currentA: Double?,
+		charging: Boolean,
+		series: Int?
+	): Double? {
+		if (packV == null || packV <= 0.0) {
+			return null
+		}
+		val iAbs = currentA?.let { abs(it) } ?: return packV
+		if (iAbs < REST_A) {
+			return packV
+		}
+		val p = profiles[normalize(mac)]
+		val n = series?.takeIf { it in 1..48 }
+		if (n == null) {
+			return packV
+		}
+		val drop = iAbs * (p?.rCell ?: DEFAULT_R) * n
+		return if (charging) {
+			(packV - drop).coerceAtLeast(packV * 0.85)
+		} else {
+			(packV + drop).coerceAtMost(packV * 1.15)
+		}
+	}
+
 	private fun learnRest(p: Profile, ocv: Double, charging: Boolean) {
 		p.restSamples++
 		p.maxRestOcv = maxOf(p.maxRestOcv, ocv)
@@ -171,7 +212,7 @@ class SocCalibrator {
 			p.vEmpty = blend(p.vEmpty, ocv.coerceIn(2.40, 3.40), if (p.restSamples < 6) 0.35 else 0.12)
 			dirty = true
 		}
-		if (charging || ocv > p.vFull - span * 0.12) {
+		if (!charging && ocv > p.vFull - span * 0.12) {
 			val hi = ocv.coerceIn(3.25, 4.25)
 			p.vFull = blend(p.vFull, hi, if (p.restSamples < 6) 0.25 else 0.08)
 			dirty = true

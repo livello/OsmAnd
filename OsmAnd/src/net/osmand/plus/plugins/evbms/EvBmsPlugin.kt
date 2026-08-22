@@ -662,7 +662,13 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		if (!charging) {
 			return null
 		}
-		val current = chargeFrozenCurrentA ?: lastBms?.currentA?.takeIf { it >= 0.4 }
+		val current = lastBms?.currentA.let { live ->
+			when {
+				live != null && live >= 0.4 -> live
+				live != null -> return null
+				else -> chargeFrozenCurrentA
+			}
+		}
 		val lastAh = chargeLastAh ?: estimatedRemainingAh()
 		val full = chargeFullAh?.takeIf { it > 0.1 } ?: lastBms?.fullMah?.div(1000.0)?.takeIf { it > 0.1 }
 		if (current == null || current < 0.4 || full == null || lastAh == null) {
@@ -807,21 +813,12 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			}
 		} else if (chargeSessionOpen) {
 			chargeHold = 0
-			if (charging && bmsFresh) {
-				val idle = packI == null || packI < minA * 0.4
-				val discharging = remainingAh != null && lastChargeAh != null &&
-						lastChargeAh!! - remainingAh >= 0.02
-				val full = remainingAh != null && fullAh != null && remainingAh >= fullAh - 0.05
-				val ctrlActive = !ctrlIdle
-				if (idle || discharging || moving || full || ctrlActive) {
-					chargeExitHold++
-					if (chargeExitHold >= CHARGE_HOLD_SAMPLES) {
-						pauseChargeCurrent(now, remainingAh, tempC, loc)
-					}
-				} else {
-					chargeExitHold = 0
+			if (charging && moving) {
+				chargeExitHold++
+				if (chargeExitHold >= CHARGE_HOLD_SAMPLES) {
+					pauseChargeCurrent(now, remainingAh, tempC, loc)
 				}
-			} else if (charging) {
+			} else {
 				chargeExitHold = 0
 			}
 			if (!charging) {
@@ -847,7 +844,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 					chargeFullAh = fullAh
 				}
 			}
-			val energyA = if (packI != null && packI >= 0.15) packI else chargeFrozenCurrentA ?: 0.0
+			val energyA = if (packI != null && packI >= 0.15) packI else 0.0
 			if (charging && voltageV != null && voltageV > 0 && energyA >= 0.15 && chargeEnergyLastMs > 0L) {
 				val dtMs = (now - chargeEnergyLastMs).coerceAtLeast(0L)
 				val hours = dtMs / 3_600_000.0
@@ -1733,7 +1730,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		if (!bmsFresh) {
 			return null
 		}
-		val range = selectedRangeKm() ?: return null
+		val range = primaryRangeKm() ?: return null
 		return EvVoiceAnnouncer.StopReport(
 			rangeKm = range,
 			routeLeftKm = getRouteLeftKm(),
@@ -1746,15 +1743,18 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	}
 
 	private fun updateRestMetrics(currentA: Double?, packVoltageV: Double?, cells: List<Double>?) {
+		val minCell = cells?.minOrNull()
+		if (minCell != null && minCell > 0) {
+			minCellVoltageV = minCell
+		}
+		if (charging || chargeSessionOpen) {
+			return
+		}
 		if (currentA == null || kotlin.math.abs(currentA) > REST_CURRENT_A) {
 			return
 		}
 		if (packVoltageV != null && packVoltageV > 0) {
 			restPackVoltageV = packVoltageV
-		}
-		val minCell = cells?.minOrNull()
-		if (minCell != null && minCell > 0) {
-			minCellVoltageV = minCell
 		}
 	}
 
@@ -1763,30 +1763,32 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		if (!helper.isRouteCalculated) {
 			return null
 		}
-		val remainingKm = helper.leftDistance / 1000.0
-		if (remainingKm <= 0) {
-			return null
-		}
+		val capKm = getRouteLeftKm() ?: return null
+		var dist = 0.0
 		var climb = 0.0
 		var descent = 0.0
-		var prevAlt: Double? = null
+		var prev: Location? = null
 		for (point in helper.route.routeLocations) {
-			if (!point.hasAltitude()) {
-				continue
-			}
-			val alt = point.altitude
-			val previous = prevAlt
+			val previous = prev
 			if (previous != null) {
-				val delta = alt - previous
-				if (delta > 0) {
-					climb += delta
-				} else {
-					descent += -delta
+				dist += RangeEstimator.haversineKm(
+					previous.latitude, previous.longitude, point.latitude, point.longitude
+				)
+				if (previous.hasAltitude() && point.hasAltitude()) {
+					val delta = point.altitude - previous.altitude
+					if (delta > 0) {
+						climb += delta
+					} else {
+						descent += -delta
+					}
+				}
+				if (dist >= capKm) {
+					break
 				}
 			}
-			prevAlt = alt
+			prev = point
 		}
-		return RangeEstimator.RouteElevation(remainingKm, climb, descent)
+		return RangeEstimator.RouteElevation(capKm, climb, descent)
 	}
 
 	fun getRouteLeftKm(): Double? {
@@ -1794,24 +1796,29 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		if (!helper.isRouteCalculated) {
 			return null
 		}
-		val meters = helper.leftDistance
+		val next = helper.leftDistanceNextIntermediate
+		val meters = if (next > 0) next else helper.leftDistance
 		if (meters <= 0) {
 			return null
 		}
 		return meters / 1000.0
 	}
 
+	fun primaryRangeKm(): Double? {
+		return rangeEstimator.remainingRangeKm ?: latestTelemetry?.remainingRangeKm
+	}
+
 	fun selectedRangeKm(): Double? {
 		return when (RANGE_FOR_RESERVE.get()) {
 			RANGE_SOURCE_5MIN -> rangeEstimator.windowRangeKm ?: latestTelemetry?.windowRangeKm
 			RANGE_SOURCE_PNZ -> rangeEstimator.pnzRangeKm ?: latestTelemetry?.pnzRangeKm
-			else -> rangeEstimator.remainingRangeKm ?: latestTelemetry?.remainingRangeKm
+			else -> primaryRangeKm()
 		}
 	}
 
 	fun rangeReserveKm(): Double? {
 		val route = getRouteLeftKm() ?: return null
-		val range = selectedRangeKm() ?: return null
+		val range = primaryRangeKm() ?: return null
 		return range - route
 	}
 
@@ -2767,7 +2774,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		val bms = lastBms
 		val loc = lastLocation
 		val speed = if (loc != null && loc.hasSpeed()) loc.speed * 3.6 else null
-		val remainingAh = bms?.remainingMah?.div(1000.0)
+		val remainingAhRaw = bms?.remainingMah?.div(1000.0)
 		val bmsFresh = isBmsFresh()
 		val ctrlFresh = isControllerFresh()
 		updateRestMetrics(bms?.currentA ?: ctrlCurrentA(), bms?.voltageV ?: ctrlVoltageV(), lastCells)
@@ -2789,7 +2796,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		updateChargeCycle(
 			bmsCurrentA = bms?.currentA,
 			ctrlCurrentA = ctrlCurrentA(),
-			remainingAh = remainingAh,
+			remainingAh = remainingAhRaw,
 			fullAh = bms?.fullMah?.div(1000.0),
 			voltageV = bms?.voltageV ?: ctrlVoltageV(),
 			tempC = batteryAnnounceTempC(),
@@ -2806,31 +2813,49 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			System.currentTimeMillis()
 		)
 		val fullAh = bms?.fullMah?.div(1000.0)
+		val remainingAh = effectiveRemainingAh(remainingAhRaw, fullAh)
 		calibratedSocPercent = coulombSocPercent(remainingAh, fullAh) ?: socVoltagePercent
 		if (socCalibrator.flushDue(System.currentTimeMillis())) {
 			persistSocCal()
 		}
+		val packVoltageV = bms?.voltageV ?: ctrlVoltageV()
+		val energyVoltageV = energyVoltageV(packVoltageV, packCurrentA ?: bms?.currentA)
 		val nowMs = System.currentTimeMillis()
-		if (!charging && (lastRangeSampleMs == 0L || nowMs - lastRangeSampleMs >= RANGE_SAMPLE_MIN_MS)) {
+		if (lastRangeSampleMs == 0L || nowMs - lastRangeSampleMs >= RANGE_SAMPLE_MIN_MS) {
 			lastRangeSampleMs = nowMs
-			rangeEstimator.add(
-				nowMs,
-				remainingAh,
-				bms?.voltageV ?: ctrlVoltageV(),
-				restPackVoltageV,
-				loc,
-				wheelOdometerForRange(),
-				controllerOdometerKm(),
-				minCellVoltageV,
-				bms?.temperaturesC?.minOrNull()?.toDouble(),
-				bms?.fullMah?.div(1000.0),
-				ctrlAvgWhPerKm(),
-				remainingRouteElevation(),
-				USE_ROUTE_PROFILE.get(),
-				totalMassKg(),
-				if (bmsFresh) bms?.currentA else null,
-				ctrlSpeedKmh() ?: speed
-			)
+			if (charging) {
+				rangeEstimator.refreshRemaining(
+					remainingAh,
+					packVoltageV,
+					energyVoltageV,
+					minCellVoltageV,
+					bms?.temperaturesC?.minOrNull()?.toDouble(),
+					fullAh,
+					ctrlAvgWhPerKm(),
+					remainingRouteElevation(),
+					USE_ROUTE_PROFILE.get(),
+					totalMassKg()
+				)
+			} else {
+				rangeEstimator.add(
+					nowMs,
+					remainingAh,
+					packVoltageV,
+					energyVoltageV,
+					loc,
+					wheelOdometerForRange(),
+					controllerOdometerKm(),
+					minCellVoltageV,
+					bms?.temperaturesC?.minOrNull()?.toDouble(),
+					fullAh,
+					ctrlAvgWhPerKm(),
+					remainingRouteElevation(),
+					USE_ROUTE_PROFILE.get(),
+					totalMassKg(),
+					if (bmsFresh) bms?.currentA else null,
+					ctrlSpeedKmh() ?: speed
+				)
+			}
 		}
 		tickSpeedCalibration(loc)
 		val sample = EvTelemetry(
@@ -2944,7 +2969,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			ANNOUNCE_RANGE_ON_STOP.get() && bmsFresh
 		)
 		voice.onRangeVsRoute(
-			if (bmsFresh) selectedRangeKm() else null,
+			if (bmsFresh) primaryRangeKm() else null,
 			getRouteLeftKm(),
 			ANNOUNCE_RANGE_VS_ROUTE.get() && bmsFresh
 		)
@@ -3000,6 +3025,31 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			return null
 		}
 		return kotlin.math.round(remainingAh / fullAh * 100.0).toInt().coerceIn(0, 100)
+	}
+
+	private fun effectiveRemainingAh(bmsAh: Double?, fullAh: Double?): Double? {
+		if (bmsAh == null) {
+			return null
+		}
+		val ocvAh = socCalibrator.remainingAhFromOcv(fullAh, socVoltagePercent)
+		val minCell = minCellVoltageV
+		val weakNotFull = minCell != null && minCell < socCalibrator.cellFullThresholdV() - 0.02
+		val bmsNearFull = fullAh != null && fullAh > 0.5 && bmsAh >= fullAh - 0.15
+		if (ocvAh != null && ocvAh < bmsAh - 0.05 && (charging || (bmsNearFull && weakNotFull))) {
+			return ocvAh
+		}
+		return bmsAh
+	}
+
+	private fun energyVoltageV(packV: Double?, currentA: Double?): Double? {
+		restPackVoltageV?.let { return it }
+		return socCalibrator.packOcvV(
+			BMS_ADDRESS.get(),
+			packV,
+			currentA,
+			charging,
+			lastCells?.size
+		) ?: packV
 	}
 
 	fun isLinkHealthy(): Boolean = isBmsConnected() && isControllerConnected()
@@ -3344,6 +3394,28 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			WidgetType.EV_BATTERY_TEMP -> EvBmsTextWidget.Field.BATTERY_TEMP
 			WidgetType.EV_MOTOR_TEMP -> EvBmsTextWidget.Field.MOTOR_TEMP
 			WidgetType.EV_CONTROLLER_TEMP -> EvBmsTextWidget.Field.CONTROLLER_TEMP
+			WidgetType.EV_BMS_TIME -> EvBmsTextWidget.Field.TIME
+			WidgetType.EV_BMS_LAT -> EvBmsTextWidget.Field.LAT
+			WidgetType.EV_BMS_LON -> EvBmsTextWidget.Field.LON
+			WidgetType.EV_BMS_GPS_SPEED -> EvBmsTextWidget.Field.GPS_SPEED
+			WidgetType.EV_BMS_SOC_OCV -> EvBmsTextWidget.Field.SOC_OCV
+			WidgetType.EV_BMS_REMAINING_AH -> EvBmsTextWidget.Field.REMAINING_AH
+			WidgetType.EV_BMS_FULL_AH -> EvBmsTextWidget.Field.FULL_AH
+			WidgetType.EV_BMS_CYCLES -> EvBmsTextWidget.Field.CYCLES
+			WidgetType.EV_BMS_MAX_CELL -> EvBmsTextWidget.Field.MAX_CELL
+			WidgetType.EV_BMS_IMBALANCE -> EvBmsTextWidget.Field.IMBALANCE
+			WidgetType.EV_BMS_CTRL_VOLTAGE -> EvBmsTextWidget.Field.CTRL_VOLTAGE
+			WidgetType.EV_BMS_CTRL_CURRENT -> EvBmsTextWidget.Field.CTRL_CURRENT
+			WidgetType.EV_BMS_RPM -> EvBmsTextWidget.Field.RPM
+			WidgetType.EV_BMS_GEAR -> EvBmsTextWidget.Field.GEAR
+			WidgetType.EV_BMS_ODOMETER -> EvBmsTextWidget.Field.ODOMETER
+			WidgetType.EV_BMS_CTRL_SPEED -> EvBmsTextWidget.Field.CTRL_SPEED
+			WidgetType.EV_BMS_WHEEL_SPEED -> EvBmsTextWidget.Field.WHEEL_SPEED
+			WidgetType.EV_BMS_WHEEL_ODO -> EvBmsTextWidget.Field.WHEEL_ODO
+			WidgetType.EV_BMS_CADENCE -> EvBmsTextWidget.Field.CADENCE
+			WidgetType.EV_BMS_USED_AH -> EvBmsTextWidget.Field.USED_AH
+			WidgetType.EV_BMS_COVERAGE -> EvBmsTextWidget.Field.COVERAGE
+			WidgetType.EV_BMS_STOP_TIME -> EvBmsTextWidget.Field.STOP_TIME
 			else -> return null
 		}
 		return EvBmsTextWidget(mapActivity, widgetType, field, customId, widgetsPanel)
@@ -3370,7 +3442,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		if (!isBmsFresh() && !isControllerFresh()) {
 			return
 		}
-		EvGpx.put(json, sample)
+		EvGpx.put(json, sample, selectedGpxTelemetryFields())
 	}
 
 	override fun getTrackPointsAnalyser(): GpxTrackAnalysis.TrackPointsAnalyser {

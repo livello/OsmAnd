@@ -1184,12 +1184,12 @@ Layouts: <i>res/layout/ev_bms_*.xml</i>. Preferences: <i>res/xml/ev_bms_settings
     <string name="ev_bms_n_ms">%1$d ms</string>
     <string name="ev_bms_record_telemetry">Write telemetry CSV</string>
     <string name="ev_bms_record_gpx">Write telemetry GPX</string>
-    <string name="ev_bms_record_gpx_desc">A separate GPX is written only when OsmAnd trip recording is off. While a trip is recording, EV telemetry is stored in that track: charge waypoints, charts and coloring by Wh/km.</string>
+    <string name="ev_bms_record_gpx_desc">A separate GPX is written only when OsmAnd trip recording is off. While a trip is recording, selected EV telemetry fields are stored in that track, including charge waypoints, charts and coloring by Wh/km.</string>
     <string name="ev_bms_telemetry_fields">Telemetry fields</string>
     <string name="ev_bms_select_all_emoji">✅</string>
     <string name="ev_bms_deselect_emoji">⬜</string>
     <string name="ev_bms_reset_emoji">↩️</string>
-    <string name="ev_bms_coloring_consumption">Consumption</string>
+    <string name="ev_bms_coloring_consumption">Specific consumption</string>
     <string name="ev_bms_telemetry_fields_summary">%1$d of %2$d selected</string>
     <string name="ev_bms_telemetry_fields_empty">Select at least one field</string>
     <string name="ev_bms_field_write_gpx">Write this field to the plugin GPX</string>

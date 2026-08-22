@@ -145,6 +145,55 @@ class RangeEstimator(
 		)
 	}
 
+	/**
+	 * Update remaining energy / range from the latest BMS snapshot without
+	 * accumulating distance or Wh/km. Used while charging so remaining range
+	 * grows as Ah and rest-compensated energy increase.
+	 */
+	@Synchronized
+	fun refreshRemaining(
+		remainingAh: Double?,
+		voltageV: Double?,
+		restVoltageV: Double?,
+		minCellV: Double?,
+		batteryTempC: Double?,
+		fullAh: Double?,
+		farAvgWhPerKm: Double?,
+		routeElevation: RouteElevation?,
+		useRouteProfile: Boolean,
+		massKg: Double = MASS_KG
+	) {
+		if (remainingAh == null || voltageV == null || voltageV <= 0.0) {
+			return
+		}
+		if (samples.size >= 2) {
+			recalculate(
+				remainingAh,
+				restVoltageV ?: voltageV,
+				minCellV,
+				batteryTempC,
+				fullAh,
+				farAvgWhPerKm,
+				routeElevation,
+				useRouteProfile,
+				massKg
+			)
+			return
+		}
+		val whPerKm = coverageWhPerKm ?: farAvgWhPerKm?.takeIf { it >= 1.0 } ?: return
+		val cellFactor = weakCellFactor(minCellV, remainingAh, fullAh)
+		weakCellFactor = cellFactor
+		val tempFactor = if (kmWindowKm >= 3.0) 1.0 else temperatureFactor(batteryTempC)
+		val remainingWh = remainingAh * (restVoltageV ?: voltageV) * cellFactor * tempFactor
+		if (whPerKm < 1.0 || remainingWh <= 0.0) {
+			return
+		}
+		val raw = remainingWh / whPerKm
+		remainingRangeKm = smoothRange(raw)
+		windowRangeKm = raw
+		pnzRangeKm = raw
+	}
+
 	@Synchronized
 	fun tripEnergyWh(): Double? = tripWh.takeIf { it > 0.01 }
 

@@ -5,7 +5,6 @@ import com.github.mikephil.charting.components.AxisBase
 import com.github.mikephil.charting.data.Entry
 import com.github.mikephil.charting.formatter.IAxisValueFormatter
 import net.osmand.plus.OsmandApplication
-import net.osmand.plus.R
 import net.osmand.plus.charts.ChartUtils
 import net.osmand.plus.charts.GPXDataSetAxisType
 import net.osmand.plus.charts.GPXDataSetType
@@ -21,16 +20,32 @@ import org.json.JSONObject
 import java.util.Locale
 
 object EvGpx {
-	val TAGS = arrayOf(
-		PointAttributes.EV_TAG_CONSUMPTION,
-		PointAttributes.EV_TAG_VOLTAGE,
-		PointAttributes.EV_TAG_CURRENT,
-		PointAttributes.EV_TAG_SOC,
-		PointAttributes.EV_TAG_CHARGE_TRIP
-	)
+	val TAGS: Array<String> = buildList {
+		for (field in TelemetryField.entries) {
+			if (!field.isChartable()) {
+				continue
+			}
+			add(field.id)
+			addAll(field.gpxAliases())
+		}
+	}.distinct().toTypedArray()
 
-	fun put(json: JSONObject, sample: EvTelemetry) {
-		put(json, PointAttributes.EV_TAG_CONSUMPTION, sample.consumptionWhPerKm, "%.1f")
+	fun put(
+		json: JSONObject,
+		sample: EvTelemetry,
+		fields: List<TelemetryField> = TelemetryField.entries.filter { it.isChartable() }
+	) {
+		for (field in fields) {
+			if (!field.isChartable()) {
+				continue
+			}
+			val value = field.csvValue(sample)
+			if (value.isNotEmpty()) {
+				json.put(GpxUtilities.OSMAND_EXTENSIONS_PREFIX + field.id, value)
+			}
+		}
+		put(json, PointAttributes.EV_TAG_CONSUMPTION, sample.consumptionWhPerKm ?: sample.coverageWhPerKm, "%.1f")
+		put(json, PointAttributes.EV_TAG_ENERGY, sample.energyWh, "%.1f")
 		put(json, PointAttributes.EV_TAG_VOLTAGE, sample.voltageV, "%.2f")
 		put(json, PointAttributes.EV_TAG_CURRENT, sample.currentA, "%.2f")
 		sample.socPercent?.let {
@@ -85,7 +100,8 @@ object EvGpx {
 			ColorUtilities.getColor(app, graphType.getTextColorId(false)),
 			useRightAxis
 		)
-		if (graphType != GPXDataSetType.EV_CURRENT) {
+		val field = TelemetryField.entries.find { it.id == graphType.dataKey }
+		if (field?.allowsNegativeChart() != true) {
 			yAxis.axisMinimum = 0f
 		}
 		val values = ArrayList<Entry>()
@@ -112,16 +128,13 @@ object EvGpx {
 			}
 		}
 		val dataSet = OrderedLineDataSet(values, "", graphType, axisType, !useRightAxis)
-		val unit = when (graphType) {
-			GPXDataSetType.EV_CONSUMPTION -> "Wh/km"
-			GPXDataSetType.EV_VOLTAGE -> "V"
-			GPXDataSetType.EV_CURRENT -> "A"
-			GPXDataSetType.EV_SOC -> "%"
-			GPXDataSetType.EV_CHARGE_TRIP -> "km"
-			else -> ""
-		}
+		val unit = field?.chartUnit().orEmpty()
 		yAxis.valueFormatter = IAxisValueFormatter { value: Float, _: AxisBase? ->
-			String.format(Locale.US, "%.0f %s", value, unit)
+			if (unit.isEmpty()) {
+				String.format(Locale.US, "%.0f", value)
+			} else {
+				String.format(Locale.US, "%.0f %s", value, unit)
+			}
 		}
 		dataSet.divX = divX
 		dataSet.units = unit
@@ -140,11 +153,31 @@ class EvTrackPointsAnalyser : GpxTrackAnalysis.TrackPointsAnalyser {
 		if (point.getDeferredExtensionsToRead().isEmpty() && point.getExtensionsToRead().isEmpty()) {
 			return
 		}
-		for (tag in EvGpx.TAGS) {
-			val value = EvGpx.read(point, tag)
-			attribute.setAttributeValue(tag, value)
-			if (!analysis.hasData(tag) && attribute.hasValidValue(tag)) {
-				analysis.setHasData(tag, true)
+		for (field in TelemetryField.entries) {
+			if (!field.isChartable()) {
+				continue
+			}
+			var value = EvGpx.read(point, field.id)
+			if (value.isNaN()) {
+				for (alias in field.gpxAliases()) {
+					value = EvGpx.read(point, alias)
+					if (!value.isNaN()) {
+						break
+					}
+				}
+			}
+			if (value.isNaN()) {
+				continue
+			}
+			attribute.setAttributeValue(field.id, value)
+			if (!analysis.hasData(field.id) && attribute.hasValidValue(field.id)) {
+				analysis.setHasData(field.id, true)
+			}
+			for (alias in field.gpxAliases()) {
+				attribute.setAttributeValue(alias, value)
+				if (!analysis.hasData(alias) && attribute.hasValidValue(alias)) {
+					analysis.setHasData(alias, true)
+				}
 			}
 		}
 	}
