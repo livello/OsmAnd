@@ -31,7 +31,8 @@ class RangeEstimator(
 		val lon: Double?,
 		val accuracyM: Float?,
 		val wheelOdometerKm: Double?,
-		val controllerOdometerKm: Double?
+		val controllerOdometerKm: Double?,
+		val allowGpsDistance: Boolean = true
 	)
 
 	data class RouteElevation(
@@ -109,7 +110,8 @@ class RangeEstimator(
 		useRouteProfile: Boolean,
 		massKg: Double = MASS_KG,
 		currentA: Double? = null,
-		speedKmh: Double? = null
+		speedKmh: Double? = null,
+		allowGpsDistance: Boolean = true
 	) {
 		if (remainingAh == null || voltageV == null || voltageV <= 0.0) {
 			return
@@ -124,7 +126,8 @@ class RangeEstimator(
 			lon = location?.longitude,
 			accuracyM = if (location != null && location.hasAccuracy()) location.accuracy else null,
 			wheelOdometerKm = wheelOdometerKm,
-			controllerOdometerKm = controllerOdometerKm
+			controllerOdometerKm = controllerOdometerKm,
+			allowGpsDistance = allowGpsDistance
 		)
 		val previous = samples.lastOrNull()
 		samples.addLast(sample)
@@ -409,7 +412,8 @@ class RangeEstimator(
 			gpsUnreliable: Boolean,
 			wheelDeltaKm: Double?,
 			controllerDeltaKm: Double?,
-			speedKm: Double?
+			speedKm: Double?,
+			allowGps: Boolean = true
 		): DistanceStep? {
 			val maxKm = maxPlausibleStepKm(dtMs)
 			fun accept(delta: Double?, source: DistanceSource): DistanceStep? {
@@ -422,7 +426,7 @@ class RangeEstimator(
 				return null
 			}
 			accept(wheelDeltaKm, DistanceSource.WHEEL)?.let { return it }
-			if (!gpsUnreliable) {
+			if (allowGps && !gpsUnreliable) {
 				accept(gpsKm, DistanceSource.GPS)?.let { return it }
 			}
 			accept(controllerDeltaKm, DistanceSource.CONTROLLER)?.let { return it }
@@ -467,26 +471,21 @@ class RangeEstimator(
 		}
 
 		private fun coulombAh(prev: Sample, cur: Sample): Double {
-			val dAh = prev.remainingAh - cur.remainingAh
-			if (kotlin.math.abs(dAh) >= 0.0005) {
-				return dAh
-			}
-			val i = prev.currentA ?: return 0.0
 			val dtH = (cur.timeMs - prev.timeMs).coerceAtLeast(0L) / 3_600_000.0
-			return -i * dtH
+			val i = prev.currentA
+			if (i != null && dtH > 0.0 && kotlin.math.abs(i) >= 0.15) {
+				return -i * dtH
+			}
+			val dAh = prev.remainingAh - cur.remainingAh
+			if (kotlin.math.abs(dAh) < 0.0005) {
+				return 0.0
+			}
+			return dAh
 		}
 
 		private fun segmentEnergyWh(prev: Sample, cur: Sample): Double {
 			val vAvg = (prev.voltageV + cur.voltageV) / 2.0
-			var dWh = coulombAh(prev, cur) * vAvg
-			if (kotlin.math.abs(prev.remainingAh - cur.remainingAh) < 0.0005) {
-				val i = prev.currentA
-				val dtH = (cur.timeMs - prev.timeMs).coerceAtLeast(0L) / 3_600_000.0
-				if (i != null && dtH > 0.0) {
-					dWh = -i * vAvg * dtH
-				}
-			}
-			return dWh
+			return coulombAh(prev, cur) * vAvg
 		}
 
 		private fun distanceStep(prev: Sample, cur: Sample): DistanceStep? {
@@ -500,7 +499,8 @@ class RangeEstimator(
 				isGpsUnreliable(prev, cur, gpsKm, wheel ?: ctrl),
 				wheel,
 				ctrl,
-				speedDistanceKm(prev, cur)
+				speedDistanceKm(prev, cur),
+				allowGps = cur.allowGpsDistance
 			)
 		}
 

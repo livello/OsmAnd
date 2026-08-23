@@ -185,7 +185,7 @@ The “in UI” rate is how often the value **can** change. The snapshot is stil
 | `wheel_speed_kmh` | Wheel speed | BK6LS | notify | \(\Delta s/\Delta t\); stale but GATT up → 0 |
 | `wheel_odometer_km` | Wheel odometer | `CscWheelTracker.tripKm` | notify | sum of \(\Delta N·C·k\) since the last recording start. Lifetime `odometerKm` for remaining range is **not** reset |
 | `cadence_rpm` | Cadence | BK6LC (or crank block on BK6LS) | notify | crank revs × 60 / Δt |
-| `consumption_wh_km` | Total consumption | `RangeEstimator.tripWh` | 1 s | **trip watt-hours**, not Wh/km. \(\sum \Delta Ah \times V_{avg}\); if ΔAh ≈ 0 then \(-I_{BMS} \times V \times \Delta t\). Controller current unused |
+| `consumption_wh_km` | Total consumption | `RangeEstimator.tripWh` | 1 s | **trip watt-hours**, not Wh/km. One clock: \(−I_{BMS} \times \Delta t\) when \|I\| ≥ 0.15 A, else ΔAh; then × V_avg. Controller current unused |
 | `used_ah` | Charge used | BMS remaining | poll | \(Ah_{start} - Ah_{now}\) since charge ended; else `RangeEstimator` integral |
 | `coverage_wh_km` | Specific consumption | `RangeEstimator` | 1 s | priority: **10 km** → 5 min window → DOC → controller average Wh/km |
 | `charge_trip_km` | Distance since charge | RangeEstimator distance | 1 s | 0 while charging; else `tripDistanceKm` since charge (wheel → GPS → controller → v×t) |

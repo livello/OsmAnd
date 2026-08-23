@@ -7,6 +7,8 @@ Field list: [`EV-Telemetry.md`](EV-Telemetry.md). BMS frames: [`BMS_DATA_ABOUT.m
 
 JBD current sign used throughout: **positive = charge into the pack**, negative = discharge. Controller current is **not** used for remaining-range energy.
 
+Worked example (22 Aug 2026, why trip Wh was ~1.5× the next charge, and why remaining range was not): [`EnergyConsumptionCalculations.md`](EnergyConsumptionCalculations.md).
+
 ---
 
 ## 1. Overview
@@ -27,7 +29,7 @@ flowchart TB
     Ah[BMS remainingAh]
     V[Pack V or rest V]
     I[BMS current if fresh]
-    E[ΔWh = ΔAh × V_avg or −I × V × Δt]
+    E["ΔWh = ΔAh × V_avg (one clock)"]
   end
   W --> RE[RangeEstimator 1 Hz]
   G --> RE
@@ -110,13 +112,15 @@ flowchart TD
   W -->|yes| UseW[source = WHEEL]
   W -->|wheel Δ ≈ 0 at rest| Zero[skip GPS mix-in · no step]
   W -->|no wheel| G{GPS reliable?}
-  G -->|yes and in 0.0002…cap| UseG[source = GPS]
-  G -->|no| C{controller Δ in 0.0002…cap?}
+  G -->|yes, EV motion, and in 0.0002…cap| UseG[source = GPS]
+  G -->|no EV motion or unreliable| C{controller Δ in 0.0002…cap?}
   C -->|yes| UseC[source = CONTROLLER]
   C -->|no| S{"v_avg in 2…160 km/h?"}
   S -->|yes| UseS[source = SPEED · v × Δt]
   S -->|no| None[no distance this tick]
 ```
+
+GPS is used for a distance step only when there is **EV motion evidence** (controller/wheel rotating, or BMS discharging above idle). Walking with the phone, a dead BLE link, or GPS jitter at a stop does not add kilometres. A short 8 s grace covers a brief BLE drop while actually riding.
 
 **GPS is unreliable** (`gpsUnreliable`) if any of:
 
@@ -159,15 +163,17 @@ Energy is a **coulomb integral on the BMS**, independent of GPS and of controlle
 
 ### 3.1. Segment charge (Ah)
 
-Between consecutive 1 s samples:
+Between consecutive 1 s samples use **one** clock, never both:
 
 \[
 \Delta Ah =
 \begin{cases}
-Ah_{\text{prev}} - Ah_{\text{cur}} & \text{if } |\Delta Ah_{\text{BMS}}| \ge 0.0005\,\text{Ah} \\
--I_{\text{BMS}} \times \Delta t_{\text{h}} & \text{otherwise (BMS remaining Ah stuck)}
+-I_{\text{BMS}} \times \Delta t_{\text{h}} & \text{if } |I| \ge 0.15\,\text{A} \\
+Ah_{\text{prev}} - Ah_{\text{cur}} & \text{otherwise, if } |\Delta Ah_{\text{BMS}}| \ge 0.0005\,\text{Ah}
 \end{cases}
 \]
+
+If remaining Ah is stuck, older builds also added \(I \times V \times \Delta t\) **and** later added \(\Delta Ah \times V\) when the BMS counter ticked — the same coulombs twice (~1.5× trip Wh vs the next charge). Current builds keep a single clock.
 
 If \(\Delta Ah < -0.25\) Ah in one second (charge discontinuity / BMS jump), the segment is **dropped** (neither trip Wh nor the 10 km window).
 
@@ -177,11 +183,7 @@ If \(\Delta Ah < -0.25\) Ah in one second (charge discontinuity / BMS jump), the
 \Delta Wh = \Delta Ah \times \frac{V_{\text{prev}}+V_{\text{cur}}}{2}
 \]
 
-If remaining Ah did not move (\(|\Delta Ah_{\text{BMS}}| < 0.0005\)):
-
-\[
-\Delta Wh = -I_{\text{BMS}} \times V_{\text{avg}} \times \Delta t_{\text{h}}
-\]
+If remaining Ah did not move and current is missing, \(\Delta Wh = 0\).
 
 `I` is passed only when the BMS snapshot is **fresh**. Controller line current never enters this integral.
 

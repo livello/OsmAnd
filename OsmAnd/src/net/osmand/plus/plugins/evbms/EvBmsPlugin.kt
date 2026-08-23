@@ -79,6 +79,9 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		const val DEFAULT_CHARGE_REARM_M = 200
 		const val DEFAULT_CHARGE_REARM_MAH = 300
 		private const val CONTROLLER_CHARGE_IDLE_A = 0.8
+		private const val EV_DISCHARGE_IDLE_A = 2.0
+		private const val EV_RPM_IDLE = 30
+		private const val EV_MOTION_GRACE_MS = 8_000L
 		private const val TAG = "EvBms"
 		private const val CHART_HISTORY_MAX = 480
 		private const val CHART_SAMPLE_MIN_MS = 500L
@@ -422,6 +425,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private var rearmStartAh: Double? = null
 	private var rearmStartSoc: Int? = null
 	private var rearmLastLoc: Location? = null
+	private var lastEvMotionMs = 0L
 	private val pendingGpxEvents = ArrayList<GpxEvent>()
 
 	private data class GpxEvent(
@@ -730,18 +734,25 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		return rangeEstimator.tripUsedAh()
 	}
 
-	private fun isVehicleMoving(): Boolean {
-		val limit = CHARGE_STILL_KMH.get().toDouble()
-		val ctrl = ctrlSpeedKmh()
-		if (isControllerFresh() && ctrl != null) {
-			return ctrl >= limit
+	private fun isVehicleMoving(): Boolean = hasEvMotionEvidence()
+
+	private fun hasEvMotionEvidence(now: Long = System.currentTimeMillis()): Boolean {
+		if (evMotionNow()) {
+			lastEvMotionMs = now
+			return true
 		}
-		val gps = if (lastLocation != null && lastLocation!!.hasSpeed()) {
-			lastLocation!!.speed * 3.6
-		} else {
-			null
-		}
-		return (gps ?: 0.0) >= limit
+		return lastEvMotionMs > 0L && now - lastEvMotionMs <= EV_MOTION_GRACE_MS
+	}
+
+	private fun evMotionNow(): Boolean {
+		val limit = CHARGE_STILL_KMH.get().toDouble().coerceAtLeast(1.0)
+		val ctrlRotating = isControllerFresh() && (
+			(controllerSpeedKmh() ?: 0.0) >= limit || (ctrlRpm() ?: 0) >= EV_RPM_IDLE
+		)
+		val wheelRotating = isSpeedSensorFresh() &&
+			(wheelTracker.currentSpeedKmh() ?: 0.0) >= limit
+		val bmsDriving = isBmsFresh() && (lastBms?.currentA ?: 0.0) <= -EV_DISCHARGE_IDLE_A
+		return ctrlRotating || wheelRotating || bmsDriving
 	}
 
 	private fun updateChargeCycle(
@@ -1169,7 +1180,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			return
 		}
 		val dtMs = now - chargeTripLastMs
-		val gpsKm = if (moving && loc != null && chargeTripLastLoc != null) {
+		val ev = hasEvMotionEvidence()
+		val gpsKm = if (ev && moving && loc != null && chargeTripLastLoc != null) {
 			RangeEstimator.haversineKm(
 				chargeTripLastLoc!!.latitude, chargeTripLastLoc!!.longitude,
 				loc.latitude, loc.longitude
@@ -1183,13 +1195,13 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		val gpsBad = RangeEstimator.isGpsUnreliable(
 			accuracy, chargeTripLastMs, now, gpsKm, wheelDelta ?: ctrlDelta
 		)
-		val speedKm = if (moving && chargeTripLastMs > 0L) {
-			val kmh = ctrlSpeedKmh() ?: loc?.takeIf { it.hasSpeed() }?.speed?.times(3.6)
+		val speedKm = if (ev && moving && chargeTripLastMs > 0L) {
+			val kmh = ctrlSpeedKmh()
 			if (kmh != null && kmh >= 2.0) kmh * dtMs / 3_600_000.0 else null
 		} else {
 			null
 		}
-		val step = RangeEstimator.chooseDistanceKm(dtMs, gpsKm, gpsBad, wheelDelta, ctrlDelta, speedKm)
+		val step = RangeEstimator.chooseDistanceKm(dtMs, gpsKm, gpsBad, wheelDelta, ctrlDelta, speedKm, allowGps = ev)
 		if (step != null) {
 			chargeTripKmAcc += step.km
 		}
@@ -1224,7 +1236,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		val wheel = wheelOdometerForRange()
 		val ctrl = controllerOdometerKm()
 		val prevLoc = postChargeLastLoc
-		val gpsKm = if (loc != null && prevLoc != null) {
+		val ev = hasEvMotionEvidence()
+		val gpsKm = if (ev && loc != null && prevLoc != null) {
 			RangeEstimator.haversineKm(prevLoc.latitude, prevLoc.longitude, loc.latitude, loc.longitude)
 		} else {
 			null
@@ -1235,13 +1248,13 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		val gpsBad = RangeEstimator.isGpsUnreliable(
 			accuracy, postChargeLastMs, now, gpsKm, wheelDelta ?: ctrlDelta
 		)
-		val speedKm = if (postChargeLastMs > 0L) {
-			val kmh = ctrlSpeedKmh() ?: loc?.takeIf { it.hasSpeed() }?.speed?.times(3.6)
+		val speedKm = if (ev && postChargeLastMs > 0L) {
+			val kmh = ctrlSpeedKmh()
 			if (kmh != null && kmh >= 2.0) kmh * dtMs / 3_600_000.0 else null
 		} else {
 			null
 		}
-		val step = RangeEstimator.chooseDistanceKm(dtMs, gpsKm, gpsBad, wheelDelta, ctrlDelta, speedKm)
+		val step = RangeEstimator.chooseDistanceKm(dtMs, gpsKm, gpsBad, wheelDelta, ctrlDelta, speedKm, allowGps = ev)
 		if (step != null) {
 			postChargeDistanceKm += step.km
 		}
@@ -1459,7 +1472,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		val odoKm = rearmStartOdoKm?.let { start ->
 			ctrlOdometerKm()?.let { now -> (now - start).coerceAtLeast(0.0) }
 		} ?: 0.0
-		if (loc != null && rearmLastLoc != null) {
+		if (hasEvMotionEvidence() && loc != null && rearmLastLoc != null) {
 			val dKm = RangeEstimator.haversineKm(
 				rearmLastLoc!!.latitude, rearmLastLoc!!.longitude, loc.latitude, loc.longitude
 			)
@@ -2853,7 +2866,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 					USE_ROUTE_PROFILE.get(),
 					totalMassKg(),
 					if (bmsFresh) bms?.currentA else null,
-					ctrlSpeedKmh() ?: speed
+					ctrlSpeedKmh(),
+					allowGpsDistance = hasEvMotionEvidence()
 				)
 			}
 		}
