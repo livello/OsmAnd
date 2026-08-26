@@ -85,6 +85,15 @@
 				android:tint="#B0BEC5" />
 
 			<androidx.appcompat.widget.AppCompatImageButton
+				android:id="@+id/torrent_nearby"
+				android:layout_width="36dp"
+				android:layout_height="36dp"
+				android:background="?attr/selectableItemBackgroundBorderless"
+				android:contentDescription="@string/torrent_maps_nearby_title"
+				android:src="@drawable/ic_world_globe_dark"
+				android:tint="#80CBC4" />
+
+			<androidx.appcompat.widget.AppCompatImageButton
 				android:id="@+id/torrent_close"
 				android:layout_width="36dp"
 				android:layout_height="36dp"
@@ -331,6 +340,17 @@
 							android:textColor="#9E9E9E"
 							android:textSize="18sp" />
 					</LinearLayout>
+
+					<TextView
+						android:id="@+id/torrent_open_nearby"
+						android:layout_width="match_parent"
+						android:layout_height="wrap_content"
+						android:background="?attr/selectableItemBackground"
+						android:paddingVertical="10dp"
+						android:text="@string/torrent_maps_nearby_open"
+						android:textColor="#90CAF9"
+						android:textSize="21sp"
+						android:textStyle="bold" />
 
 					<TextView
 						android:id="@+id/torrent_refresh_rutracker"

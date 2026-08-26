@@ -132,6 +132,12 @@ class TorrentMapsActivity : AppCompatActivity() {
 		sortNameBtn = findViewById(R.id.torrent_sort_name)
 
 		findViewById<View>(R.id.torrent_close).setOnClickListener { finish() }
+		findViewById<View>(R.id.torrent_nearby).setOnClickListener {
+			plugin.openNearbyMapsUi(this)
+		}
+		findViewById<View>(R.id.torrent_open_nearby).setOnClickListener {
+			plugin.openNearbyMapsUi(this)
+		}
 		findViewById<View>(R.id.torrent_pick_file).setOnClickListener {
 			confirmAction(R.string.torrent_maps_confirm_pick_file) {
 				torrentFileLauncher.launch(

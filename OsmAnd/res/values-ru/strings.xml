@@ -5865,5 +5865,36 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
     <string name="torrent_maps_download_choose_title">Скачать карту</string>
     <string name="torrent_maps_download_choose_msg">Выберите источник загрузки этой карты.</string>
     <string name="torrent_maps_download_official">Официальный репозиторий</string>
+    <string name="torrent_maps_nearby_title">Карты поблизости</string>
+    <string name="torrent_maps_nearby_open">Карты поблизости (LAN / точка доступа)</string>
+    <string name="torrent_maps_nearby_hint">Телефоны должны быть в одной Wi‑Fi сети или на точке доступа одного из них (Интернет не нужен). Включите «Раздачу» на телефоне с картами, на другом нажмите «Сканировать».</string>
+    <string name="torrent_maps_nearby_share">Раздавать мои карты по LAN</string>
+    <string name="torrent_maps_nearby_scan">Сканировать</string>
+    <string name="torrent_maps_nearby_back_peers">← Устройства</string>
+    <string name="torrent_maps_nearby_scanning">Ищем устройства OsmAnd рядом…</string>
+    <string name="torrent_maps_nearby_no_peers">Пока никого нет — включите раздачу на другом телефоне и нажмите «Сканировать»</string>
+    <string name="torrent_maps_nearby_no_wifi">Нет адреса Wi‑Fi / точки доступа. Подключитесь к одной сети или раздайте точку доступа.</string>
+    <string name="torrent_maps_nearby_share_failed">Не удалось начать раздачу карт поблизости</string>
+    <string name="torrent_maps_nearby_sharing_on">Раздача карт поблизости включена</string>
+    <string name="torrent_maps_nearby_confirm_share_on">Раздавать локальные карты по Wi‑Fi / точке доступа соседним телефонам?</string>
+    <string name="torrent_maps_nearby_confirm_share_off">Остановить раздачу карт в локальной сети?</string>
+    <string name="torrent_maps_nearby_confirm_open_peer">Открыть список карт на «%1$s»?</string>
+    <string name="torrent_maps_nearby_confirm_download">Скачать «%1$s» (%2$s)?\nСтатус: %3$s</string>
+    <string name="torrent_maps_nearby_loading_catalog">Загрузка каталога…</string>
+    <string name="torrent_maps_nearby_catalog_failed">Каталог недоступен: %1$s</string>
+    <string name="torrent_maps_nearby_busy">Уже идёт другая загрузка</string>
+    <string name="torrent_maps_nearby_download_ok">Карта сохранена: %1$s</string>
+    <string name="torrent_maps_nearby_download_failed">Ошибка загрузки: %1$s</string>
+    <string name="torrent_maps_nearby_endpoint">Раздача %1$s</string>
+    <string name="torrent_maps_nearby_share_off">Не раздаём · IP %1$s</string>
+    <string name="torrent_maps_nearby_peers_count">устройств %1$d</string>
+    <string name="torrent_maps_nearby_peer_open">%1$s · карт %2$d</string>
+    <string name="torrent_maps_nearby_notification">Раздача карт: %1$s</string>
+    <string name="torrent_maps_nearby_status_missing">нет локально</string>
+    <string name="torrent_maps_nearby_status_same">актуально</string>
+    <string name="torrent_maps_nearby_status_older">у пира новее (обновить)</string>
+    <string name="torrent_maps_nearby_status_newer">локально новее</string>
+    <string name="torrent_maps_nearby_status_mismatch">размер / хеш отличается</string>
+    <string name="torrent_maps_nearby_status_unknown">неизвестно</string>
 
 </resources>

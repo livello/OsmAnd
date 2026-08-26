@@ -83,6 +83,7 @@ class TorrentMapsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 
 	private val handler = Handler(Looper.getMainLooper())
 	private val mapTorrent by lazy { MapTorrentEngine(app, this) }
+	val nearby by lazy { NearbyMapsController(app) }
 	private var torrentNetworkCallback: ConnectivityManager.NetworkCallback? = null
 	private var torrentPowerReceiver: BroadcastReceiver? = null
 
@@ -121,7 +122,16 @@ class TorrentMapsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 		super.disable(app)
 		TorrentMapsLog.append("plugin disable")
 		unregisterTorrentWatchers()
+		nearby.stopSharing()
 		mapTorrent.stop()
+	}
+
+	fun openNearbyMapsUi(context: Context) {
+		val intent = Intent(context, NearbyMapsActivity::class.java)
+		if (context !is Activity) {
+			intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+		}
+		context.startActivity(intent)
 	}
 
 	override fun mapActivityResume(activity: MapActivity) {

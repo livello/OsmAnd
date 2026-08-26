@@ -17,6 +17,12 @@
 	<uses-permission android:name="android.permission.STORAGE" />
 	<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 	<uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+	<uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+	<uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+	<uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+	<uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
+		android:usesPermissionFlags="neverForLocation"
+		tools:targetApi="tiramisu" />
 	<uses-permission android:name="android.permission.WAKE_LOCK" />
 	<uses-permission android:name="android.permission.CAMERA" />
 	<uses-permission android:name="android.permission.VIBRATE" />
@@ -1180,10 +1186,23 @@
 			android:foregroundServiceType="dataSync"
 			android:stopWithTask="false" />
 
+		<service
+			android:name="net.osmand.plus.plugins.torrentmaps.NearbyMapsService"
+			android:exported="false"
+			android:foregroundServiceType="dataSync"
+			android:stopWithTask="false" />
+
 		<activity
 			android:name="net.osmand.plus.plugins.torrentmaps.TorrentMapsActivity"
 			android:exported="false"
 			android:label="@string/torrent_maps_plugin_name"
+			android:theme="@style/OsmandDarkTheme"
+			android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|uiMode" />
+
+		<activity
+			android:name="net.osmand.plus.plugins.torrentmaps.NearbyMapsActivity"
+			android:exported="false"
+			android:label="@string/torrent_maps_nearby_title"
 			android:theme="@style/OsmandDarkTheme"
 			android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|uiMode" />
 

@@ -6438,5 +6438,36 @@ Download tile maps directly, or copy them as SQLite database files to OsmAnd\'s 
     <string name="torrent_maps_download_choose_title">Download map</string>
     <string name="torrent_maps_download_choose_msg">Choose download source for this map.</string>
     <string name="torrent_maps_download_official">Official repository</string>
+    <string name="torrent_maps_nearby_title">Nearby maps</string>
+    <string name="torrent_maps_nearby_open">Nearby maps (LAN / hotspot)</string>
+    <string name="torrent_maps_nearby_hint">Phones must be on the same Wi‑Fi or one phone\'s hotspot (no Internet needed). Turn on Sharing on the phone that has maps, then Scan on the other.</string>
+    <string name="torrent_maps_nearby_share">Share my maps on LAN</string>
+    <string name="torrent_maps_nearby_scan">Scan peers</string>
+    <string name="torrent_maps_nearby_back_peers">← Peers</string>
+    <string name="torrent_maps_nearby_scanning">Scanning for nearby OsmAnd devices…</string>
+    <string name="torrent_maps_nearby_no_peers">No peers yet — enable Sharing on the other phone and tap Scan</string>
+    <string name="torrent_maps_nearby_no_wifi">No Wi‑Fi / hotspot address. Join the same network or start a hotspot first.</string>
+    <string name="torrent_maps_nearby_share_failed">Could not start Nearby map sharing</string>
+    <string name="torrent_maps_nearby_sharing_on">Nearby map sharing is on</string>
+    <string name="torrent_maps_nearby_confirm_share_on">Share local maps over Wi‑Fi / hotspot for nearby phones?</string>
+    <string name="torrent_maps_nearby_confirm_share_off">Stop sharing maps on the local network?</string>
+    <string name="torrent_maps_nearby_confirm_open_peer">Browse maps on «%1$s»?</string>
+    <string name="torrent_maps_nearby_confirm_download">Download «%1$s» (%2$s)?\nStatus: %3$s</string>
+    <string name="torrent_maps_nearby_loading_catalog">Loading peer catalog…</string>
+    <string name="torrent_maps_nearby_catalog_failed">Catalog failed: %1$s</string>
+    <string name="torrent_maps_nearby_busy">Another download is already running</string>
+    <string name="torrent_maps_nearby_download_ok">Saved map %1$s</string>
+    <string name="torrent_maps_nearby_download_failed">Download failed: %1$s</string>
+    <string name="torrent_maps_nearby_endpoint">Sharing %1$s</string>
+    <string name="torrent_maps_nearby_share_off">Not sharing · IP %1$s</string>
+    <string name="torrent_maps_nearby_peers_count">peers %1$d</string>
+    <string name="torrent_maps_nearby_peer_open">%1$s · %2$d maps</string>
+    <string name="torrent_maps_nearby_notification">Sharing maps at %1$s</string>
+    <string name="torrent_maps_nearby_status_missing">not installed</string>
+    <string name="torrent_maps_nearby_status_same">up to date</string>
+    <string name="torrent_maps_nearby_status_older">peer newer (update)</string>
+    <string name="torrent_maps_nearby_status_newer">local newer</string>
+    <string name="torrent_maps_nearby_status_mismatch">size / hash differs</string>
+    <string name="torrent_maps_nearby_status_unknown">unknown</string>
 
 </resources>
