@@ -1187,6 +1187,13 @@
 			android:theme="@style/OsmandDarkTheme"
 			android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|uiMode" />
 
+		<activity
+			android:name="net.osmand.plus.plugins.torrentmaps.RutrackerAuthActivity"
+			android:exported="false"
+			android:label="@string/torrent_maps_rutracker_auth_title"
+			android:theme="@style/OsmandDarkTheme"
+			android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|uiMode" />
+
 		<meta-data android:name="com.google.android.gms.car.application"
 			android:resource="@xml/car_app_desc"
 			tools:ignore="MetadataTagInsideApplicationTag" />

@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+	android:layout_width="match_parent"
+	android:layout_height="match_parent"
+	android:background="#121212"
+	android:fitsSystemWindows="true"
+	android:orientation="vertical">
+
+	<LinearLayout
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:gravity="center_vertical"
+		android:orientation="horizontal"
+		android:paddingHorizontal="4dp"
+		android:paddingVertical="4dp">
+
+		<androidx.appcompat.widget.AppCompatImageButton
+			android:id="@+id/rutracker_close"
+			android:layout_width="40dp"
+			android:layout_height="40dp"
+			android:background="?attr/selectableItemBackgroundBorderless"
+			android:contentDescription="@string/shared_string_close"
+			android:src="@drawable/ic_action_close"
+			android:tint="#EEEEEE" />
+
+		<TextView
+			android:layout_width="0dp"
+			android:layout_height="wrap_content"
+			android:layout_weight="1"
+			android:ellipsize="end"
+			android:maxLines="1"
+			android:paddingHorizontal="4dp"
+			android:text="@string/torrent_maps_rutracker_auth_title"
+			android:textColor="#FFFFFF"
+			android:textSize="15sp"
+			android:textStyle="bold" />
+
+		<TextView
+			android:id="@+id/rutracker_done"
+			android:layout_width="wrap_content"
+			android:layout_height="wrap_content"
+			android:background="?attr/selectableItemBackground"
+			android:paddingHorizontal="12dp"
+			android:paddingVertical="10dp"
+			android:text="@string/shared_string_done"
+			android:textColor="#90CAF9"
+			android:textSize="14sp"
+			android:textStyle="bold" />
+	</LinearLayout>
+
+	<ProgressBar
+		android:id="@+id/rutracker_progress"
+		style="?android:attr/progressBarStyleHorizontal"
+		android:layout_width="match_parent"
+		android:layout_height="2dp"
+		android:indeterminate="false"
+		android:max="100"
+		android:progressTint="#42A5F5"
+		android:visibility="gone" />
+
+	<TextView
+		android:id="@+id/rutracker_hint"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:paddingHorizontal="12dp"
+		android:paddingVertical="6dp"
+		android:text="@string/torrent_maps_rutracker_auth_hint"
+		android:textColor="#9E9E9E"
+		android:textSize="12sp" />
+
+	<WebView
+		android:id="@+id/rutracker_webview"
+		android:layout_width="match_parent"
+		android:layout_height="0dp"
+		android:layout_weight="1" />
+</LinearLayout>

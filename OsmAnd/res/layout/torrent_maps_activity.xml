@@ -11,72 +11,69 @@
 		android:layout_height="match_parent"
 		android:orientation="vertical">
 
+		<!-- Compact status strip: rates/state + close on one row -->
 		<LinearLayout
 			android:layout_width="match_parent"
-			android:layout_height="56dp"
+			android:layout_height="wrap_content"
 			android:gravity="center_vertical"
 			android:orientation="horizontal"
-			android:paddingStart="8dp"
-			android:paddingEnd="12dp">
+			android:paddingStart="10dp"
+			android:paddingTop="4dp"
+			android:paddingEnd="2dp"
+			android:paddingBottom="4dp">
+
+			<LinearLayout
+				android:layout_width="0dp"
+				android:layout_height="wrap_content"
+				android:layout_weight="1"
+				android:orientation="vertical">
+
+				<TextView
+					android:id="@+id/torrent_status_title"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:ellipsize="end"
+					android:maxLines="1"
+					android:textColor="#FFFFFF"
+					android:textSize="13sp"
+					android:textStyle="bold" />
+
+				<TextView
+					android:id="@+id/torrent_status_rates"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:ellipsize="end"
+					android:maxLines="1"
+					android:textColor="#90CAF9"
+					android:textSize="12sp" />
+
+				<TextView
+					android:id="@+id/torrent_status_meta"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:ellipsize="end"
+					android:maxLines="1"
+					android:textColor="#B0B0B0"
+					android:textSize="11sp" />
+			</LinearLayout>
 
 			<androidx.appcompat.widget.AppCompatImageButton
 				android:id="@+id/torrent_close"
-				android:layout_width="40dp"
-				android:layout_height="40dp"
+				android:layout_width="36dp"
+				android:layout_height="36dp"
 				android:background="?attr/selectableItemBackgroundBorderless"
 				android:contentDescription="@string/shared_string_close"
 				android:src="@drawable/ic_action_close"
 				android:tint="#EEEEEE" />
-
-			<TextView
-				android:layout_width="0dp"
-				android:layout_height="wrap_content"
-				android:layout_weight="1"
-				android:paddingStart="8dp"
-				android:text="@string/torrent_maps_plugin_name"
-				android:textColor="#FFFFFF"
-				android:textSize="18sp"
-				android:textStyle="bold" />
-		</LinearLayout>
-
-		<LinearLayout
-			android:layout_width="match_parent"
-			android:layout_height="wrap_content"
-			android:orientation="vertical"
-			android:paddingHorizontal="16dp"
-			android:paddingBottom="8dp">
-
-			<TextView
-				android:id="@+id/torrent_status_title"
-				android:layout_width="match_parent"
-				android:layout_height="wrap_content"
-				android:textColor="#FFFFFF"
-				android:textSize="16sp"
-				android:textStyle="bold" />
-
-			<TextView
-				android:id="@+id/torrent_status_rates"
-				android:layout_width="match_parent"
-				android:layout_height="wrap_content"
-				android:paddingTop="2dp"
-				android:textColor="#90CAF9"
-				android:textSize="14sp" />
-
-			<TextView
-				android:id="@+id/torrent_status_meta"
-				android:layout_width="match_parent"
-				android:layout_height="wrap_content"
-				android:paddingTop="2dp"
-				android:textColor="#B0B0B0"
-				android:textSize="12sp" />
 		</LinearLayout>
 
 		<com.google.android.material.tabs.TabLayout
 			android:id="@+id/torrent_tabs"
 			android:layout_width="match_parent"
-			android:layout_height="wrap_content"
+			android:layout_height="36dp"
 			android:background="#1E1E1E"
 			app:tabIndicatorColor="#42A5F5"
+			app:tabMode="fixed"
 			app:tabSelectedTextColor="#FFFFFF"
 			app:tabTextColor="#9E9E9E" />
 
@@ -90,7 +87,7 @@
 				android:layout_width="match_parent"
 				android:layout_height="match_parent"
 				android:clipToPadding="false"
-				android:paddingBottom="88dp" />
+				android:paddingBottom="80dp" />
 
 			<ScrollView
 				android:id="@+id/torrent_settings_panel"
@@ -103,14 +100,15 @@
 					android:layout_width="match_parent"
 					android:layout_height="wrap_content"
 					android:orientation="vertical"
-					android:padding="16dp">
+					android:paddingHorizontal="12dp"
+					android:paddingVertical="8dp">
 
 					<LinearLayout
 						android:layout_width="match_parent"
 						android:layout_height="wrap_content"
 						android:gravity="center_vertical"
 						android:orientation="horizontal"
-						android:paddingVertical="10dp">
+						android:paddingVertical="6dp">
 
 						<TextView
 							android:layout_width="0dp"
@@ -118,7 +116,7 @@
 							android:layout_weight="1"
 							android:text="@string/torrent_maps_enabled"
 							android:textColor="#EEEEEE"
-							android:textSize="15sp" />
+							android:textSize="14sp" />
 
 						<androidx.appcompat.widget.SwitchCompat
 							android:id="@+id/torrent_enable"
@@ -131,7 +129,7 @@
 						android:layout_height="wrap_content"
 						android:gravity="center_vertical"
 						android:orientation="horizontal"
-						android:paddingVertical="10dp">
+						android:paddingVertical="6dp">
 
 						<TextView
 							android:layout_width="0dp"
@@ -139,7 +137,7 @@
 							android:layout_weight="1"
 							android:text="@string/torrent_maps_wifi_only"
 							android:textColor="#EEEEEE"
-							android:textSize="15sp" />
+							android:textSize="14sp" />
 
 						<androidx.appcompat.widget.SwitchCompat
 							android:id="@+id/torrent_wifi_only"
@@ -152,7 +150,7 @@
 						android:layout_height="wrap_content"
 						android:gravity="center_vertical"
 						android:orientation="horizontal"
-						android:paddingVertical="10dp">
+						android:paddingVertical="6dp">
 
 						<TextView
 							android:layout_width="0dp"
@@ -160,7 +158,7 @@
 							android:layout_weight="1"
 							android:text="@string/torrent_maps_seed_charge"
 							android:textColor="#EEEEEE"
-							android:textSize="15sp" />
+							android:textSize="14sp" />
 
 						<androidx.appcompat.widget.SwitchCompat
 							android:id="@+id/torrent_seed_charge"
@@ -173,7 +171,7 @@
 						android:layout_height="wrap_content"
 						android:gravity="center_vertical"
 						android:orientation="horizontal"
-						android:paddingVertical="10dp">
+						android:paddingVertical="6dp">
 
 						<TextView
 							android:layout_width="0dp"
@@ -181,7 +179,7 @@
 							android:layout_weight="1"
 							android:text="@string/torrent_maps_download_new"
 							android:textColor="#EEEEEE"
-							android:textSize="15sp" />
+							android:textSize="14sp" />
 
 						<androidx.appcompat.widget.SwitchCompat
 							android:id="@+id/torrent_download_new"
@@ -194,18 +192,18 @@
 						android:layout_width="match_parent"
 						android:layout_height="wrap_content"
 						android:background="?attr/selectableItemBackground"
-						android:paddingVertical="12dp"
+						android:paddingVertical="10dp"
 						android:text="@string/torrent_maps_path"
 						android:textColor="#90CAF9"
-						android:textSize="15sp" />
+						android:textSize="14sp" />
 
 					<TextView
 						android:id="@+id/torrent_path_summary"
 						android:layout_width="match_parent"
 						android:layout_height="wrap_content"
-						android:paddingBottom="12dp"
+						android:paddingBottom="8dp"
 						android:textColor="#9E9E9E"
-						android:textSize="13sp" />
+						android:textSize="12sp" />
 
 					<LinearLayout
 						android:id="@+id/torrent_topic_row"
@@ -213,14 +211,14 @@
 						android:layout_height="wrap_content"
 						android:background="?attr/selectableItemBackground"
 						android:orientation="vertical"
-						android:paddingVertical="10dp">
+						android:paddingVertical="8dp">
 
 						<TextView
 							android:layout_width="match_parent"
 							android:layout_height="wrap_content"
 							android:text="@string/torrent_maps_topic_url"
 							android:textColor="#EEEEEE"
-							android:textSize="15sp" />
+							android:textSize="14sp" />
 
 						<TextView
 							android:id="@+id/torrent_topic_url"
@@ -228,8 +226,19 @@
 							android:layout_height="wrap_content"
 							android:paddingTop="2dp"
 							android:textColor="#9E9E9E"
-							android:textSize="13sp" />
+							android:textSize="12sp" />
 					</LinearLayout>
+
+					<TextView
+						android:id="@+id/torrent_login_rutracker"
+						android:layout_width="match_parent"
+						android:layout_height="wrap_content"
+						android:background="?attr/selectableItemBackground"
+						android:paddingVertical="10dp"
+						android:text="@string/torrent_maps_rutracker_login"
+						android:textColor="#90CAF9"
+						android:textSize="14sp"
+						android:textStyle="bold" />
 
 					<LinearLayout
 						android:id="@+id/torrent_cookie_row"
@@ -237,14 +246,14 @@
 						android:layout_height="wrap_content"
 						android:background="?attr/selectableItemBackground"
 						android:orientation="vertical"
-						android:paddingVertical="10dp">
+						android:paddingVertical="8dp">
 
 						<TextView
 							android:layout_width="match_parent"
 							android:layout_height="wrap_content"
-							android:text="@string/torrent_maps_rutracker_cookie"
+							android:text="@string/torrent_maps_rutracker_cookie_manual"
 							android:textColor="#EEEEEE"
-							android:textSize="15sp" />
+							android:textSize="14sp" />
 
 						<TextView
 							android:id="@+id/torrent_cookie_summary"
@@ -252,7 +261,7 @@
 							android:layout_height="wrap_content"
 							android:paddingTop="2dp"
 							android:textColor="#9E9E9E"
-							android:textSize="13sp" />
+							android:textSize="12sp" />
 					</LinearLayout>
 
 					<TextView
@@ -260,10 +269,10 @@
 						android:layout_width="match_parent"
 						android:layout_height="wrap_content"
 						android:background="?attr/selectableItemBackground"
-						android:paddingVertical="14dp"
+						android:paddingVertical="10dp"
 						android:text="@string/torrent_maps_refresh_topic"
 						android:textColor="#90CAF9"
-						android:textSize="15sp" />
+						android:textSize="14sp" />
 				</LinearLayout>
 			</ScrollView>
 		</FrameLayout>
@@ -274,9 +283,10 @@
 		android:layout_width="wrap_content"
 		android:layout_height="wrap_content"
 		android:layout_gravity="bottom|end"
-		android:layout_margin="20dp"
+		android:layout_margin="16dp"
 		android:contentDescription="@string/shared_string_control_start"
 		app:backgroundTint="#1565C0"
+		app:fabSize="mini"
 		app:srcCompat="@drawable/ic_action_play_dark"
 		app:tint="#FFFFFF" />
 

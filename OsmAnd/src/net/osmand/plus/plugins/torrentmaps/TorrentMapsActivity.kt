@@ -1,14 +1,15 @@
 package net.osmand.plus.plugins.torrentmaps
 
+import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SwitchCompat
 import androidx.core.view.isVisible
@@ -50,6 +51,7 @@ class TorrentMapsActivity : AppCompatActivity() {
 	private lateinit var pathSummary: TextView
 	private lateinit var topicUrl: TextView
 	private lateinit var cookieSummary: TextView
+	private var bindingSettings = false
 
 	private val torrentFileLauncher = registerForActivityResult(
 		ActivityResultContracts.OpenDocument()
@@ -62,6 +64,12 @@ class TorrentMapsActivity : AppCompatActivity() {
 		} else {
 			app.showToastMessage(R.string.torrent_maps_invalid)
 		}
+	}
+
+	private val authLauncher = registerForActivityResult(
+		ActivityResultContracts.StartActivityForResult()
+	) {
+		refreshAll()
 	}
 
 	private val refreshTick = object : Runnable {
@@ -100,12 +108,19 @@ class TorrentMapsActivity : AppCompatActivity() {
 
 		findViewById<View>(R.id.torrent_close).setOnClickListener { finish() }
 		findViewById<View>(R.id.torrent_pick_file).setOnClickListener {
-			torrentFileLauncher.launch(arrayOf("application/x-bittorrent", "application/octet-stream", "*/*"))
+			confirmAction(R.string.torrent_maps_confirm_pick_file) {
+				torrentFileLauncher.launch(
+					arrayOf("application/x-bittorrent", "application/octet-stream", "*/*")
+				)
+			}
 		}
 		findViewById<View>(R.id.torrent_refresh_rutracker).setOnClickListener {
-			app.showToastMessage(R.string.torrent_maps_refresh_started)
-			plugin.refreshTorrentFromRutracker { _, _ -> refreshAll() }
+			confirmAction(R.string.torrent_maps_confirm_refresh) {
+				app.showToastMessage(R.string.torrent_maps_refresh_started)
+				plugin.refreshTorrentFromRutracker { _, _ -> refreshAll() }
+			}
 		}
+		findViewById<View>(R.id.torrent_login_rutracker).setOnClickListener { openRutrackerAuth() }
 		findViewById<View>(R.id.torrent_topic_row).setOnClickListener { editTopicUrl() }
 		findViewById<View>(R.id.torrent_cookie_row).setOnClickListener { editCookie() }
 
@@ -129,15 +144,22 @@ class TorrentMapsActivity : AppCompatActivity() {
 
 		fab.setOnClickListener {
 			if (plugin.isTorrentRunning()) {
-				plugin.stopMapTorrent()
-			} else {
-				if (!plugin.TORRENT_ENABLED.get()) {
-					plugin.TORRENT_ENABLED.set(true)
-					enableSwitch.isChecked = true
+				confirmAction(R.string.torrent_maps_confirm_stop) {
+					plugin.stopMapTorrent()
+					refreshStatus()
 				}
-				plugin.startMapTorrentManual()
+			} else {
+				confirmAction(R.string.torrent_maps_confirm_start) {
+					if (!plugin.TORRENT_ENABLED.get()) {
+						plugin.TORRENT_ENABLED.set(true)
+						bindingSettings = true
+						enableSwitch.isChecked = true
+						bindingSettings = false
+					}
+					plugin.startMapTorrentManual()
+					refreshStatus()
+				}
 			}
-			refreshStatus()
 		}
 
 		bindSettingsSwitches()
@@ -156,26 +178,84 @@ class TorrentMapsActivity : AppCompatActivity() {
 	}
 
 	private fun bindSettingsSwitches() {
+		bindingSettings = true
 		enableSwitch.isChecked = plugin.TORRENT_ENABLED.get()
 		wifiSwitch.isChecked = plugin.TORRENT_WIFI_ONLY.get()
 		chargeSwitch.isChecked = plugin.TORRENT_SEED_ON_CHARGE.get()
 		downloadNewSwitch.isChecked = plugin.TORRENT_DOWNLOAD_NEW.get()
+		bindingSettings = false
+
 		enableSwitch.setOnCheckedChangeListener { _, checked ->
-			plugin.TORRENT_ENABLED.set(checked)
-			plugin.syncMapTorrent()
-			refreshStatus()
+			if (bindingSettings) return@setOnCheckedChangeListener
+			confirmToggle(
+				enableSwitch,
+				checked,
+				if (checked) R.string.torrent_maps_confirm_enable else R.string.torrent_maps_confirm_disable
+			) {
+				plugin.TORRENT_ENABLED.set(checked)
+				plugin.syncMapTorrent()
+				refreshStatus()
+			}
 		}
 		wifiSwitch.setOnCheckedChangeListener { _, checked ->
-			plugin.TORRENT_WIFI_ONLY.set(checked)
-			plugin.syncMapTorrent()
+			if (bindingSettings) return@setOnCheckedChangeListener
+			confirmToggle(wifiSwitch, checked, R.string.torrent_maps_confirm_wifi) {
+				plugin.TORRENT_WIFI_ONLY.set(checked)
+				plugin.syncMapTorrent()
+			}
 		}
 		chargeSwitch.setOnCheckedChangeListener { _, checked ->
-			plugin.TORRENT_SEED_ON_CHARGE.set(checked)
-			plugin.syncMapTorrent()
+			if (bindingSettings) return@setOnCheckedChangeListener
+			confirmToggle(chargeSwitch, checked, R.string.torrent_maps_confirm_seed_charge) {
+				plugin.TORRENT_SEED_ON_CHARGE.set(checked)
+				plugin.syncMapTorrent()
+			}
 		}
 		downloadNewSwitch.setOnCheckedChangeListener { _, checked ->
-			plugin.TORRENT_DOWNLOAD_NEW.set(checked)
+			if (bindingSettings) return@setOnCheckedChangeListener
+			confirmToggle(downloadNewSwitch, checked, R.string.torrent_maps_confirm_download_new) {
+				plugin.TORRENT_DOWNLOAD_NEW.set(checked)
+			}
 		}
+	}
+
+	private fun confirmToggle(
+		switch: SwitchCompat,
+		newValue: Boolean,
+		messageRes: Int,
+		onConfirm: () -> Unit
+	) {
+		val themed = UiUtilities.getThemedContext(this, app.daynightHelper.isNightMode(ThemeUsageContext.APP))
+		AlertDialog.Builder(themed)
+			.setMessage(messageRes)
+			.setPositiveButton(R.string.shared_string_yes) { _, _ -> onConfirm() }
+			.setNegativeButton(R.string.shared_string_no) { _, _ ->
+				bindingSettings = true
+				switch.isChecked = !newValue
+				bindingSettings = false
+			}
+			.setOnCancelListener {
+				bindingSettings = true
+				switch.isChecked = !newValue
+				bindingSettings = false
+			}
+			.show()
+	}
+
+	private fun confirmAction(messageRes: Int, onConfirm: () -> Unit) {
+		val themed = UiUtilities.getThemedContext(this, app.daynightHelper.isNightMode(ThemeUsageContext.APP))
+		AlertDialog.Builder(themed)
+			.setMessage(messageRes)
+			.setPositiveButton(R.string.shared_string_yes) { _, _ -> onConfirm() }
+			.setNegativeButton(R.string.shared_string_no, null)
+			.show()
+	}
+
+	private fun openRutrackerAuth() {
+		val intent = Intent(this, RutrackerAuthActivity::class.java).apply {
+			putExtra(RutrackerAuthActivity.EXTRA_TOPIC_URL, plugin.TORRENT_TOPIC_URL.get())
+		}
+		authLauncher.launch(intent)
 	}
 
 	private fun refreshAll() {
@@ -241,7 +321,7 @@ class TorrentMapsActivity : AppCompatActivity() {
 			setText(plugin.TORRENT_TOPIC_URL.get())
 			setSelection(text.length)
 		}
-		androidx.appcompat.app.AlertDialog.Builder(themed)
+		AlertDialog.Builder(themed)
 			.setTitle(R.string.torrent_maps_topic_url)
 			.setView(input)
 			.setPositiveButton(R.string.shared_string_save) { _, _ ->
@@ -258,8 +338,8 @@ class TorrentMapsActivity : AppCompatActivity() {
 			setText(plugin.TORRENT_RUTRACKER_COOKIE.get())
 			hint = getString(R.string.torrent_maps_rutracker_cookie_desc)
 		}
-		androidx.appcompat.app.AlertDialog.Builder(themed)
-			.setTitle(R.string.torrent_maps_rutracker_cookie)
+		AlertDialog.Builder(themed)
+			.setTitle(R.string.torrent_maps_rutracker_cookie_manual)
 			.setView(input)
 			.setPositiveButton(R.string.shared_string_save) { _, _ ->
 				plugin.TORRENT_RUTRACKER_COOKIE.set(input.text?.toString().orEmpty())
@@ -290,17 +370,41 @@ class TorrentMapsActivity : AppCompatActivity() {
 		override fun getItemCount(): Int = rows.size
 
 		class Holder(view: View) : RecyclerView.ViewHolder(view) {
+			private val nameFrame: ProgressNameFrame = view.findViewById(R.id.file_name_frame)
 			private val name: TextView = view.findViewById(R.id.file_name)
 			private val meta: TextView = view.findViewById(R.id.file_meta)
 			private val chip: TextView = view.findViewById(R.id.file_state)
-			private val progress: ProgressBar = view.findViewById(R.id.file_progress)
 
 			fun bind(row: TorrentFileRow) {
 				val ctx = itemView.context
 				name.text = row.displayName
 				meta.text = AndroidUtils.formatSize(ctx, row.sizeBytes) +
 						" · " + row.progressPercent + "%"
-				chip.text = when (row.state) {
+				nameFrame.setProgressPercent(row.progressPercent)
+				val statusText = statusLabel(ctx, row.state)
+				chip.text = statusEmoji(row.state)
+				chip.contentDescription = statusText
+				chip.setOnClickListener {
+					android.widget.Toast.makeText(
+						ctx,
+						"$statusText · ${row.progressPercent}%",
+						android.widget.Toast.LENGTH_SHORT
+					).show()
+				}
+			}
+
+			private fun statusEmoji(state: TorrentFileState): String = when (state) {
+				TorrentFileState.SEEDING -> "🌱"
+				TorrentFileState.DOWNLOADING -> "⬇️"
+				TorrentFileState.UPDATING -> "🔄"
+				TorrentFileState.QUEUED -> "⏳"
+				TorrentFileState.COMPLETE -> "✅"
+				TorrentFileState.SKIPPED -> "⏭"
+				TorrentFileState.IDLE -> "⏸"
+			}
+
+			private fun statusLabel(ctx: android.content.Context, state: TorrentFileState): String =
+				when (state) {
 					TorrentFileState.SEEDING -> ctx.getString(R.string.torrent_maps_state_seeding)
 					TorrentFileState.DOWNLOADING -> ctx.getString(R.string.torrent_maps_file_downloading)
 					TorrentFileState.UPDATING -> ctx.getString(R.string.torrent_maps_file_updating)
@@ -309,9 +413,6 @@ class TorrentMapsActivity : AppCompatActivity() {
 					TorrentFileState.SKIPPED -> ctx.getString(R.string.torrent_maps_file_skipped)
 					TorrentFileState.IDLE -> ctx.getString(R.string.torrent_maps_file_idle)
 				}
-				progress.progress = row.progressPercent
-				progress.isIndeterminate = false
-			}
 		}
 	}
 }
