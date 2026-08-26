@@ -1,4 +1,4 @@
-package net.osmand.plus.plugins.evbms
+package net.osmand.plus.plugins.torrentmaps
 
 import android.util.Log
 import java.io.File
@@ -13,9 +13,9 @@ import java.util.regex.Pattern
  * Cloudflare often blocks automated fetches; optional user Cookie helps when the user
  * pastes their own browser cookie for their account.
  */
-object EvRutrackerTorrentFetcher {
+object RutrackerTorrentFetcher {
 
-	private const val TAG = "EvRutrackerTorrent"
+	private const val TAG = "RutrackerTorrent"
 	private const val UA =
 		"Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
 	private val DL_HREF = Pattern.compile(

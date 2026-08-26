@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+
+	<Preference
+		android:key="torrent_maps_open_client"
+		android:layout="@layout/preference_with_descr"
+		android:persistent="false"
+		android:summary="@string/torrent_maps_open_client_desc"
+		android:title="@string/torrent_maps_open_client" />
+
+	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
+		android:key="ev_bms_torrent_enabled"
+		android:layout="@layout/preference_with_descr"
+		android:summaryOff="@string/shared_string_disabled"
+		android:summaryOn="@string/shared_string_enabled"
+		android:title="@string/torrent_maps_enabled" />
+
+	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
+		android:key="ev_bms_torrent_wifi_only"
+		android:layout="@layout/preference_with_descr"
+		android:summaryOff="@string/shared_string_disabled"
+		android:summaryOn="@string/shared_string_enabled"
+		android:title="@string/torrent_maps_wifi_only" />
+
+	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
+		android:key="ev_bms_torrent_seed_charge"
+		android:layout="@layout/preference_with_descr"
+		android:summaryOff="@string/shared_string_disabled"
+		android:summaryOn="@string/shared_string_enabled"
+		android:title="@string/torrent_maps_seed_charge" />
+
+	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
+		android:key="ev_bms_torrent_download_new"
+		android:layout="@layout/preference_with_descr"
+		android:summaryOff="@string/shared_string_disabled"
+		android:summaryOn="@string/shared_string_enabled"
+		android:title="@string/torrent_maps_download_new" />
+
+</PreferenceScreen>

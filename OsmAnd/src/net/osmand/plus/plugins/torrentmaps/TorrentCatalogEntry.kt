@@ -1,9 +1,9 @@
-package net.osmand.plus.plugins.evbms
+package net.osmand.plus.plugins.torrentmaps
 
 /**
  * One map file entry from the active EV torrent catalog (for Maps & Resources bridging).
  */
-data class EvTorrentCatalogEntry(
+data class TorrentCatalogEntry(
 	val index: Int,
 	val torrentName: String,
 	val mapKey: String,

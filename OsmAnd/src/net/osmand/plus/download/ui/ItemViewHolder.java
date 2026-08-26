@@ -52,7 +52,7 @@ import net.osmand.plus.plugins.PluginsFragment;
 import net.osmand.plus.plugins.PluginsHelper;
 import net.osmand.plus.plugins.accessibility.AccessibilityAssistant;
 import net.osmand.plus.plugins.custom.CustomIndexItem;
-import net.osmand.plus.plugins.evbms.EvBmsPlugin;
+import net.osmand.plus.plugins.torrentmaps.TorrentMapsPlugin;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.ColorUtilities;
 import net.osmand.util.Algorithms;
@@ -377,7 +377,7 @@ public class ItemViewHolder {
 			return;
 		}
 		tvTorrentBadge.setVisibility(View.VISIBLE);
-		tvTorrentBadge.setText("🧲 " + context.getString(R.string.ev_bms_torrent_in_catalog));
+		tvTorrentBadge.setText("🧲 " + context.getString(R.string.torrent_maps_in_catalog));
 		tvTorrentBadge.setTextColor(0xFFFFFFFF);
 		android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
 		bg.setColor(0xFF1565C0);
@@ -395,7 +395,7 @@ public class ItemViewHolder {
 
 	@Nullable
 	private String torrentCatalogHint(@NonNull DownloadItem item) {
-		EvBmsPlugin plugin = PluginsHelper.getPlugin(EvBmsPlugin.class);
+		TorrentMapsPlugin plugin = PluginsHelper.getPlugin(TorrentMapsPlugin.class);
 		if (plugin == null || !plugin.isActive()) {
 			return null;
 		}
@@ -403,7 +403,7 @@ public class ItemViewHolder {
 		if (Algorithms.isEmpty(name) || !plugin.hasTorrentMapOffer(name)) {
 			return null;
 		}
-		return context.getString(R.string.ev_bms_torrent_in_catalog);
+		return context.getString(R.string.torrent_maps_in_catalog);
 	}
 
 	private void showIndeterminateProgress() {
@@ -572,13 +572,13 @@ public class ItemViewHolder {
 			return true;
 		});
 
-		EvBmsPlugin evPlugin = PluginsHelper.getPlugin(EvBmsPlugin.class);
-		if (evPlugin != null && evPlugin.isActive() && evPlugin.hasTorrentMapOffer(downloadItem.getFileName())) {
+		TorrentMapsPlugin torrentPlugin = PluginsHelper.getPlugin(TorrentMapsPlugin.class);
+		if (torrentPlugin != null && torrentPlugin.isActive() && torrentPlugin.hasTorrentMapOffer(downloadItem.getFileName())) {
 			optionsMenu.getMenu()
-					.add(R.string.ev_bms_torrent_download_via)
+					.add(R.string.torrent_maps_download_via)
 					.setIcon(getThemedIcon(context, R.drawable.ic_action_import))
 					.setOnMenuItemClickListener(_item -> {
-						evPlugin.downloadMapsFromTorrent(Collections.singletonList(downloadItem.getFileName()));
+						torrentPlugin.downloadMapsFromTorrent(Collections.singletonList(downloadItem.getFileName()));
 						return true;
 					});
 		}

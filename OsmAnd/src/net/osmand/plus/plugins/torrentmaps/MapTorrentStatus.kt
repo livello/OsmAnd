@@ -1,6 +1,6 @@
-package net.osmand.plus.plugins.evbms
+package net.osmand.plus.plugins.torrentmaps
 
-data class EvMapTorrentStatus(
+data class MapTorrentStatus(
 	val running: Boolean = false,
 	val paused: Boolean = false,
 	val state: String = "",
@@ -22,4 +22,24 @@ data class EvMapTorrentStatus(
 	val updatingFiles: Int = 0,
 	val downloadingFiles: Int = 0,
 	val skippedCurrentFiles: Int = 0
+)
+
+enum class TorrentFileState {
+	IDLE,
+	QUEUED,
+	DOWNLOADING,
+	UPDATING,
+	SEEDING,
+	COMPLETE,
+	SKIPPED
+}
+
+data class TorrentFileRow(
+	val index: Int,
+	val displayName: String,
+	val mapKey: String,
+	val sizeBytes: Long,
+	val doneBytes: Long,
+	val progressPercent: Int,
+	val state: TorrentFileState
 )

@@ -298,29 +298,6 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerFloatPreference("ev_bms_vehicle_mass_kg", DEFAULT_VEHICLE_MASS_KG).makeGlobal().makeShared()
 	val DRIVER_MASS_KG: CommonPreference<Float> =
 		registerFloatPreference("ev_bms_driver_mass_kg", DEFAULT_DRIVER_MASS_KG).makeGlobal().makeShared()
-	val TORRENT_ENABLED: CommonPreference<Boolean> =
-		registerBooleanPreference("ev_bms_torrent_enabled", false).makeGlobal().makeShared()
-	val TORRENT_PATH: CommonPreference<String> =
-		registerStringPreference("ev_bms_torrent_path", "").makeGlobal().makeShared()
-	val TORRENT_NAME: CommonPreference<String> =
-		registerStringPreference("ev_bms_torrent_name", "").makeGlobal().makeShared()
-	val TORRENT_SEED_ON_CHARGE: CommonPreference<Boolean> =
-		registerBooleanPreference("ev_bms_torrent_seed_charge", true).makeGlobal().makeShared()
-	val TORRENT_WIFI_ONLY: CommonPreference<Boolean> =
-		registerBooleanPreference("ev_bms_torrent_wifi_only", true).makeGlobal().makeShared()
-	val TORRENT_DOWNLOAD_NEW: CommonPreference<Boolean> =
-		registerBooleanPreference("ev_bms_torrent_download_new", false).makeGlobal().makeShared()
-	val TORRENT_TOPIC_URL: CommonPreference<String> =
-		registerStringPreference(
-			"ev_bms_torrent_topic_url",
-			"https://rutracker.org/forum/viewtopic.php?t=5233935"
-		).makeGlobal().makeShared()
-	val TORRENT_RUTRACKER_COOKIE: CommonPreference<String> =
-		registerStringPreference("ev_bms_torrent_rutracker_cookie", "").makeGlobal().makeShared()
-	val TORRENT_DOWNLOADED: CommonPreference<Long> =
-		registerLongPreference("ev_bms_torrent_downloaded", 0L).makeGlobal()
-	val TORRENT_UPLOADED: CommonPreference<Long> =
-		registerLongPreference("ev_bms_torrent_uploaded", 0L).makeGlobal()
 	private val CHARGE_END_TRACK_M: CommonPreference<Int> =
 		registerIntPreference("ev_bms_charge_end_track_m", 0).makeGlobal()
 	private val CHARGE_CYCLE_ACTIVE: CommonPreference<Boolean> =
@@ -358,9 +335,6 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private val profileStore by lazy {
 		EvBmsProfileStore(app, this, SETTINGS_PROFILES, SETTINGS_PROFILE)
 	}
-	private val mapTorrent by lazy { EvMapTorrentEngine(app, this) }
-	private var torrentNetworkCallback: android.net.ConnectivityManager.NetworkCallback? = null
-	private var torrentPowerReceiver: android.content.BroadcastReceiver? = null
 	private val hikeMode = HikeModeController(app, this)
 	private val farSnapshot = FarDriverProtocol.FarDriverSnapshot()
 	private val vescSnapshot = VescProtocol.VescSnapshot()
@@ -606,16 +580,11 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		mergeSplitChargeHistory()
 		profileStore.ensureDefault()
 		restoreTelemetrySession()
-		registerTorrentWatchers()
-		// Defer so MapActivity can finish first frame; torrent JNI runs on a worker thread.
-		handler.postDelayed({ syncMapTorrent() }, 2000)
 		return true
 	}
 
 	override fun disable(app: OsmandApplication) {
 		super.disable(app)
-		unregisterTorrentWatchers()
-		mapTorrent.stop()
 		stopPolling()
 		recorder.detach()
 		stopSpeedCalibration(notify = false)
@@ -636,7 +605,6 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		startPolling()
 		applyHikeTelemetryState()
 		restoreTelemetrySessionIfNeeded()
-		syncMapTorrent()
 	}
 
 	override fun mapActivityPause(activity: MapActivity) {
@@ -928,7 +896,6 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			finishTrip(now, loc)
 		}
 		journal.i("charge", "begin ah=$remainingAh full=$fullAh I=$currentA temp=$tempC")
-		syncMapTorrent()
 		historySamples.clear()
 		historySampleLastMs = 0L
 		charging = true
@@ -973,7 +940,6 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		}
 		journal.i("charge", "current stopped ah=$remainingAh I wait ${CHARGE_FINISH_KM} km")
 		charging = false
-		syncMapTorrent()
 		chargeExitHold = 0
 		chargeCurrentStoppedMs = now
 		postChargeDistanceKm = 0.0
@@ -3875,154 +3841,6 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 
 	fun isAnnouncePreferenceId(prefId: String): Boolean {
 		return announcePreferences.any { it.id == prefId }
-	}
-
-	fun mapTorrentStatus(): EvMapTorrentStatus = mapTorrent.status()
-
-	fun torrentPathSummary(): String = mapTorrent.pathSummary()
-
-	fun torrentCatalogEntries(): List<EvTorrentCatalogEntry> = mapTorrent.catalogEntries()
-
-	fun hasTorrentMapOffer(rawName: String): Boolean =
-		TORRENT_ENABLED.get() && mapTorrent.hasTorrentFile() && mapTorrent.hasCatalogEntry(rawName)
-
-	fun findTorrentMapOffer(rawName: String): EvTorrentCatalogEntry? =
-		if (hasTorrentMapOffer(rawName)) mapTorrent.findCatalogEntry(rawName) else null
-
-	fun downloadMapsFromTorrent(rawNames: Collection<String>) {
-		if (!TORRENT_ENABLED.get()) {
-			app.showToastMessage(R.string.ev_bms_torrent_enable_first)
-			return
-		}
-		if (!mapTorrent.hasTorrentFile()) {
-			app.showToastMessage(R.string.ev_bms_torrent_path_empty)
-			return
-		}
-		mapTorrent.downloadMapKeys(rawNames)
-		app.showToastMessage(R.string.ev_bms_torrent_download_started)
-	}
-
-	fun refreshTorrentFromRutracker(onDone: ((Boolean, String) -> Unit)? = null) {
-		val url = TORRENT_TOPIC_URL.get().orEmpty().ifBlank {
-			"https://rutracker.org/forum/viewtopic.php?t=5233935"
-		}
-		val cookie = TORRENT_RUTRACKER_COOKIE.get()
-		Thread({
-			val result = EvRutrackerTorrentFetcher.fetchTorrent(url, cookie)
-			var message: String
-			var ok: Boolean
-			if (result.ok && result.bytes != null) {
-				val dest = mapTorrent.torrentFile()
-				try {
-					if (mapTorrent.isStarted()) {
-						mapTorrent.stop()
-					}
-					EvRutrackerTorrentFetcher.writeTo(dest, result.bytes)
-					TORRENT_PATH.set(dest.absolutePath)
-					TORRENT_NAME.set(result.fileName ?: dest.name)
-					mapTorrent.reloadCatalogFromDisk()
-					ok = true
-					message = app.getString(R.string.ev_bms_torrent_refresh_ok, result.fileName ?: dest.name)
-					handler.post { syncMapTorrent() }
-				} catch (e: Exception) {
-					ok = false
-					message = e.message ?: app.getString(R.string.ev_bms_torrent_refresh_failed)
-				}
-			} else {
-				ok = false
-				message = when (result.message) {
-					"cloudflare" -> app.getString(R.string.ev_bms_torrent_refresh_cloudflare)
-					"no_dl_link" -> app.getString(R.string.ev_bms_torrent_refresh_no_link)
-					"bad_torrent" -> app.getString(R.string.ev_bms_torrent_refresh_bad_file)
-					"empty_url" -> app.getString(R.string.ev_bms_torrent_topic_url_empty)
-					else -> app.getString(R.string.ev_bms_torrent_refresh_failed_detail, result.message)
-				}
-			}
-			handler.post {
-				app.showToastMessage(message)
-				onDone?.invoke(ok, message)
-			}
-		}, "ev-rutracker-torrent").start()
-	}
-
-	fun importTorrentFile(uri: android.net.Uri): Boolean {
-		val ok = mapTorrent.importTorrent(uri)
-		if (ok) {
-			syncMapTorrent()
-		}
-		return ok
-	}
-
-	fun startMapTorrentManual() {
-		mapTorrent.startManual()
-	}
-
-	fun stopMapTorrent() {
-		mapTorrent.stop()
-	}
-
-	fun syncMapTorrent() {
-		mapTorrent.sync()
-	}
-
-	private fun registerTorrentWatchers() {
-		unregisterTorrentWatchers()
-		val cm = app.getSystemService(android.net.ConnectivityManager::class.java)
-		if (cm != null) {
-			val cb = object : android.net.ConnectivityManager.NetworkCallback() {
-				override fun onAvailable(network: android.net.Network) {
-					syncMapTorrent()
-				}
-
-				override fun onLost(network: android.net.Network) {
-					syncMapTorrent()
-				}
-			}
-			try {
-				cm.registerDefaultNetworkCallback(cb)
-				torrentNetworkCallback = cb
-			} catch (_: Exception) {
-			}
-		}
-		val receiver = object : android.content.BroadcastReceiver() {
-			override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
-				syncMapTorrent()
-			}
-		}
-		val filter = android.content.IntentFilter().apply {
-			addAction(android.content.Intent.ACTION_POWER_CONNECTED)
-			addAction(android.content.Intent.ACTION_POWER_DISCONNECTED)
-		}
-		try {
-			androidx.core.content.ContextCompat.registerReceiver(
-				app,
-				receiver,
-				filter,
-				androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
-			)
-			torrentPowerReceiver = receiver
-		} catch (_: Exception) {
-		}
-	}
-
-	private fun unregisterTorrentWatchers() {
-		val cb = torrentNetworkCallback
-		if (cb != null) {
-			try {
-				app.getSystemService(android.net.ConnectivityManager::class.java)
-					?.unregisterNetworkCallback(cb)
-			} catch (_: Exception) {
-			}
-			torrentNetworkCallback = null
-		}
-		val receiver = torrentPowerReceiver
-		if (receiver != null) {
-			try {
-				app.unregisterReceiver(receiver)
-			} catch (_: Exception) {
-			}
-			torrentPowerReceiver = null
-		}
 	}
 
 	fun askShowSettingsDialog(activity: FragmentActivity) {

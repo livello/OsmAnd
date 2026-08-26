@@ -1,4 +1,4 @@
-package net.osmand.plus.plugins.evbms
+package net.osmand.plus.plugins.torrentmaps
 
 import android.app.Notification
 import android.app.PendingIntent
@@ -12,18 +12,17 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import net.osmand.plus.OsmandApplication
 import net.osmand.plus.R
-import net.osmand.plus.activities.MapActivity
 import net.osmand.plus.notifications.NotificationHelper
 import net.osmand.plus.plugins.PluginsHelper
 import net.osmand.plus.utils.AndroidUtils
 
-class EvMapTorrentService : Service() {
+class MapTorrentService : Service() {
 
 	companion object {
 		const val NOTIFICATION_ID = 12
 
 		fun sync(context: Context, start: Boolean) {
-			val intent = Intent(context, EvMapTorrentService::class.java)
+			val intent = Intent(context, MapTorrentService::class.java)
 			if (start) {
 				ContextCompat.startForegroundService(context, intent)
 			} else {
@@ -35,8 +34,8 @@ class EvMapTorrentService : Service() {
 	private val app: OsmandApplication
 		get() = application as OsmandApplication
 
-	private val plugin: EvBmsPlugin?
-		get() = PluginsHelper.getPlugin(EvBmsPlugin::class.java)
+	private val plugin: TorrentMapsPlugin?
+		get() = PluginsHelper.getPlugin(TorrentMapsPlugin::class.java)
 
 	override fun onBind(intent: Intent?): IBinder? = null
 
@@ -67,21 +66,21 @@ class EvMapTorrentService : Service() {
 	}
 
 	private fun buildNotification(): Notification {
-		val status = plugin?.mapTorrentStatus() ?: EvMapTorrentStatus()
-		val title = getString(R.string.ev_bms_torrent_title)
+		val status = plugin?.mapTorrentStatus() ?: MapTorrentStatus()
+		val title = getString(R.string.torrent_maps_title)
 		val text = when {
 			!status.error.isNullOrBlank() -> status.error
 			!status.waitingReason.isNullOrBlank() -> status.waitingReason
 			else -> getString(
-				R.string.ev_bms_torrent_notification,
-				status.state.ifBlank { getString(R.string.ev_bms_torrent_state_starting) },
+				R.string.torrent_maps_notification,
+				status.state.ifBlank { getString(R.string.torrent_maps_state_starting) },
 				status.peers,
 				status.seeds,
 				AndroidUtils.formatSize(this, status.totalDownloaded),
 				AndroidUtils.formatSize(this, status.totalUploaded)
 			)
 		}
-		val launch = Intent(this, MapActivity::class.java).apply {
+		val launch = Intent(this, TorrentMapsActivity::class.java).apply {
 			flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
 		}
 		val pending = PendingIntent.getActivity(

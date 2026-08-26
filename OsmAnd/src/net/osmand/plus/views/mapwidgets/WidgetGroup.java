@@ -13,6 +13,7 @@ import net.osmand.plus.plugins.PluginsHelper;
 import net.osmand.plus.plugins.audionotes.AudioVideoNotesPlugin;
 import net.osmand.plus.plugins.development.OsmandDevelopmentPlugin;
 import net.osmand.plus.plugins.evbms.EvBmsPlugin;
+import net.osmand.plus.plugins.torrentmaps.TorrentMapsPlugin;
 import net.osmand.plus.plugins.externalsensors.ExternalSensorsPlugin;
 import net.osmand.plus.plugins.monitoring.OsmandMonitoringPlugin;
 import net.osmand.plus.plugins.weather.WeatherPlugin;
@@ -34,6 +35,7 @@ public enum WidgetGroup {
 	ANT_PLUS(R.string.external_sensor_widgets, 0, R.drawable.widget_sensor_external_day, R.drawable.widget_sensor_external_night, 0),
 	VEHICLE_METRICS(R.string.obd_widget_group, 0, R.drawable.widget_obd_vehicle_info_day, R.drawable.widget_obd_vehicle_info_night, 0),
 	EV_BMS(R.string.ev_bms_widget_group, 0, R.drawable.widget_obd_vehicle_info_day, R.drawable.widget_obd_vehicle_info_night, 0),
+	TORRENT_MAPS(R.string.torrent_maps_widget_group, 0, R.drawable.ic_action_gsave_dark, R.drawable.ic_action_gsave_dark, 0),
 	WEATHER(R.string.shared_string_weather, R.string.weather_widget_group_desc, R.drawable.widget_weather_umbrella_day, R.drawable.widget_weather_umbrella_night, 0),
 	SUNRISE_SUNSET(R.string.map_widget_sun_position, R.string.map_widget_group_sunrise_sunset_desc, R.drawable.widget_sunset_day, R.drawable.widget_sunset_night, 0),
 	GLIDE(R.string.map_widget_group_glide_ratio, R.string.map_widget_group_glide_desc, R.drawable.widget_glide_ratio_to_target_day, R.drawable.widget_glide_ratio_to_target_night, 0),
@@ -100,6 +102,7 @@ public enum WidgetGroup {
 			case BEARING -> WidgetType.RELATIVE_BEARING;
 			case TRIP_RECORDING -> WidgetType.TRIP_RECORDING_DISTANCE;
 			case AUDIO_VIDEO_NOTES -> WidgetType.AV_NOTES_ON_REQUEST;
+			case TORRENT_MAPS -> WidgetType.TORRENTS_MAPS;
 			default -> null;
 		};
 	}
@@ -132,6 +135,8 @@ public enum WidgetGroup {
 			return getPartOfPluginDesc(context, ExternalSensorsPlugin.class);
 		} else if (this == EV_BMS) {
 			return getPartOfPluginDesc(context, EvBmsPlugin.class);
+		} else if (this == TORRENT_MAPS) {
+			return getPartOfPluginDesc(context, TorrentMapsPlugin.class);
 		} else if (this == WEATHER) {
 			return getPartOfPluginDesc(context, WeatherPlugin.class);
 		}
@@ -143,7 +148,7 @@ public enum WidgetGroup {
 		if (this == BEARING || this == COORDINATES_WIDGET) {
 			return R.drawable.ic_action_help;
 		} else if (this == TRIP_RECORDING || this == AUDIO_VIDEO_NOTES || this == DEVELOPER_OPTIONS
-				|| this == WEATHER || this == ANT_PLUS || this == EV_BMS) {
+				|| this == WEATHER || this == ANT_PLUS || this == EV_BMS || this == TORRENT_MAPS) {
 			return R.drawable.ic_extension_dark;
 		}
 		return 0;

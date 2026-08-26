@@ -169,6 +169,8 @@ public enum WidgetType {
 	EV_HIKE("ev_hike", R.string.ev_bms_widget_hike, R.string.ev_bms_widget_hike_desc, R.drawable.ic_action_trekking_dark, R.drawable.ic_action_trekking_dark, 0, EV_BMS, RIGHT),
 	EV_SPEEDOMETER("ev_speedometer", R.string.ev_bms_widget_speedometer, R.string.ev_bms_widget_speedometer_desc, R.drawable.widget_obd_speed_day, R.drawable.widget_obd_speed_night, 0, EV_BMS, TOP),
 
+	TORRENTS_MAPS("torrents_maps", R.string.torrent_maps_widget, R.string.torrent_maps_widget_desc, R.drawable.ic_action_gsave_dark, R.drawable.ic_action_gsave_dark, 0, TORRENT_MAPS, RIGHT),
+
 //	OBD_VIN("obd_vin", R.string.obd_vin, R.string.obd_vin_desc, R.drawable.widget_weather_temperature_day, R.drawable.widget_weather_temperature_night, 0, VEHICLE_METRICS, RIGHT),
 //	OBD_FUEL_TYPE("obd_fuel_type", R.string.obd_fuel_type, R.string.obd_fuel_type_desc, R.drawable.widget_weather_temperature_day, R.drawable.widget_weather_temperature_night, 0, VEHICLE_METRICS, RIGHT),
 

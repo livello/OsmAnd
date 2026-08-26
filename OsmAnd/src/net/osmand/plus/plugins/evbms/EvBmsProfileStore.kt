@@ -43,9 +43,7 @@ class EvBmsProfileStore(
 			"ev_bms_speed_sensor_odo_km",
 			"ev_bms_speed_sensor_trip_km",
 			"ev_bms_settings_profiles",
-			"ev_bms_settings_profile",
-			"ev_bms_torrent_downloaded",
-			"ev_bms_torrent_uploaded"
+			"ev_bms_settings_profile"
 		)
 	}
 
