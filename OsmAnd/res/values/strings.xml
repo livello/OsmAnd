@@ -1072,6 +1072,8 @@ BMS UART (JBD / ANT) + controller UART (FarDriver / VESC) + BLE CSC wheel + GPS 
 • <b>protocol/</b> — JbdBmsProtocol, JbdBleModuleProtocol, AntBmsProtocol, FarDriverProtocol, VescProtocol, BmsSnapshot<br/>
 Layouts: <i>res/layout/ev_bms_*.xml</i>. Preferences: <i>res/xml/ev_bms_settings.xml</i>. Strings: <i>res/values/strings.xml</i> and <i>values-ru</i>.]]></string>
 	<string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+• 🧲 Fix launch crash: never keep alert-owned torrent handles (dangling JNI); resolve via session.find(infoHash); download-missing only on manual start<br/>
+• ⚙️ Jump-bar green rectangle outlines emoji buttons for preference groups visible while scrolling settings<br/>
 • 🧲 Map torrent: match Russia_x.obf to Russia_x_2.obf.zip, download missing maps and load them into OsmAnd<br/>
 • 🧲 Update and seed local maps from a .torrent (matched filenames only); settings at the bottom of EV-Telemetry<br/>
 • 📁 Select profile opens a dialog with rename, export, load and create new<br/>
@@ -1316,7 +1318,7 @@ Layouts: <i>res/layout/ev_bms_*.xml</i>. Preferences: <i>res/xml/ev_bms_settings
     <string name="ev_bms_torrent_wifi_only">Seed on Wi‑Fi only</string>
     <string name="ev_bms_torrent_wifi_only_desc">Do not transfer torrent data over mobile networks.</string>
     <string name="ev_bms_torrent_download_new">Download missing maps</string>
-    <string name="ev_bms_torrent_download_new_desc">Also download map files from the torrent that are not on the device yet, then load them into OsmAnd. Matching ignores .zip and _2 version suffixes (Russia_x_asia.obf ↔ Russia_x_asia_2.obf.zip).</string>
+    <string name="ev_bms_torrent_download_new_desc">Also download map files from the torrent that are not on the device yet (only when you start manually), then load them into OsmAnd. Matching ignores .zip and _2 version suffixes (Russia_x_asia.obf ↔ Russia_x_asia_2.obf.zip). Auto-run on charge only updates maps you already have.</string>
     <string name="ev_bms_torrent_start">Start update manually</string>
     <string name="ev_bms_torrent_start_desc">Open status and start seeding / updating now</string>
     <string name="ev_bms_torrent_status_title">Torrent status</string>

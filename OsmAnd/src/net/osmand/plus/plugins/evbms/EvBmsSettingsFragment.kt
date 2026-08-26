@@ -190,12 +190,43 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			listView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
 				override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
 					val atTop = !recyclerView.canScrollVertically(-1)
-					(parentFragment as? EvBmsSettingsBottomSheet)?.setActionButtonsVisible(atTop)
+					val sheet = parentFragment as? EvBmsSettingsBottomSheet
+					sheet?.setActionButtonsVisible(atTop)
+					sheet?.onSettingsScrolled()
 				}
 			})
 			setActionFooterInset(true)
 		}
 		return view
+	}
+
+	@SuppressLint("RestrictedApi")
+	fun visibleSettingsJumpKeys(): Set<String> {
+		val list = listView ?: return emptySet()
+		val lm = list.layoutManager as? LinearLayoutManager ?: return emptySet()
+		val adapter = list.adapter as? PreferenceGroupAdapter ?: return emptySet()
+		val first = lm.findFirstVisibleItemPosition()
+		val last = lm.findLastVisibleItemPosition()
+		if (first == RecyclerView.NO_POSITION || last == RecyclerView.NO_POSITION) {
+			return emptySet()
+		}
+		val positions = SETTINGS_JUMPS.mapNotNull { jump ->
+			val pref = findPreference<Preference>(jump.key) ?: return@mapNotNull null
+			val pos = adapter.getPreferenceAdapterPosition(pref)
+			if (pos >= 0) jump.key to pos else null
+		}.sortedBy { it.second }
+		if (positions.isEmpty()) {
+			return emptySet()
+		}
+		val visible = linkedSetOf<String>()
+		for (i in positions.indices) {
+			val (key, start) = positions[i]
+			val end = positions.getOrNull(i + 1)?.second ?: (last + 1)
+			if (start <= last && end - 1 >= first) {
+				visible.add(key)
+			}
+		}
+		return visible
 	}
 
 	fun setActionFooterInset(sessionVisible: Boolean, jumpVisible: Boolean = false) {
@@ -225,7 +256,9 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 				(list.layoutManager as? LinearLayoutManager)?.scrollToPositionWithOffset(pos, 0)
 				list.post {
 					val atTop = !list.canScrollVertically(-1)
-					(parentFragment as? EvBmsSettingsBottomSheet)?.setActionButtonsVisible(atTop)
+					val sheet = parentFragment as? EvBmsSettingsBottomSheet
+					sheet?.setActionButtonsVisible(atTop)
+					sheet?.onSettingsScrolled()
 				}
 				return
 			}

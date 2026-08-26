@@ -67,8 +67,14 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	private var buttonsParent: ViewGroup? = null
 	private var buttonsBar: View? = null
 	private var jumpBar: View? = null
-	private var lastCalRunning = false
+	private var jumpButtonsRow: LinearLayout? = null
+	private val jumpButtonViews = ArrayList<View>()
+	private var jumpCursor: View? = null
+	private var jumpCursorAnimator: android.animation.ValueAnimator? = null
+	private var lastJumpCursorKeys: Set<String> = emptySet()
+
 	private var actionButtonsVisible = true
+	private var lastCalRunning = false
 	private var currentTab = EvBmsSheetTab.SETTINGS
 	private val tabButtons = HashMap<EvBmsSheetTab, TextView>()
 	private val fieldValueViews = ArrayList<Pair<TelemetryField, TextView>>()
@@ -218,10 +224,96 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			return
 		}
 		if (actionButtonsVisible == visible) {
+			if (!visible) {
+				refreshJumpCursor()
+			}
 			return
 		}
 		actionButtonsVisible = visible
 		applyFooterMode(animate = true)
+	}
+
+	fun onSettingsScrolled() {
+		if (currentTab == EvBmsSheetTab.SETTINGS && !actionButtonsVisible) {
+			refreshJumpCursor()
+		}
+	}
+
+	fun refreshJumpCursor() {
+		val bar = jumpBar ?: return
+		val row = jumpButtonsRow ?: return
+		val cursor = jumpCursor ?: return
+		if (bar.visibility != View.VISIBLE || currentTab != EvBmsSheetTab.SETTINGS) {
+			cursor.visibility = View.GONE
+			return
+		}
+		val keys = settingsFragment()?.visibleSettingsJumpKeys().orEmpty()
+		if (keys.isEmpty() || jumpButtonViews.isEmpty()) {
+			cursor.visibility = View.GONE
+			return
+		}
+		var left = Int.MAX_VALUE
+		var right = Int.MIN_VALUE
+		var top = Int.MAX_VALUE
+		var bottom = Int.MIN_VALUE
+		val host = cursor.parent as? View ?: row
+		val hostLoc = IntArray(2)
+		host.getLocationInWindow(hostLoc)
+		for (i in EvBmsSettingsFragment.SETTINGS_JUMPS.indices) {
+			if (EvBmsSettingsFragment.SETTINGS_JUMPS[i].key !in keys) {
+				continue
+			}
+			val btn = jumpButtonViews.getOrNull(i) ?: continue
+			if (btn.width <= 0 || btn.height <= 0) {
+				continue
+			}
+			val loc = IntArray(2)
+			btn.getLocationInWindow(loc)
+			val l = loc[0] - hostLoc[0]
+			val t = loc[1] - hostLoc[1]
+			left = minOf(left, l)
+			top = minOf(top, t)
+			right = maxOf(right, l + btn.width)
+			bottom = maxOf(bottom, t + btn.height)
+		}
+		if (left >= right || top >= bottom) {
+			cursor.visibility = View.GONE
+			return
+		}
+		val pad = AndroidUtils.dpToPx(app, 2f)
+		val targetL = (left - pad).toFloat()
+		val targetT = (top - pad).toFloat()
+		val targetW = (right - left + pad * 2).toFloat()
+		val targetH = (bottom - top + pad * 2).toFloat()
+		cursor.visibility = View.VISIBLE
+		if (lastJumpCursorKeys == keys && cursor.width > 0) {
+			jumpCursorAnimator?.cancel()
+			jumpCursorAnimator = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+				duration = 160
+				val fromL = cursor.x
+				val fromT = cursor.y
+				val fromW = cursor.width.toFloat()
+				val fromH = cursor.height.toFloat()
+				addUpdateListener { anim ->
+					val f = anim.animatedValue as Float
+					cursor.x = fromL + (targetL - fromL) * f
+					cursor.y = fromT + (targetT - fromT) * f
+					val lp = cursor.layoutParams
+					lp.width = (fromW + (targetW - fromW) * f).toInt().coerceAtLeast(1)
+					lp.height = (fromH + (targetH - fromH) * f).toInt().coerceAtLeast(1)
+					cursor.layoutParams = lp
+				}
+				start()
+			}
+		} else {
+			cursor.x = targetL
+			cursor.y = targetT
+			val lp = cursor.layoutParams
+			lp.width = targetW.toInt().coerceAtLeast(1)
+			lp.height = targetH.toInt().coerceAtLeast(1)
+			cursor.layoutParams = lp
+		}
+		lastJumpCursorKeys = keys
 	}
 
 	private fun applyFooterMode(animate: Boolean) {
@@ -262,6 +354,11 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		}
 		show(session, showSession)
 		show(jump, !showSession)
+		if (!showSession) {
+			jump?.post { refreshJumpCursor() }
+		} else {
+			jumpCursor?.visibility = View.GONE
+		}
 	}
 
 	fun onCalibrationTick() {
@@ -1191,7 +1288,9 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		parent.addView(bar)
 		jumpBar = bar
 		val row = bar.findViewById<LinearLayout>(R.id.ev_bms_jump_buttons)
+		jumpButtonsRow = row
 		row.removeAllViews()
+		jumpButtonViews.clear()
 		val ctx = requireContext()
 		val color = ColorUtilities.getPrimaryTextColor(ctx, nightMode)
 		val typed = android.util.TypedValue()
@@ -1214,7 +1313,20 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 				setOnClickListener { settingsFragment()?.scrollToSettingsGroup(jump.key) }
 			}
 			row.addView(btn)
+			jumpButtonViews.add(btn)
 		}
+		val cursor = bar.findViewById<View>(R.id.ev_bms_jump_cursor)
+		cursor.background = android.graphics.drawable.GradientDrawable().apply {
+			setColor(android.graphics.Color.TRANSPARENT)
+			setStroke(AndroidUtils.dpToPx(ctx, 2f), 0xFF2E7D32.toInt())
+			cornerRadius = AndroidUtils.dpToPx(ctx, 4f).toFloat()
+		}
+		cursor.isClickable = false
+		cursor.isFocusable = false
+		jumpCursor = cursor
+		bar.findViewById<android.widget.HorizontalScrollView>(R.id.ev_bms_jump_scroll)
+			?.setOnScrollChangeListener { _, _, _, _, _ -> refreshJumpCursor() }
+		bar.post { refreshJumpCursor() }
 	}
 
 	private fun confirmAction(titleRes: Int, messageRes: Int, onYes: () -> Unit) {

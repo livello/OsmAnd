@@ -309,7 +309,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	val TORRENT_WIFI_ONLY: CommonPreference<Boolean> =
 		registerBooleanPreference("ev_bms_torrent_wifi_only", true).makeGlobal().makeShared()
 	val TORRENT_DOWNLOAD_NEW: CommonPreference<Boolean> =
-		registerBooleanPreference("ev_bms_torrent_download_new", true).makeGlobal().makeShared()
+		registerBooleanPreference("ev_bms_torrent_download_new", false).makeGlobal().makeShared()
 	val TORRENT_DOWNLOADED: CommonPreference<Long> =
 		registerLongPreference("ev_bms_torrent_downloaded", 0L).makeGlobal()
 	val TORRENT_UPLOADED: CommonPreference<Long> =
@@ -600,7 +600,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		profileStore.ensureDefault()
 		restoreTelemetrySession()
 		registerTorrentWatchers()
-		syncMapTorrent()
+		// Defer so MapActivity can finish first frame; torrent JNI runs on a worker thread.
+		handler.postDelayed({ syncMapTorrent() }, 2000)
 		return true
 	}
 

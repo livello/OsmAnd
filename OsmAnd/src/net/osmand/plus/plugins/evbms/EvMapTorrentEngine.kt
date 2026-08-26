@@ -15,15 +15,14 @@ import org.libtorrent4j.Priority
 import org.libtorrent4j.SessionManager
 import org.libtorrent4j.SessionParams
 import org.libtorrent4j.SettingsPack
+import org.libtorrent4j.Sha1Hash
 import org.libtorrent4j.TorrentFlags
 import org.libtorrent4j.TorrentHandle
 import org.libtorrent4j.TorrentInfo
 import org.libtorrent4j.alerts.AddTorrentAlert
 import org.libtorrent4j.alerts.Alert
 import org.libtorrent4j.alerts.FileCompletedAlert
-import org.libtorrent4j.alerts.FileRenamedAlert
 import org.libtorrent4j.alerts.SaveResumeDataAlert
-import org.libtorrent4j.alerts.TorrentAlert
 import java.io.File
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
@@ -101,7 +100,8 @@ class EvMapTorrentEngine(
 	@Volatile
 	private var snapshot = EvMapTorrentStatus()
 	private var session: SessionManager? = null
-	private var handle: TorrentHandle? = null
+	/** Never keep a handle from an Alert — those SWIG wrappers do not own memory and dangle. */
+	private var infoHash: Sha1Hash? = null
 	private var sessionDown0 = 0L
 	private var sessionUp0 = 0L
 	private var lastPersistDown = 0L
@@ -112,14 +112,28 @@ class EvMapTorrentEngine(
 	private val pendingSwaps = HashMap<Int, File>()
 	private val pendingReload = AtomicBoolean(false)
 	private val renamed = AtomicBoolean(false)
+	private val prepared = AtomicBoolean(false)
 	private var manualRun = false
 	private val started = AtomicBoolean(false)
+	private var attachAttempts = 0
 
 	private val poll = object : Runnable {
 		override fun run() {
-			refreshStatus()
-			persistCounters()
-			maybeSwapCompleted()
+			try {
+				if (!prepared.get()) {
+					attachAndPrepare()
+				}
+				refreshStatus()
+				persistCounters()
+				maybeSwapCompleted()
+			} catch (e: Exception) {
+				Log.w(TAG, "poll", e)
+			} catch (e: Error) {
+				Log.e(TAG, "poll native", e)
+				snapshot = snapshot.copy(error = e.message ?: "libtorrent")
+				stopLocked()
+				return
+			}
 			if (started.get()) {
 				torrentHandler.postDelayed(this, 1000)
 			}
@@ -130,11 +144,56 @@ class EvMapTorrentEngine(
 		override fun types(): IntArray? = null
 
 		override fun alert(alert: Alert<*>) {
-			try {
-				onAlert(alert)
-			} catch (e: Exception) {
-				Log.w(TAG, "alert", e)
+			// Capture only plain data on the alert thread. Never keep Alert/TorrentHandle
+			// across threads — alert-owned torrent_handle has cMemOwn=false and is freed
+			// when the alert queue advances (SIGABRT in is_valid/status/resume).
+			when (alert) {
+				is AddTorrentAlert -> {
+					val errMsg = if (alert.error().isError) alert.error().message else null
+					torrentHandler.post {
+						try {
+							onTorrentAdded(errMsg)
+						} catch (e: Exception) {
+							Log.w(TAG, "add alert", e)
+						} catch (e: Error) {
+							Log.e(TAG, "add alert native", e)
+							snapshot = snapshot.copy(error = e.message ?: "libtorrent")
+							stopLocked()
+						}
+					}
+				}
+				is FileCompletedAlert -> {
+					val index = alert.index()
+					uiHandler.post { onFileDone(index) }
+				}
+				is SaveResumeDataAlert -> {
+					val bytes = try {
+						org.libtorrent4j.AddTorrentParams.writeResumeDataBuf(alert.params())
+					} catch (e: Exception) {
+						Log.w(TAG, "resume encode", e)
+						null
+					}
+					if (bytes != null) {
+						torrentHandler.post { writeResumeBytes(bytes) }
+					}
+				}
+				else -> {}
 			}
+		}
+	}
+
+	/** Fresh handle from session.find — safe to use until the next stop. */
+	private fun currentHandle(): TorrentHandle? {
+		val sm = session ?: return null
+		val hash = infoHash ?: return null
+		return try {
+			sm.find(hash)
+		} catch (e: Exception) {
+			Log.w(TAG, "find", e)
+			null
+		} catch (e: Error) {
+			Log.e(TAG, "find native", e)
+			null
 		}
 	}
 
@@ -286,8 +345,11 @@ class EvMapTorrentEngine(
 			val chosen = ArrayList<SelectedFile>()
 			pendingSwaps.clear()
 			renamed.set(false)
+			prepared.set(false)
 			pendingReload.set(false)
-			val downloadNew = plugin.TORRENT_DOWNLOAD_NEW.get()
+			attachAttempts = 0
+			infoHash = ti.infoHash()
+			val downloadNew = plugin.TORRENT_DOWNLOAD_NEW.get() && manualRun
 			var mapFilesInTorrent = 0
 			for (i in 0 until n) {
 				if (files.padFileAt(i)) {
@@ -348,6 +410,7 @@ class EvMapTorrentEngine(
 					matchedFiles = 0,
 					error = hint
 				)
+				infoHash = null
 				return
 			}
 			val sp = SettingsPack()
@@ -383,7 +446,7 @@ class EvMapTorrentEngine(
 			)
 			Log.i(TAG, "start selected=${chosen.size} update=$updating download=$downloading of maps=$mapFilesInTorrent")
 			torrentHandler.removeCallbacks(poll)
-			torrentHandler.post(poll)
+			torrentHandler.postDelayed(poll, 300)
 		} catch (e: UnsatisfiedLinkError) {
 			Log.e(TAG, "native", e)
 			snapshot = EvMapTorrentStatus(error = e.message ?: "libtorrent")
@@ -393,41 +456,88 @@ class EvMapTorrentEngine(
 		}
 	}
 
-	private fun resumeLocked() {
-		val sm = session ?: return
-		if (sm.isPaused) {
-			sm.resume()
+	private fun onTorrentAdded(error: String?) {
+		if (!error.isNullOrBlank()) {
+			snapshot = snapshot.copy(error = error)
+			return
 		}
-		handle?.resume()
-		snapshot = snapshot.copy(paused = false, waitingReason = null, running = true, error = null)
+		attachAndPrepare()
+	}
+
+	private fun attachAndPrepare() {
+		if (!started.get() || prepared.get()) {
+			return
+		}
+		val th = currentHandle()
+		if (th == null) {
+			attachAttempts++
+			if (attachAttempts > 40) {
+				snapshot = snapshot.copy(error = "torrent handle not ready")
+				stopLocked()
+			}
+			return
+		}
+		renameSelected(th)
+	}
+
+	private fun resumeLocked() {
+		if (!prepared.get()) {
+			attachAndPrepare()
+			return
+		}
+		val sm = session ?: return
+		try {
+			if (sm.isRunning && sm.isPaused) {
+				sm.resume()
+			}
+			currentHandle()?.resume()
+			snapshot = snapshot.copy(paused = false, waitingReason = null, running = true, error = null)
+		} catch (e: Exception) {
+			Log.w(TAG, "resumeLocked", e)
+		} catch (e: Error) {
+			Log.e(TAG, "resumeLocked native", e)
+			snapshot = snapshot.copy(error = e.message ?: "libtorrent")
+			stopLocked()
+		}
 	}
 
 	private fun pauseLocked(reason: String?) {
 		try {
-			handle?.pause()
+			currentHandle()?.pause()
 			session?.pause()
 		} catch (_: Exception) {
+		} catch (_: Error) {
 		}
 		snapshot = snapshot.copy(paused = true, waitingReason = reason, running = true)
 	}
 
 	private fun stopLocked() {
 		torrentHandler.removeCallbacks(poll)
+		torrentHandler.removeCallbacks(resumeAfterRename)
 		started.set(false)
+		prepared.set(false)
+		renamed.set(false)
 		try {
-			handle?.pause()
-			handle?.saveResumeData()
+			currentHandle()?.let {
+				it.pause()
+				it.saveResumeData()
+			}
 		} catch (_: Exception) {
+		} catch (_: Error) {
 		}
 		persistCounters(force = true)
 		try {
+			session?.removeListener(listener)
 			session?.stop()
 		} catch (e: Exception) {
 			Log.w(TAG, "stop session", e)
+		} catch (e: Error) {
+			Log.e(TAG, "stop session native", e)
 		}
 		session = null
-		handle = null
+		infoHash = null
 		selected = emptyList()
+		attachAttempts = 0
 		snapshot = snapshot.copy(
 			running = false,
 			paused = false,
@@ -438,31 +548,6 @@ class EvMapTorrentEngine(
 			uploadRate = 0L,
 			waitingReason = waitingReason()
 		)
-	}
-
-	private fun onAlert(alert: Alert<*>) {
-		when (alert) {
-			is AddTorrentAlert -> {
-				val err = alert.error()
-				if (err.isError) {
-					snapshot = snapshot.copy(error = err.message)
-					return
-				}
-				val th = alert.handle()
-				handle = th
-				renameSelected(th)
-			}
-			is FileRenamedAlert -> {
-				if (!renamed.get()) {
-					maybeResumeAfterRename()
-				}
-			}
-			is FileCompletedAlert -> {
-				uiHandler.post { onFileDone(alert.index()) }
-			}
-			is SaveResumeDataAlert -> saveResume(alert)
-			is TorrentAlert<*> -> refreshStatus()
-		}
 	}
 
 	private fun renameSelected(th: TorrentHandle) {
@@ -485,28 +570,51 @@ class EvMapTorrentEngine(
 				th.renameFile(item.index, target.absolutePath)
 			} catch (e: Exception) {
 				Log.w(TAG, "rename ${item.torrentName}", e)
+			} catch (e: Error) {
+				Log.e(TAG, "rename native ${item.torrentName}", e)
+				snapshot = snapshot.copy(error = e.message ?: "libtorrent rename")
+				stopLocked()
+				return
 			}
 		}
-		torrentHandler.postDelayed({ maybeResumeAfterRename() }, 1500)
+		torrentHandler.removeCallbacks(resumeAfterRename)
+		torrentHandler.postDelayed(resumeAfterRename, 1500)
 	}
+
+	private val resumeAfterRename = Runnable { maybeResumeAfterRename() }
 
 	private fun maybeResumeAfterRename() {
 		if (!started.get() || renamed.getAndSet(true)) {
 			return
 		}
 		try {
-			handle?.resume()
-			session?.resume()
-		} catch (_: Exception) {
+			val sm = session
+			if (sm != null && sm.isRunning && sm.isPaused) {
+				sm.resume()
+			}
+			currentHandle()?.resume()
+			prepared.set(true)
+			snapshot = snapshot.copy(paused = false, waitingReason = null, running = true, error = null)
+		} catch (e: Exception) {
+			Log.e(TAG, "resume", e)
+			snapshot = snapshot.copy(error = e.message)
+		} catch (e: Error) {
+			Log.e(TAG, "resume native", e)
+			snapshot = snapshot.copy(error = e.message ?: "libtorrent resume")
+			stopLocked()
 		}
 	}
 
 	private fun refreshStatus() {
 		val sm = session ?: return
-		val th = handle
+		if (!sm.isRunning) {
+			return
+		}
 		val ts = try {
-			th?.status()
+			currentHandle()?.status()
 		} catch (_: Exception) {
+			null
+		} catch (_: Error) {
 			null
 		}
 		val sessionDown = (sm.totalDownload() - sessionDown0).coerceAtLeast(0L)
@@ -551,14 +659,14 @@ class EvMapTorrentEngine(
 			lastPersistUp = up
 		}
 		try {
-			handle?.saveResumeData()
+			currentHandle()?.saveResumeData()
 		} catch (_: Exception) {
+		} catch (_: Error) {
 		}
 	}
 
-	private fun saveResume(alert: SaveResumeDataAlert) {
+	private fun writeResumeBytes(bytes: ByteArray) {
 		try {
-			val bytes = org.libtorrent4j.AddTorrentParams.writeResumeDataBuf(alert.params())
 			val file = resumeFile()
 			file.parentFile?.mkdirs()
 			file.writeBytes(bytes)
@@ -568,10 +676,12 @@ class EvMapTorrentEngine(
 	}
 
 	private fun maybeSwapCompleted() {
-		val th = handle ?: return
+		val th = currentHandle() ?: return
 		val progress = try {
 			th.fileProgress()
 		} catch (_: Exception) {
+			return
+		} catch (_: Error) {
 			return
 		}
 		for (item in selected) {

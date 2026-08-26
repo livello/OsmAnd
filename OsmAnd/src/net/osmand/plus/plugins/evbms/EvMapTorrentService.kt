@@ -42,6 +42,11 @@ class EvMapTorrentService : Service() {
 
 	override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
 		app.notificationHelper.createNotificationChannel()
+		val p = plugin
+		if (p == null || !p.TORRENT_ENABLED.get()) {
+			stopSelf()
+			return START_NOT_STICKY
+		}
 		try {
 			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
 				startForeground(
@@ -56,7 +61,9 @@ class EvMapTorrentService : Service() {
 			stopSelf()
 			return START_NOT_STICKY
 		}
-		return START_STICKY
+		// Do not call syncMapTorrent() here: ActivityManager restarts this service after a
+		// native crash and would immediately re-enter the crashing path.
+		return START_NOT_STICKY
 	}
 
 	private fun buildNotification(): Notification {
