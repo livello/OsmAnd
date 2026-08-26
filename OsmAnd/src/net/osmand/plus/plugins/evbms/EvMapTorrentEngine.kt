@@ -38,26 +38,60 @@ class EvMapTorrentEngine(
 		private const val DIR = "ev_torrent"
 		private const val TORRENT_FILE = "maps.torrent"
 		private const val RESUME_FILE = "maps.resume"
+		private const val LISTING_FILE = "ev_torrent_files.txt"
 		private val MAP_EXTS = arrayOf(
-			IndexConstants.BINARY_MAP_INDEX_EXT,
 			IndexConstants.BINARY_MAP_INDEX_EXT_ZIP,
+			IndexConstants.BINARY_MAP_INDEX_EXT,
 			IndexConstants.BINARY_WIKI_MAP_INDEX_EXT,
 			IndexConstants.BINARY_ROAD_MAP_INDEX_EXT,
 			IndexConstants.BINARY_SRTM_MAP_INDEX_EXT,
 			IndexConstants.BINARY_SRTM_FEET_MAP_INDEX_EXT,
 			IndexConstants.BINARY_DEPTH_MAP_INDEX_EXT,
 			IndexConstants.BINARY_TRAVEL_GUIDE_MAP_INDEX_EXT,
+			".wiki.obf.zip",
+			".road.obf.zip",
+			".srtm.obf.zip",
+			".srtmf.obf.zip",
+			".depth.obf.zip",
+			".travel.obf.zip",
 			IndexConstants.SQLITE_EXT,
 			IndexConstants.TIF_EXT,
-			IndexConstants.TIFF_DB_EXT,
-			".zip"
+			IndexConstants.TIFF_DB_EXT
 		)
 		private val SKIP_DIRS = setOf(
 			"tracks", "favorites", "avnotes", "voice", "fonts", "tiles",
 			"hidden", "backup", "rec", "import", "media", "help",
 			TelemetryRecorder.DIR_NAME, DIR
 		)
+		private val VERSION_SUFFIX = Regex("_\\d+(?=\\.obf(?:\\.zip)?$)", RegexOption.IGNORE_CASE)
+
+		fun mapKey(rawName: String): String {
+			var n = rawName.substringAfterLast('/').substringAfterLast('\\').lowercase(Locale.US)
+			if (n.endsWith(".obf.zip")) {
+				n = n.removeSuffix(".zip")
+			}
+			n = VERSION_SUFFIX.replace(n, "")
+			return n
+		}
+
+		fun isMapFile(rawName: String): Boolean {
+			val lower = rawName.substringAfterLast('/').substringAfterLast('\\').lowercase(Locale.US)
+			if (lower.endsWith(IndexConstants.DOWNLOAD_EXT) || lower.endsWith(".new") || lower.endsWith(".bak")) {
+				return false
+			}
+			return MAP_EXTS.any { lower.endsWith(it) }
+		}
 	}
+
+	private data class SelectedFile(
+		val index: Int,
+		val torrentName: String,
+		val key: String,
+		val size: Long,
+		val local: File?,
+		val dest: File,
+		val replaceExisting: Boolean
+	)
 
 	private val torrentThread = HandlerThread("ev-map-torrent").apply { start() }
 	private val torrentHandler = Handler(torrentThread.looper)
@@ -74,8 +108,9 @@ class EvMapTorrentEngine(
 	private var lastPersistUp = 0L
 	private var baseDown = 0L
 	private var baseUp = 0L
-	private var matchedIndexes = IntArray(0)
+	private var selected = emptyList<SelectedFile>()
 	private val pendingSwaps = HashMap<Int, File>()
+	private val pendingReload = AtomicBoolean(false)
 	private val renamed = AtomicBoolean(false)
 	private var manualRun = false
 	private val started = AtomicBoolean(false)
@@ -124,6 +159,7 @@ class EvMapTorrentEngine(
 			}
 			plugin.TORRENT_PATH.set(dest.absolutePath)
 			plugin.TORRENT_NAME.set(displayName(uri) ?: dest.name)
+			writeListing(TorrentInfo(dest))
 			true
 		} catch (e: Exception) {
 			Log.e(TAG, "import torrent", e)
@@ -240,35 +276,77 @@ class EvMapTorrentEngine(
 				snapshot = EvMapTorrentStatus(error = app.getString(R.string.ev_bms_torrent_invalid))
 				return
 			}
-			val localByName = scanLocalMaps()
+			writeListing(ti)
+			val mapsDir = app.getAppPath(IndexConstants.MAPS_PATH)
+			mapsDir.mkdirs()
+			val localByKey = scanLocalMaps()
 			val files = ti.files()
 			val n = ti.numFiles()
 			val priorities = Array(n) { Priority.IGNORE }
-			val matched = ArrayList<Int>()
+			val chosen = ArrayList<SelectedFile>()
 			pendingSwaps.clear()
 			renamed.set(false)
+			pendingReload.set(false)
+			val downloadNew = plugin.TORRENT_DOWNLOAD_NEW.get()
+			var mapFilesInTorrent = 0
 			for (i in 0 until n) {
 				if (files.padFileAt(i)) {
 					continue
 				}
-				val name = files.fileName(i)
-				val local = localByName[name.lowercase(Locale.US)] ?: continue
-				matched.add(i)
+				val torrentName = files.fileName(i)
+				if (!isMapFile(torrentName)) {
+					continue
+				}
+				mapFilesInTorrent++
+				val key = mapKey(torrentName)
+				val local = localByKey[key]
+				val missing = local == null
+				if (missing && !downloadNew) {
+					continue
+				}
+				val destName = torrentName.substringAfterLast('/').substringAfterLast('\\')
+				val dest = File(mapsDir, destName)
+				val sameFile = local != null &&
+						local.isFile &&
+						local.length() == files.fileSize(i) &&
+						local.name.equals(destName, ignoreCase = true)
+				val replaceExisting = local != null && !sameFile
+				chosen.add(
+					SelectedFile(
+						index = i,
+						torrentName = torrentName,
+						key = key,
+						size = files.fileSize(i),
+						local = local,
+						dest = dest,
+						replaceExisting = replaceExisting
+					)
+				)
 				priorities[i] = Priority.DEFAULT
-				val torrentSize = files.fileSize(i)
-				if (local.isFile && local.length() == torrentSize) {
-					pendingSwaps.remove(i)
-				} else {
-					pendingSwaps[i] = local
+				if (replaceExisting || (local == null && downloadNew)) {
+					if (replaceExisting && local != null && local.name.equals(destName, ignoreCase = true)) {
+						pendingSwaps[i] = local
+					} else if (replaceExisting && local != null) {
+						pendingSwaps[i] = dest
+					} else {
+						pendingSwaps[i] = dest
+					}
 				}
 			}
-			matchedIndexes = matched.toIntArray()
-			if (matched.isEmpty()) {
+			selected = chosen
+			if (chosen.isEmpty()) {
+				val samples = sampleTorrentNames(ti, 8)
+				val hint = if (samples.isNotEmpty()) {
+					app.getString(R.string.ev_bms_torrent_no_match_hint, samples.joinToString(", "))
+				} else {
+					app.getString(R.string.ev_bms_torrent_no_match)
+				}
+				Log.w(TAG, "no selectable maps local=${localByKey.size} torrentMaps=$mapFilesInTorrent samples=$samples")
 				snapshot = EvMapTorrentStatus(
 					torrentName = ti.name(),
 					torrentFiles = n,
 					matchedFiles = 0,
-					error = app.getString(R.string.ev_bms_torrent_no_match)
+					error = hint
 				)
 				return
 			}
@@ -286,21 +364,24 @@ class EvMapTorrentEngine(
 			lastPersistUp = 0L
 			baseDown = plugin.TORRENT_DOWNLOADED.get()
 			baseUp = plugin.TORRENT_UPLOADED.get()
-			val saveDir = app.getAppPath(IndexConstants.MAPS_PATH)
-			saveDir.mkdirs()
 			val resume = resumeFile().takeIf { it.isFile }
-			sm.download(ti, saveDir, resume, priorities, null, TorrentFlags.PAUSED)
+			sm.download(ti, mapsDir, resume, priorities, null, TorrentFlags.PAUSED)
 			started.set(true)
+			val updating = chosen.count { it.local != null }
+			val downloading = chosen.size - updating
 			snapshot = EvMapTorrentStatus(
 				running = true,
 				paused = true,
 				state = app.getString(R.string.ev_bms_torrent_state_starting),
 				torrentName = ti.name(),
-				matchedFiles = matched.size,
+				matchedFiles = chosen.size,
 				torrentFiles = n,
 				totalDownloaded = baseDown,
-				totalUploaded = baseUp
+				totalUploaded = baseUp,
+				error = null,
+				waitingReason = app.getString(R.string.ev_bms_torrent_selected_hint, updating, downloading)
 			)
+			Log.i(TAG, "start selected=${chosen.size} update=$updating download=$downloading of maps=$mapFilesInTorrent")
 			torrentHandler.removeCallbacks(poll)
 			torrentHandler.post(poll)
 		} catch (e: UnsatisfiedLinkError) {
@@ -318,7 +399,7 @@ class EvMapTorrentEngine(
 			sm.resume()
 		}
 		handle?.resume()
-		snapshot = snapshot.copy(paused = false, waitingReason = null, running = true)
+		snapshot = snapshot.copy(paused = false, waitingReason = null, running = true, error = null)
 	}
 
 	private fun pauseLocked(reason: String?) {
@@ -346,6 +427,7 @@ class EvMapTorrentEngine(
 		}
 		session = null
 		handle = null
+		selected = emptyList()
 		snapshot = snapshot.copy(
 			running = false,
 			paused = false,
@@ -368,7 +450,7 @@ class EvMapTorrentEngine(
 				}
 				val th = alert.handle()
 				handle = th
-				renameMatched(th)
+				renameSelected(th)
 			}
 			is FileRenamedAlert -> {
 				if (!renamed.get()) {
@@ -376,32 +458,33 @@ class EvMapTorrentEngine(
 				}
 			}
 			is FileCompletedAlert -> {
-				val idx = alert.index()
-				uiHandler.post { swapIfNeeded(idx) }
+				uiHandler.post { onFileDone(alert.index()) }
 			}
 			is SaveResumeDataAlert -> saveResume(alert)
 			is TorrentAlert<*> -> refreshStatus()
 		}
 	}
 
-	private fun renameMatched(th: TorrentHandle) {
-		val ti = th.torrentFile() ?: return
-		val files = ti.files()
-		val localByName = scanLocalMaps()
-		for (i in matchedIndexes) {
-			val name = files.fileName(i)
-			val local = localByName[name.lowercase(Locale.US)] ?: continue
-			val torrentSize = files.fileSize(i)
-			val target = if (local.isFile && local.length() == torrentSize) {
-				local
+	private fun renameSelected(th: TorrentHandle) {
+		for (item in selected) {
+			val target = if (item.replaceExisting &&
+				item.local != null &&
+				item.local.name.equals(item.dest.name, ignoreCase = true)
+			) {
+				File(item.local.absolutePath + ".new")
+			} else if (item.replaceExisting || item.local == null) {
+				if (item.dest.exists() && item.dest.length() != item.size) {
+					File(item.dest.absolutePath + ".new")
+				} else {
+					item.dest
+				}
 			} else {
-				pendingSwaps[i] = local
-				File(local.absolutePath + ".new")
+				item.local
 			}
 			try {
-				th.renameFile(i, target.absolutePath)
+				th.renameFile(item.index, target.absolutePath)
 			} catch (e: Exception) {
-				Log.w(TAG, "rename $name", e)
+				Log.w(TAG, "rename ${item.torrentName}", e)
 			}
 		}
 		torrentHandler.postDelayed({ maybeResumeAfterRename() }, 1500)
@@ -430,7 +513,7 @@ class EvMapTorrentEngine(
 		val sessionUp = (sm.totalUpload() - sessionUp0).coerceAtLeast(0L)
 		val progress = ts?.progressPpm()?.div(10000) ?: snapshot.progressPercent
 		val stateName = when {
-			snapshot.error != null -> snapshot.state
+			!snapshot.error.isNullOrBlank() && !started.get() -> snapshot.state
 			ts == null -> app.getString(R.string.ev_bms_torrent_state_starting)
 			sm.isPaused || snapshot.paused -> app.getString(R.string.ev_bms_torrent_state_paused)
 			ts.isSeeding -> app.getString(R.string.ev_bms_torrent_state_seeding)
@@ -449,7 +532,8 @@ class EvMapTorrentEngine(
 			sessionUploaded = sessionUp,
 			totalDownloaded = baseDown + sessionDown,
 			totalUploaded = baseUp + sessionUp,
-			waitingReason = if (sm.isPaused) waitingReason() else null
+			matchedFiles = selected.size,
+			waitingReason = if (sm.isPaused) waitingReason() else snapshot.waitingReason
 		)
 	}
 
@@ -484,57 +568,92 @@ class EvMapTorrentEngine(
 	}
 
 	private fun maybeSwapCompleted() {
-		if (pendingSwaps.isEmpty()) {
-			return
-		}
 		val th = handle ?: return
 		val progress = try {
 			th.fileProgress()
 		} catch (_: Exception) {
 			return
 		}
-		val ti = try {
-			th.torrentFile()
-		} catch (_: Exception) {
-			null
-		} ?: return
-		val files = ti.files()
-		for ((idx, dest) in pendingSwaps.toMap()) {
+		for (item in selected) {
+			val idx = item.index
 			if (idx < 0 || idx >= progress.size) {
 				continue
 			}
-			if (progress[idx] >= files.fileSize(idx) && files.fileSize(idx) > 0L) {
-				uiHandler.post { swapIfNeeded(idx) }
+			if (progress[idx] >= item.size && item.size > 0L) {
+				uiHandler.post { onFileDone(idx) }
 			}
 		}
 	}
 
-	private fun swapIfNeeded(index: Int) {
-		val dest = pendingSwaps.remove(index) ?: return
-		val src = File(dest.absolutePath + ".new")
-		if (!src.isFile) {
-			return
+	private fun onFileDone(index: Int) {
+		val item = selected.firstOrNull { it.index == index } ?: return
+		val staged = File(item.dest.absolutePath + ".new")
+		val localStaged = item.local?.let { File(it.absolutePath + ".new") }
+		val src = when {
+			staged.isFile -> staged
+			localStaged?.isFile == true -> localStaged
+			item.dest.isFile && item.dest.length() == item.size -> item.dest
+			else -> return
 		}
 		try {
-			app.resourceManager.closeFile(dest.name)
-		} catch (_: Exception) {
-		}
-		val bak = File(dest.absolutePath + ".bak")
-		try {
-			if (dest.exists()) {
-				bak.delete()
-				if (!dest.renameTo(bak)) {
-					dest.delete()
+			if (src.absolutePath == item.dest.absolutePath && !item.replaceExisting) {
+				pendingReload.set(true)
+				reloadMapsSoon()
+				return
+			}
+			val finalDest = when {
+				item.local != null && item.local.name.equals(item.dest.name, ignoreCase = true) -> item.local
+				else -> item.dest
+			}
+			try {
+				app.resourceManager.closeFile(finalDest.name)
+			} catch (_: Exception) {
+			}
+			if (item.local != null && item.local != finalDest && item.local.exists()) {
+				try {
+					app.resourceManager.closeFile(item.local.name)
+				} catch (_: Exception) {
 				}
 			}
-			if (!src.renameTo(dest)) {
-				src.copyTo(dest, overwrite = true)
-				src.delete()
+			val bak = File(finalDest.absolutePath + ".bak")
+			if (finalDest.exists() && src != finalDest) {
+				bak.delete()
+				if (!finalDest.renameTo(bak)) {
+					finalDest.delete()
+				}
+			}
+			if (src != finalDest) {
+				if (!src.renameTo(finalDest)) {
+					src.copyTo(finalDest, overwrite = true)
+					src.delete()
+				}
 			}
 			bak.delete()
+			if (item.local != null && item.local != finalDest && item.local.exists()) {
+				item.local.delete()
+			}
+			pendingSwaps.remove(index)
+			pendingReload.set(true)
+			reloadMapsSoon()
+			Log.i(TAG, "ready ${finalDest.name}")
+		} catch (e: Exception) {
+			Log.e(TAG, "finalize ${item.torrentName}", e)
+		}
+	}
+
+	private fun reloadMapsSoon() {
+		uiHandler.removeCallbacks(reloadRunnable)
+		uiHandler.postDelayed(reloadRunnable, 1500)
+	}
+
+	private val reloadRunnable = Runnable {
+		if (!pendingReload.getAndSet(false)) {
+			return@Runnable
+		}
+		try {
 			app.resourceManager.reloadIndexesAsync(null, null)
 		} catch (e: Exception) {
-			Log.e(TAG, "swap ${dest.name}", e)
+			Log.w(TAG, "reload indexes", e)
 		}
 	}
 
@@ -555,16 +674,53 @@ class EvMapTorrentEngine(
 				scanDir(file, out)
 				continue
 			}
-			val name = file.name
-			val lower = name.lowercase(Locale.US)
-			if (MAP_EXTS.none { lower.endsWith(it) }) {
+			if (!isMapFile(file.name)) {
 				continue
 			}
-			if (lower.endsWith(IndexConstants.DOWNLOAD_EXT) || lower.endsWith(".new") || lower.endsWith(".bak")) {
-				continue
-			}
-			out.putIfAbsent(lower, file)
+			out.putIfAbsent(mapKey(file.name), file)
 		}
+	}
+
+	private fun writeListing(ti: TorrentInfo) {
+		try {
+			val out = app.getAppPath(LISTING_FILE)
+			val sb = StringBuilder()
+			sb.append("torrent=").append(ti.name()).append('\n')
+			sb.append("files=").append(ti.numFiles()).append('\n')
+			val files = ti.files()
+			for (i in 0 until ti.numFiles()) {
+				if (files.padFileAt(i)) {
+					continue
+				}
+				val name = files.fileName(i)
+				sb.append(i).append('\t')
+					.append(files.fileSize(i)).append('\t')
+					.append(mapKey(name)).append('\t')
+					.append(name).append('\n')
+			}
+			out.writeText(sb.toString())
+		} catch (e: Exception) {
+			Log.w(TAG, "listing", e)
+		}
+	}
+
+	private fun sampleTorrentNames(ti: TorrentInfo, limit: Int): List<String> {
+		val out = ArrayList<String>()
+		val files = ti.files()
+		for (i in 0 until ti.numFiles()) {
+			if (files.padFileAt(i)) {
+				continue
+			}
+			val name = files.fileName(i)
+			if (!isMapFile(name)) {
+				continue
+			}
+			out.add(name.substringAfterLast('/').substringAfterLast('\\'))
+			if (out.size >= limit) {
+				break
+			}
+		}
+		return out
 	}
 
 	private fun resumeFile(): File = File(app.getAppInternalPath(DIR), RESUME_FILE)

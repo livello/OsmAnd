@@ -415,6 +415,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		decorate("ev_bms_torrent_path", "📄", R.drawable.ic_action_folder)
 		decorate(plugin.TORRENT_SEED_ON_CHARGE.id, "🔌", R.drawable.ic_action_battery)
 		decorate(plugin.TORRENT_WIFI_ONLY.id, "📶", R.drawable.ic_action_wifi_off)
+		decorate(plugin.TORRENT_DOWNLOAD_NEW.id, "⬇️", R.drawable.ic_action_gsave_dark)
 		decorate("ev_bms_torrent_start", "▶️", R.drawable.ic_action_play_dark)
 	}
 
@@ -1037,6 +1038,9 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		setupSwitch(plugin.TORRENT_WIFI_ONLY.id)
 		findPreference<SwitchPreferenceEx>(plugin.TORRENT_WIFI_ONLY.id)
 			?.setDescription(R.string.ev_bms_torrent_wifi_only_desc)
+		setupSwitch(plugin.TORRENT_DOWNLOAD_NEW.id)
+		findPreference<SwitchPreferenceEx>(plugin.TORRENT_DOWNLOAD_NEW.id)
+			?.setDescription(R.string.ev_bms_torrent_download_new_desc)
 		findPreference<Preference>("ev_bms_torrent_path")?.summary = plugin.torrentPathSummary()
 		val start = findPreference<Preference>("ev_bms_torrent_start") ?: return
 		val st = plugin.mapTorrentStatus()
@@ -1143,7 +1147,8 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		}
 		if (preference.key == plugin.TORRENT_ENABLED.id ||
 			preference.key == plugin.TORRENT_SEED_ON_CHARGE.id ||
-			preference.key == plugin.TORRENT_WIFI_ONLY.id
+			preference.key == plugin.TORRENT_WIFI_ONLY.id ||
+			preference.key == plugin.TORRENT_DOWNLOAD_NEW.id
 		) {
 			val result = super.onPreferenceChange(preference, newValue)
 			plugin.syncMapTorrent()
@@ -1367,7 +1372,8 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		if (preference.key == plugin.USE_ROUTE_PROFILE.id ||
 			preference.key == plugin.TORRENT_ENABLED.id ||
 			preference.key == plugin.TORRENT_SEED_ON_CHARGE.id ||
-			preference.key == plugin.TORRENT_WIFI_ONLY.id
+			preference.key == plugin.TORRENT_WIFI_ONLY.id ||
+			preference.key == plugin.TORRENT_DOWNLOAD_NEW.id
 		) {
 			val manager: FragmentManager = fragmentManager ?: return
 			BooleanRadioButtonsBottomSheet.showInstance(
@@ -1461,7 +1467,8 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		}
 		if (prefId == plugin.TORRENT_ENABLED.id ||
 			prefId == plugin.TORRENT_SEED_ON_CHARGE.id ||
-			prefId == plugin.TORRENT_WIFI_ONLY.id
+			prefId == plugin.TORRENT_WIFI_ONLY.id ||
+			prefId == plugin.TORRENT_DOWNLOAD_NEW.id
 		) {
 			plugin.syncMapTorrent()
 			setupTorrentPrefs()
