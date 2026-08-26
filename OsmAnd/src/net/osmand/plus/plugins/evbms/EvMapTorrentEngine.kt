@@ -6,6 +6,8 @@ import android.net.Uri
 import android.os.BatteryManager
 import android.os.Handler
 import android.os.HandlerThread
+import android.system.ErrnoException
+import android.system.Os
 import android.util.Log
 import net.osmand.IndexConstants
 import net.osmand.plus.OsmandApplication
@@ -111,6 +113,12 @@ class EvMapTorrentEngine(
 	private var session: SessionManager? = null
 	/** Never keep a handle from an Alert — those SWIG wrappers do not own memory and dangle. */
 	private var infoHash: Sha1Hash? = null
+	/**
+	 * Pin TorrentInfo for the whole session. SessionManager.download → set_ti() shares the
+	 * native torrent_info; SWIG finalize/delete on GC causes Scudo "invalid chunk state"
+	 * (SIGABRT on ev-map-torrent) if this is collected early.
+	 */
+	private var pinnedTorrentInfo: TorrentInfo? = null
 	private var sessionDown0 = 0L
 	private var sessionUp0 = 0L
 	private var lastPersistDown = 0L
@@ -135,10 +143,13 @@ class EvMapTorrentEngine(
 			try {
 				if (!prepared.get()) {
 					attachAndPrepare()
+					// Avoid status/fileProgress until rename/resume finished — concurrent
+					// handle use during renameFile has aborted libtorrent (Scudo).
+				} else {
+					refreshStatus()
+					persistCounters()
+					maybeSwapCompleted()
 				}
-				refreshStatus()
-				persistCounters()
-				maybeSwapCompleted()
 			} catch (e: Exception) {
 				Log.w(TAG, "poll", e)
 			} catch (e: Error) {
@@ -180,10 +191,14 @@ class EvMapTorrentEngine(
 					uiHandler.post { onFileDone(index) }
 				}
 				is SaveResumeDataAlert -> {
+					// Copy buffer on the alert thread only; never retain alert/params.
 					val bytes = try {
 						org.libtorrent4j.AddTorrentParams.writeResumeDataBuf(alert.params())
 					} catch (e: Exception) {
 						Log.w(TAG, "resume encode", e)
+						null
+					} catch (e: Error) {
+						Log.e(TAG, "resume encode native", e)
 						null
 					}
 					if (bytes != null) {
@@ -195,12 +210,13 @@ class EvMapTorrentEngine(
 		}
 	}
 
-	/** Fresh handle from session.find — safe to use until the next stop. */
+	/** Fresh handle from session.find — must be isValid; never keep alert-owned handles. */
 	private fun currentHandle(): TorrentHandle? {
 		val sm = session ?: return null
 		val hash = infoHash ?: return null
 		return try {
-			sm.find(hash)
+			val th = sm.find(hash) ?: return null
+			if (!th.isValid) null else th
 		} catch (e: Exception) {
 			Log.w(TAG, "find", e)
 			null
@@ -495,6 +511,8 @@ class EvMapTorrentEngine(
 				infoHash = null
 				return
 			}
+			// Place complete locals under torrent dest names before add (avoids renameFile for seeds).
+			linkSeedFiles(chosen)
 			val sp = SettingsPack()
 			sp.setEnableDht(true)
 			sp.setEnableLsd(true)
@@ -503,6 +521,8 @@ class EvMapTorrentEngine(
 			sm.addListener(listener)
 			sm.start(SessionParams(sp))
 			session = sm
+			// Keep native torrent_info alive for the session (see pinnedTorrentInfo).
+			pinnedTorrentInfo = ti
 			sessionDown0 = sm.totalDownload()
 			sessionUp0 = sm.totalUpload()
 			lastPersistDown = 0L
@@ -549,10 +569,34 @@ class EvMapTorrentEngine(
 			torrentHandler.postDelayed(poll, 300)
 		} catch (e: UnsatisfiedLinkError) {
 			Log.e(TAG, "native", e)
+			pinnedTorrentInfo = null
+			session = null
+			infoHash = null
 			snapshot = EvMapTorrentStatus(error = e.message ?: "libtorrent")
 		} catch (e: Exception) {
 			Log.e(TAG, "start", e)
+			try {
+				session?.stop()
+			} catch (_: Exception) {
+			} catch (_: Error) {
+			}
+			pinnedTorrentInfo = null
+			session = null
+			infoHash = null
+			started.set(false)
 			snapshot = EvMapTorrentStatus(error = e.message)
+		} catch (e: Error) {
+			Log.e(TAG, "start native", e)
+			try {
+				session?.stop()
+			} catch (_: Exception) {
+			} catch (_: Error) {
+			}
+			pinnedTorrentInfo = null
+			session = null
+			infoHash = null
+			started.set(false)
+			snapshot = EvMapTorrentStatus(error = e.message ?: "libtorrent")
 		}
 	}
 
@@ -699,7 +743,7 @@ class EvMapTorrentEngine(
 	}
 
 	private fun attachAndPrepare() {
-		if (!started.get() || prepared.get()) {
+		if (!started.get() || prepared.get() || renamed.get()) {
 			return
 		}
 		val th = currentHandle()
@@ -770,6 +814,8 @@ class EvMapTorrentEngine(
 		}
 		session = null
 		infoHash = null
+		// Release only after session.stop() so native torrent_info is unused.
+		pinnedTorrentInfo = null
 		selected = emptyList()
 		attachAttempts = 0
 		snapshot = snapshot.copy(
@@ -784,14 +830,55 @@ class EvMapTorrentEngine(
 		)
 	}
 
+	/**
+	 * Hard-link complete alias files to the torrent dest name so libtorrent does not need
+	 * renameFile for seeding (renameFile + concurrent status has aborted natively).
+	 */
+	private fun linkSeedFiles(chosen: List<SelectedFile>) {
+		for (item in chosen) {
+			if (!item.seedOnly) {
+				continue
+			}
+			val local = item.local ?: continue
+			if (!local.isFile || local.length() != item.size) {
+				continue
+			}
+			if (local.name.equals(item.dest.name, ignoreCase = true)) {
+				continue
+			}
+			if (item.dest.isFile && item.dest.length() == item.size) {
+				continue
+			}
+			if (item.dest.exists()) {
+				continue
+			}
+			try {
+				Os.link(local.absolutePath, item.dest.absolutePath)
+				Log.i(TAG, "seed link ${item.dest.name} <- ${local.name}")
+			} catch (e: ErrnoException) {
+				Log.w(TAG, "seed link ${item.dest.name}", e)
+			} catch (e: Exception) {
+				Log.w(TAG, "seed link ${item.dest.name}", e)
+			}
+		}
+	}
+
 	private fun renameSelected(th: TorrentHandle) {
+		if (!renamed.compareAndSet(false, true)) {
+			return
+		}
+		if (!th.isValid) {
+			renamed.set(false)
+			return
+		}
 		for (item in selected) {
 			if (item.seedOnly) {
-				// Point libtorrent at the existing complete file (may differ only by _2 suffix).
+				// Prefer hardlink (already done). Only renameFile if dest still missing.
 				val seedPath = item.local?.takeIf { it.isFile && it.length() == item.size }
 					?: item.dest.takeIf { it.isFile && it.length() == item.size }
 				if (seedPath != null &&
-					!seedPath.name.equals(item.dest.name, ignoreCase = true)
+					!seedPath.name.equals(item.dest.name, ignoreCase = true) &&
+					!(item.dest.isFile && item.dest.length() == item.size)
 				) {
 					try {
 						th.renameFile(item.index, seedPath.absolutePath)
@@ -838,7 +925,7 @@ class EvMapTorrentEngine(
 	private val resumeAfterRename = Runnable { maybeResumeAfterRename() }
 
 	private fun maybeResumeAfterRename() {
-		if (!started.get() || renamed.getAndSet(true)) {
+		if (!started.get() || prepared.get()) {
 			return
 		}
 		try {
@@ -846,9 +933,16 @@ class EvMapTorrentEngine(
 			if (sm != null && sm.isRunning && sm.isPaused) {
 				sm.resume()
 			}
-			currentHandle()?.resume()
+			val th = currentHandle()
+			if (th == null) {
+				// Handle not ready yet — retry shortly without clearing rename guard.
+				torrentHandler.postDelayed(resumeAfterRename, 500)
+				return
+			}
+			th.resume()
 			prepared.set(true)
 			snapshot = snapshot.copy(paused = false, waitingReason = null, running = true, error = null)
+			Log.i(TAG, "torrent prepared/resumed selected=${selected.size}")
 		} catch (e: Exception) {
 			Log.e(TAG, "resume", e)
 			snapshot = snapshot.copy(error = e.message)
