@@ -74,7 +74,8 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			SettingsJump("ev_bms_voice", "🔊", R.string.ev_bms_voice),
 			SettingsJump("ev_bms_charge", "🔌", R.string.ev_bms_charge_settings),
 			SettingsJump("ev_bms_history_cat", "📋", R.string.ev_bms_history_group),
-			SettingsJump("ev_bms_range", "🛣️", R.string.ev_bms_range_settings)
+			SettingsJump("ev_bms_range", "🛣️", R.string.ev_bms_range_settings),
+			SettingsJump("ev_bms_torrent_cat", "🧲", R.string.ev_bms_torrent_title)
 		)
 	}
 
@@ -159,6 +160,19 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			setupPreferences()
 		} else {
 			app.showToastMessage(R.string.ev_bms_settings_profile_failed)
+		}
+	}
+
+	private val torrentFileLauncher = registerForActivityResult(
+		ActivityResultContracts.OpenDocument()
+	) { uri ->
+		if (uri == null) {
+			return@registerForActivityResult
+		}
+		if (plugin.importTorrentFile(uri)) {
+			setupTorrentPrefs()
+		} else {
+			app.showToastMessage(R.string.ev_bms_torrent_invalid)
 		}
 	}
 
@@ -282,6 +296,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		setupHistoryPrefs()
 		setupRouteProfile()
 		setupMassPrefs()
+		setupTorrentPrefs()
 		setupIcons()
 		refreshRecordingPref()
 		refreshCalibrationPref()
@@ -322,6 +337,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		decorateCategory("ev_bms_charge", "🔌")
 		decorateCategory("ev_bms_history_cat", "📋")
 		decorateCategory("ev_bms_range", "🛣️")
+		decorateCategory("ev_bms_torrent_cat", "🧲")
 		decorate(plugin.BMS_ADDRESS.id, "🔋", R.drawable.ic_action_battery)
 		decorate(plugin.BMS_PROTOCOL.id, "🔗", R.drawable.ic_action_settings)
 		decorate(plugin.BMS_PASSWORD.id, "🔐", R.drawable.ic_action_lock)
@@ -395,6 +411,11 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		decorate(plugin.USE_ROUTE_PROFILE.id, "⛰️", R.drawable.ic_action_altitude)
 		decorate(plugin.VEHICLE_MASS_KG.id, "⚖️", R.drawable.ic_action_weight_limit)
 		decorate(plugin.DRIVER_MASS_KG.id, "👤", R.drawable.ic_action_user)
+		decorate(plugin.TORRENT_ENABLED.id, "🧲", R.drawable.ic_action_gsave_dark)
+		decorate("ev_bms_torrent_path", "📄", R.drawable.ic_action_folder)
+		decorate(plugin.TORRENT_SEED_ON_CHARGE.id, "🔌", R.drawable.ic_action_battery)
+		decorate(plugin.TORRENT_WIFI_ONLY.id, "📶", R.drawable.ic_action_wifi_off)
+		decorate("ev_bms_torrent_start", "▶️", R.drawable.ic_action_play_dark)
 	}
 
 	private fun decorate(key: String, emoji: String, iconRes: Int) {
@@ -1006,6 +1027,32 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			getString(R.string.ev_bms_history_count, total)
 	}
 
+	private fun setupTorrentPrefs() {
+		setupSwitch(plugin.TORRENT_ENABLED.id)
+		findPreference<SwitchPreferenceEx>(plugin.TORRENT_ENABLED.id)
+			?.setDescription(R.string.ev_bms_torrent_enabled_desc)
+		setupSwitch(plugin.TORRENT_SEED_ON_CHARGE.id)
+		findPreference<SwitchPreferenceEx>(plugin.TORRENT_SEED_ON_CHARGE.id)
+			?.setDescription(R.string.ev_bms_torrent_seed_charge_desc)
+		setupSwitch(plugin.TORRENT_WIFI_ONLY.id)
+		findPreference<SwitchPreferenceEx>(plugin.TORRENT_WIFI_ONLY.id)
+			?.setDescription(R.string.ev_bms_torrent_wifi_only_desc)
+		findPreference<Preference>("ev_bms_torrent_path")?.summary = plugin.torrentPathSummary()
+		val start = findPreference<Preference>("ev_bms_torrent_start") ?: return
+		val st = plugin.mapTorrentStatus()
+		start.summary = when {
+			!st.error.isNullOrBlank() -> st.error
+			st.running -> getString(
+				R.string.ev_bms_torrent_status_brief,
+				st.state,
+				st.peers,
+				st.seeds
+			)
+			!st.waitingReason.isNullOrBlank() -> st.waitingReason
+			else -> getString(R.string.ev_bms_torrent_start_desc)
+		}
+	}
+
 	private fun setupSwitch(key: String) {
 		findPreference<SwitchPreferenceEx>(key)
 	}
@@ -1094,6 +1141,15 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			}
 			return false
 		}
+		if (preference.key == plugin.TORRENT_ENABLED.id ||
+			preference.key == plugin.TORRENT_SEED_ON_CHARGE.id ||
+			preference.key == plugin.TORRENT_WIFI_ONLY.id
+		) {
+			val result = super.onPreferenceChange(preference, newValue)
+			plugin.syncMapTorrent()
+			setupTorrentPrefs()
+			return result
+		}
 		return super.onPreferenceChange(preference, newValue)
 	}
 
@@ -1173,6 +1229,14 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 						(parentFragment as? EvBmsSettingsBottomSheet)?.onCalibrationTick()
 					}
 					.show()
+				return true
+			}
+			"ev_bms_torrent_path" -> {
+				torrentFileLauncher.launch(arrayOf("application/x-bittorrent", "application/octet-stream", "*/*"))
+				return true
+			}
+			"ev_bms_torrent_start" -> {
+				showTorrentStatusDialog(activity)
 				return true
 			}
 		}
@@ -1300,7 +1364,11 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 	}
 
 	override fun onDisplayPreferenceDialog(preference: Preference) {
-		if (preference.key == plugin.USE_ROUTE_PROFILE.id) {
+		if (preference.key == plugin.USE_ROUTE_PROFILE.id ||
+			preference.key == plugin.TORRENT_ENABLED.id ||
+			preference.key == plugin.TORRENT_SEED_ON_CHARGE.id ||
+			preference.key == plugin.TORRENT_WIFI_ONLY.id
+		) {
 			val manager: FragmentManager = fragmentManager ?: return
 			BooleanRadioButtonsBottomSheet.showInstance(
 				manager,
@@ -1391,6 +1459,96 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		) {
 			setupHudLimits()
 		}
+		if (prefId == plugin.TORRENT_ENABLED.id ||
+			prefId == plugin.TORRENT_SEED_ON_CHARGE.id ||
+			prefId == plugin.TORRENT_WIFI_ONLY.id
+		) {
+			plugin.syncMapTorrent()
+			setupTorrentPrefs()
+		}
+	}
+
+	private fun showTorrentStatusDialog(activity: Activity) {
+		if (!plugin.TORRENT_ENABLED.get()) {
+			app.showToastMessage(R.string.ev_bms_torrent_enable_first)
+			return
+		}
+		plugin.startMapTorrentManual()
+		val themed = UiUtilities.getThemedContext(activity, isNightMode())
+		val pad = AndroidUtils.dpToPx(themed, 16f)
+		val textColor = ColorUtilities.getPrimaryTextColor(themed, isNightMode())
+		val statusView = TextView(themed).apply {
+			setTextColor(textColor)
+			textSize = 15f
+			setPadding(pad, pad, pad, pad)
+			setTextIsSelectable(true)
+		}
+		val dialog = AlertDialog.Builder(themed)
+			.setTitle(R.string.ev_bms_torrent_status_title)
+			.setView(statusView)
+			.setNegativeButton(R.string.shared_string_close) { _, _ ->
+				setupTorrentPrefs()
+			}
+			.setPositiveButton(R.string.shared_string_control_stop) { _, _ ->
+				plugin.stopMapTorrent()
+				setupTorrentPrefs()
+			}
+			.create()
+		val refresh = object : Runnable {
+			override fun run() {
+				if (!dialog.isShowing) {
+					return
+				}
+				val st = plugin.mapTorrentStatus()
+				statusView.text = buildTorrentStatusText(st)
+				uiHandler.postDelayed(this, 1000)
+			}
+		}
+		dialog.setOnDismissListener {
+			uiHandler.removeCallbacks(refresh)
+			setupTorrentPrefs()
+		}
+		dialog.show()
+		uiHandler.post(refresh)
+	}
+
+	private fun buildTorrentStatusText(st: EvMapTorrentStatus): String {
+		val lines = ArrayList<String>()
+		lines.add(getString(R.string.ev_bms_torrent_status_state, st.state.ifBlank { "—" }))
+		if (!st.error.isNullOrBlank()) {
+			lines.add(getString(R.string.ev_bms_torrent_status_error, st.error))
+		}
+		if (!st.waitingReason.isNullOrBlank()) {
+			lines.add(st.waitingReason)
+		}
+		if (st.torrentName.isNotBlank()) {
+			lines.add(getString(R.string.ev_bms_torrent_status_name, st.torrentName))
+		}
+		lines.add(getString(R.string.ev_bms_torrent_status_files, st.matchedFiles, st.torrentFiles))
+		lines.add(getString(R.string.ev_bms_torrent_status_progress, st.progressPercent))
+		lines.add(getString(R.string.ev_bms_torrent_status_peers, st.peers, st.seeds))
+		lines.add(
+			getString(
+				R.string.ev_bms_torrent_status_rates,
+				AndroidUtils.formatSize(app, st.downloadRate) + "/s",
+				AndroidUtils.formatSize(app, st.uploadRate) + "/s"
+			)
+		)
+		lines.add(
+			getString(
+				R.string.ev_bms_torrent_status_session,
+				AndroidUtils.formatSize(app, st.sessionDownloaded),
+				AndroidUtils.formatSize(app, st.sessionUploaded)
+			)
+		)
+		lines.add(
+			getString(
+				R.string.ev_bms_torrent_status_total,
+				AndroidUtils.formatSize(app, st.totalDownloaded),
+				AndroidUtils.formatSize(app, st.totalUploaded)
+			)
+		)
+		return lines.joinToString("\n")
 	}
 
 	private fun showTelemetryFieldsDialog(activity: Activity) {

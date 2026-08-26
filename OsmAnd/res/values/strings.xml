@@ -1072,6 +1072,7 @@ BMS UART (JBD / ANT) + controller UART (FarDriver / VESC) + BLE CSC wheel + GPS 
 • <b>protocol/</b> — JbdBmsProtocol, JbdBleModuleProtocol, AntBmsProtocol, FarDriverProtocol, VescProtocol, BmsSnapshot<br/>
 Layouts: <i>res/layout/ev_bms_*.xml</i>. Preferences: <i>res/xml/ev_bms_settings.xml</i>. Strings: <i>res/values/strings.xml</i> and <i>values-ru</i>.]]></string>
 	<string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+• 🧲 Update and seed local maps from a .torrent (matched filenames only); settings at the bottom of EV-Telemetry<br/>
 • 📁 Select profile opens a dialog with rename, export, load and create new<br/>
 • 🔊 Enabling all alerts by tapping EV-Telemetry speaks «Voice alerts enabled»<br/>
 • ⚙️ Settings grouped with titled divider lines; compact jump icons replace session controls when scrolling<br/>
@@ -1304,6 +1305,38 @@ Layouts: <i>res/layout/ev_bms_*.xml</i>. Preferences: <i>res/xml/ev_bms_settings
     <string name="ev_bms_vehicle_mass_desc">Ready-to-ride vehicle mass without the rider, used for climb energy and descent regen.</string>
     <string name="ev_bms_driver_mass">Driver mass</string>
     <string name="ev_bms_driver_mass_desc">Rider mass added to the vehicle for climb energy and descent regen.</string>
+    <string name="ev_bms_torrent_title">Maps from torrent</string>
+    <string name="ev_bms_torrent_enabled">Update maps from torrent</string>
+    <string name="ev_bms_torrent_enabled_desc">Seed and update only map files that already exist locally and match names in the torrent (for example the OsmAnd offline maps pack on RuTracker).</string>
+    <string name="ev_bms_torrent_path">Torrent file path</string>
+    <string name="ev_bms_torrent_path_empty">Tap to pick a .torrent file</string>
+    <string name="ev_bms_torrent_seed_charge">Seed while charging</string>
+    <string name="ev_bms_torrent_seed_charge_desc">Auto-run only when EV charging is detected or the phone is plugged in and you are stopped. Manual start still works anytime.</string>
+    <string name="ev_bms_torrent_wifi_only">Seed on Wi‑Fi only</string>
+    <string name="ev_bms_torrent_wifi_only_desc">Do not transfer torrent data over mobile networks.</string>
+    <string name="ev_bms_torrent_start">Start update manually</string>
+    <string name="ev_bms_torrent_start_desc">Open status and start seeding / updating now</string>
+    <string name="ev_bms_torrent_status_title">Torrent status</string>
+    <string name="ev_bms_torrent_status_brief">%1$s · peers %2$d · seeds %3$d</string>
+    <string name="ev_bms_torrent_status_state">Status: %1$s</string>
+    <string name="ev_bms_torrent_status_error">Error: %1$s</string>
+    <string name="ev_bms_torrent_status_name">Torrent: %1$s</string>
+    <string name="ev_bms_torrent_status_files">Matched files: %1$d / %2$d</string>
+    <string name="ev_bms_torrent_status_progress">Progress: %1$d%%</string>
+    <string name="ev_bms_torrent_status_peers">Peers: %1$d · Seeds: %2$d</string>
+    <string name="ev_bms_torrent_status_rates">↓ %1$s · ↑ %2$s</string>
+    <string name="ev_bms_torrent_status_session">This session ↓ %1$s · ↑ %2$s</string>
+    <string name="ev_bms_torrent_status_total">Lifetime ↓ %1$s · ↑ %2$s</string>
+    <string name="ev_bms_torrent_notification">%1$s · peers %2$d · seeds %3$d · ↓%4$s ↑%5$s</string>
+    <string name="ev_bms_torrent_wait_wifi">Waiting for Wi‑Fi</string>
+    <string name="ev_bms_torrent_wait_charge">Waiting for charging / plug-in while stopped</string>
+    <string name="ev_bms_torrent_invalid">Cannot read this torrent file</string>
+    <string name="ev_bms_torrent_no_match">No local map files match this torrent</string>
+    <string name="ev_bms_torrent_enable_first">Turn on «Update maps from torrent» first</string>
+    <string name="ev_bms_torrent_state_starting">starting</string>
+    <string name="ev_bms_torrent_state_paused">paused</string>
+    <string name="ev_bms_torrent_state_seeding">seeding</string>
+    <string name="ev_bms_torrent_state_stopped">stopped</string>
     <string name="ev_bms_mass_invalid">Enter a mass in kilograms in the allowed range</string>
     <string name="ev_bms_n_kg">%1$s kg</string>
     <string name="ev_bms_n_mm">%1$d mm</string>

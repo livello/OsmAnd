@@ -4572,6 +4572,7 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
 • <b>protocol/</b> — JbdBmsProtocol, JbdBleModuleProtocol, AntBmsProtocol, FarDriverProtocol, VescProtocol, BmsSnapshot<br/>
 Вёрстка: <i>res/layout/ev_bms_*.xml</i>. Настройки: <i>res/xml/ev_bms_settings.xml</i>. Строки: <i>res/values/strings.xml</i> и <i>values-ru</i>.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Список изменений</b> · %1$s<br/>
+• 🧲 Обновление и раздача локальных карт из .torrent (только совпавшие имена); настройки внизу EV-Телеметрии<br/>
 • 📁 «Выбор профиля» открывает модалку: переименовать, экспортировать, загрузить, создать новый<br/>
 • 🔊 Включение всех оповещений нажатием на «EV-Телеметрия» озвучивает «голосовые оповещения включены»<br/>
 • ⚙️ Настройки сгруппированы с заголовками и линиями; при прокрутке вместо управления сессией — компактные кнопки перехода к группам<br/>
@@ -4804,6 +4805,38 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
     <string name="ev_bms_vehicle_mass_desc">Снаряжённая масса без водителя. Используется для энергии набора высоты и рекуперации на спусках.</string>
     <string name="ev_bms_driver_mass">Масса водителя</string>
     <string name="ev_bms_driver_mass_desc">Масса водителя, добавляется к массе ТС для набора высоты и рекуперации.</string>
+    <string name="ev_bms_torrent_title">Карты из торрента</string>
+    <string name="ev_bms_torrent_enabled">Обновлять карты из торрента</string>
+    <string name="ev_bms_torrent_enabled_desc">Раздавать и обновлять только те файлы карт, которые уже есть локально и совпадают по имени с файлами в торренте (например, пак офлайн-карт OsmAnd на RuTracker).</string>
+    <string name="ev_bms_torrent_path">Указать путь к торренту</string>
+    <string name="ev_bms_torrent_path_empty">Нажмите, чтобы выбрать файл .torrent</string>
+    <string name="ev_bms_torrent_seed_charge">Раздавать на зарядке</string>
+    <string name="ev_bms_torrent_seed_charge_desc">Автозапуск только при зарядке EV или когда телефон на зарядке и вы стоите. Ручной запуск работает в любой момент.</string>
+    <string name="ev_bms_torrent_wifi_only">Раздавать только по Wi‑Fi</string>
+    <string name="ev_bms_torrent_wifi_only_desc">Не передавать данные торрента по мобильной сети.</string>
+    <string name="ev_bms_torrent_start">Запустить обновление вручную</string>
+    <string name="ev_bms_torrent_start_desc">Открыть статус и начать раздачу / обновление сейчас</string>
+    <string name="ev_bms_torrent_status_title">Статус торрента</string>
+    <string name="ev_bms_torrent_status_brief">%1$s · пиры %2$d · сиды %3$d</string>
+    <string name="ev_bms_torrent_status_state">Статус: %1$s</string>
+    <string name="ev_bms_torrent_status_error">Ошибка: %1$s</string>
+    <string name="ev_bms_torrent_status_name">Торрент: %1$s</string>
+    <string name="ev_bms_torrent_status_files">Совпало файлов: %1$d / %2$d</string>
+    <string name="ev_bms_torrent_status_progress">Прогресс: %1$d%%</string>
+    <string name="ev_bms_torrent_status_peers">Пиры: %1$d · Сиды: %2$d</string>
+    <string name="ev_bms_torrent_status_rates">↓ %1$s · ↑ %2$s</string>
+    <string name="ev_bms_torrent_status_session">Сессия ↓ %1$s · ↑ %2$s</string>
+    <string name="ev_bms_torrent_status_total">Всего ↓ %1$s · ↑ %2$s</string>
+    <string name="ev_bms_torrent_notification">%1$s · пиры %2$d · сиды %3$d · ↓%4$s ↑%5$s</string>
+    <string name="ev_bms_torrent_wait_wifi">Ждём Wi‑Fi</string>
+    <string name="ev_bms_torrent_wait_charge">Ждём зарядку / подключение к сети на стоянке</string>
+    <string name="ev_bms_torrent_invalid">Не удалось прочитать файл торрента</string>
+    <string name="ev_bms_torrent_no_match">В торренте нет совпадений с локальными картами</string>
+    <string name="ev_bms_torrent_enable_first">Сначала включите «Обновлять карты из торрента»</string>
+    <string name="ev_bms_torrent_state_starting">запуск</string>
+    <string name="ev_bms_torrent_state_paused">пауза</string>
+    <string name="ev_bms_torrent_state_seeding">раздача</string>
+    <string name="ev_bms_torrent_state_stopped">остановлен</string>
     <string name="ev_bms_mass_invalid">Введите массу в килограммах в допустимом диапазоне</string>
     <string name="ev_bms_n_kg">%1$s кг</string>
     <string name="ev_bms_n_mm">%1$d мм</string>

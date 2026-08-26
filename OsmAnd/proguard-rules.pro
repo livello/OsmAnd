@@ -36,6 +36,10 @@
 # Java classes called from Qt/OsmAndCore native code must keep their JNI-visible names and members.
 -keep class org.qtproject.qt5.android.** { *; }
 
+# libtorrent4j JNI
+-keep class org.libtorrent4j.** { *; }
+-keep class org.libtorrent4j.swig.libtorrent_jni { *; }
+
 # Optional dependency surfaces referenced by bundled libraries but not available on Android.
 -dontwarn java.beans.**
 -dontwarn javax.ws.rs.**

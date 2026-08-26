@@ -1174,6 +1174,12 @@
 			android:permission="${applicationId}.SERVICE_PERMISSION"
 			android:foregroundServiceType="dataSync" />
 
+		<service
+			android:name="net.osmand.plus.plugins.evbms.EvMapTorrentService"
+			android:exported="false"
+			android:foregroundServiceType="dataSync"
+			android:stopWithTask="false" />
+
 		<meta-data android:name="com.google.android.gms.car.application"
 			android:resource="@xml/car_app_desc"
 			tools:ignore="MetadataTagInsideApplicationTag" />
