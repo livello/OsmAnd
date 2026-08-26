@@ -5853,5 +5853,17 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
     <string name="torrent_maps_file_complete">готово</string>
     <string name="torrent_maps_file_skipped">пропуск</string>
     <string name="torrent_maps_file_idle">ожидание</string>
+    <string name="torrent_maps_tab_logs">Логи</string>
+    <string name="torrent_maps_logs_clear">Очистить логи</string>
+    <string name="torrent_maps_confirm_clear_logs">Очистить логи торрент-карт?</string>
+    <string name="torrent_maps_sort_progress">Сортировать по прогрессу</string>
+    <string name="torrent_maps_sort_size">Сортировать по размеру</string>
+    <string name="torrent_maps_sort_name">Сортировать по имени</string>
+    <string name="torrent_maps_path_root">/</string>
+    <string name="torrent_maps_folder_up">..</string>
+    <string name="torrent_maps_folder_meta">%1$d · %2$s</string>
+    <string name="torrent_maps_download_choose_title">Скачать карту</string>
+    <string name="torrent_maps_download_choose_msg">Выберите источник загрузки этой карты.</string>
+    <string name="torrent_maps_download_official">Официальный репозиторий</string>
 
 </resources>

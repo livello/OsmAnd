@@ -538,7 +538,7 @@ public class ItemViewHolder {
 				} else if (!item.hasActualDataToDownload()) {
 					showContextMenu(v, item, item.getRelatedGroup());
 				} else {
-					download(item, item.getRelatedGroup());
+					downloadOrChooseSource(item, item.getRelatedGroup());
 				}
 			};
 		}
@@ -584,6 +584,25 @@ public class ItemViewHolder {
 		}
 
 		optionsMenu.show();
+	}
+
+	protected void downloadOrChooseSource(DownloadItem item, DownloadResourceGroup parentOptional) {
+		TorrentMapsPlugin torrentPlugin = PluginsHelper.getPlugin(TorrentMapsPlugin.class);
+		if (torrentPlugin != null && torrentPlugin.isActive()
+				&& torrentPlugin.hasTorrentMapOffer(item.getFileName())) {
+			AlertDialog.Builder builder = new AlertDialog.Builder(context);
+			builder.setTitle(R.string.torrent_maps_download_choose_title);
+			builder.setMessage(R.string.torrent_maps_download_choose_msg);
+			builder.setPositiveButton(R.string.torrent_maps_download_official,
+					(d, w) -> download(item, parentOptional));
+			builder.setNeutralButton(R.string.torrent_maps_download_via,
+					(d, w) -> torrentPlugin.downloadMapsFromTorrent(
+							Collections.singletonList(item.getFileName())));
+			builder.setNegativeButton(R.string.shared_string_cancel, null);
+			builder.show();
+			return;
+		}
+		download(item, parentOptional);
 	}
 
 	protected void download(DownloadItem item, DownloadResourceGroup parentOptional) {

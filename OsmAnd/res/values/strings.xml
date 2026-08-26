@@ -6426,5 +6426,17 @@ Download tile maps directly, or copy them as SQLite database files to OsmAnd\'s 
     <string name="torrent_maps_file_complete">complete</string>
     <string name="torrent_maps_file_skipped">skipped</string>
     <string name="torrent_maps_file_idle">idle</string>
+    <string name="torrent_maps_tab_logs">Logs</string>
+    <string name="torrent_maps_logs_clear">Clear logs</string>
+    <string name="torrent_maps_confirm_clear_logs">Clear torrent-maps logs?</string>
+    <string name="torrent_maps_sort_progress">Sort by progress</string>
+    <string name="torrent_maps_sort_size">Sort by size</string>
+    <string name="torrent_maps_sort_name">Sort by name</string>
+    <string name="torrent_maps_path_root">/</string>
+    <string name="torrent_maps_folder_up">..</string>
+    <string name="torrent_maps_folder_meta">%1$d · %2$s</string>
+    <string name="torrent_maps_download_choose_title">Download map</string>
+    <string name="torrent_maps_download_choose_msg">Choose download source for this map.</string>
+    <string name="torrent_maps_download_official">Official repository</string>
 
 </resources>

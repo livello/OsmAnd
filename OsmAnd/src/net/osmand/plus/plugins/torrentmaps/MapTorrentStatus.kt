@@ -37,6 +37,8 @@ enum class TorrentFileState {
 data class TorrentFileRow(
 	val index: Int,
 	val displayName: String,
+	/** Full torrent-relative path (`dir/file.obf`), `/`-normalized. */
+	val torrentPath: String,
 	val mapKey: String,
 	val sizeBytes: Long,
 	val doneBytes: Long,

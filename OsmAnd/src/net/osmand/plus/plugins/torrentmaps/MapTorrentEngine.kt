@@ -152,8 +152,10 @@ class MapTorrentEngine(
 				}
 			} catch (e: Exception) {
 				Log.w(TAG, "poll", e)
+				TorrentMapsLog.append("poll error: ${e.message}")
 			} catch (e: Error) {
 				Log.e(TAG, "poll native", e)
+				TorrentMapsLog.append("poll native: ${e.message}")
 				snapshot = snapshot.copy(error = e.message ?: "libtorrent")
 				stopLocked()
 				return
@@ -273,9 +275,11 @@ class MapTorrentEngine(
 			val ti = TorrentInfo(dest)
 			writeListing(ti)
 			catalog = buildCatalog(ti)
+			TorrentMapsLog.append("import ok: ${plugin.TORRENT_NAME.get()} (${ti.numFiles()} files)")
 			true
 		} catch (e: Exception) {
 			Log.e(TAG, "import torrent", e)
+			TorrentMapsLog.append("import failed: ${e.message}")
 			false
 		}
 	}
@@ -327,6 +331,7 @@ class MapTorrentEngine(
 		if (keys.isEmpty()) {
 			return
 		}
+		TorrentMapsLog.append("force download ${keys.size} map(s): ${keys.take(5).joinToString()}")
 		torrentHandler.post {
 			forceDownloadKeys.clear()
 			forceDownloadKeys.addAll(keys)
@@ -422,12 +427,14 @@ class MapTorrentEngine(
 		val file = torrentFile()
 		if (!file.isFile) {
 			snapshot = MapTorrentStatus(error = app.getString(R.string.torrent_maps_path_empty))
+			TorrentMapsLog.append("start aborted: no torrent file")
 			return
 		}
 		try {
 			val ti = TorrentInfo(file)
 			if (!ti.isValid) {
 				snapshot = MapTorrentStatus(error = app.getString(R.string.torrent_maps_invalid))
+				TorrentMapsLog.append("start aborted: invalid torrent")
 				return
 			}
 			writeListing(ti)
@@ -513,6 +520,7 @@ class MapTorrentEngine(
 				}
 				Log.w(TAG, "no selectable maps local=${localByKey.size} torrentMaps=$mapFilesInTorrent skipped=$skippedCurrent samples=$samples")
 				android.util.Log.w("TorrentMaps", "torrent skip-all skipped=$skippedCurrent maps=$mapFilesInTorrent")
+				TorrentMapsLog.append("start: nothing to do ($hint)")
 				snapshot = MapTorrentStatus(
 					torrentName = ti.name(),
 					torrentFiles = n,
@@ -573,6 +581,9 @@ class MapTorrentEngine(
 				TAG,
 				"start selected=${chosen.size} update=$updating download=$downloading seed=$seeding skip=$skippedCurrent of maps=$mapFilesInTorrent"
 			)
+			TorrentMapsLog.append(
+				"start selected=${chosen.size} update=$updating download=$downloading seed=$seeding skip=$skippedCurrent"
+			)
 			android.util.Log.i(
 				"EvBms",
 				"torrent start selected=${chosen.size} update=$updating download=$downloading seed=$seeding skip=$skippedCurrent"
@@ -581,12 +592,14 @@ class MapTorrentEngine(
 			torrentHandler.postDelayed(poll, 300)
 		} catch (e: UnsatisfiedLinkError) {
 			Log.e(TAG, "native", e)
+			TorrentMapsLog.append("start native link error: ${e.message}")
 			pinnedTorrentInfo = null
 			session = null
 			infoHash = null
 			snapshot = MapTorrentStatus(error = e.message ?: "libtorrent")
 		} catch (e: Exception) {
 			Log.e(TAG, "start", e)
+			TorrentMapsLog.append("start failed: ${e.message}")
 			try {
 				session?.stop()
 			} catch (_: Exception) {
@@ -599,6 +612,7 @@ class MapTorrentEngine(
 			snapshot = MapTorrentStatus(error = e.message)
 		} catch (e: Error) {
 			Log.e(TAG, "start native", e)
+			TorrentMapsLog.append("start native error: ${e.message}")
 			try {
 				session?.stop()
 			} catch (_: Exception) {
@@ -802,6 +816,7 @@ class MapTorrentEngine(
 	}
 
 	private fun stopLocked() {
+		val wasStarted = started.get()
 		torrentHandler.removeCallbacks(poll)
 		torrentHandler.removeCallbacks(resumeAfterRename)
 		started.set(false)
@@ -830,6 +845,9 @@ class MapTorrentEngine(
 		pinnedTorrentInfo = null
 		selected = emptyList()
 		attachAttempts = 0
+		if (wasStarted) {
+			TorrentMapsLog.append("stop")
+		}
 		snapshot = snapshot.copy(
 			running = false,
 			paused = false,
@@ -955,11 +973,14 @@ class MapTorrentEngine(
 			prepared.set(true)
 			snapshot = snapshot.copy(paused = false, waitingReason = null, running = true, error = null)
 			Log.i(TAG, "torrent prepared/resumed selected=${selected.size}")
+			TorrentMapsLog.append("prepared/resumed selected=${selected.size}")
 		} catch (e: Exception) {
 			Log.e(TAG, "resume", e)
+			TorrentMapsLog.append("resume failed: ${e.message}")
 			snapshot = snapshot.copy(error = e.message)
 		} catch (e: Error) {
 			Log.e(TAG, "resume native", e)
+			TorrentMapsLog.append("resume native: ${e.message}")
 			snapshot = snapshot.copy(error = e.message ?: "libtorrent resume")
 			stopLocked()
 		}
@@ -1040,9 +1061,11 @@ class MapTorrentEngine(
 				item.local == null -> TorrentFileState.DOWNLOADING
 				else -> TorrentFileState.QUEUED
 			}
+			val path = TorrentBrowser.normalizePath(entry.torrentName)
 			TorrentFileRow(
 				index = entry.index,
-				displayName = entry.torrentName.substringAfterLast('/').substringAfterLast('\\'),
+				displayName = path.substringAfterLast('/'),
+				torrentPath = path,
 				mapKey = entry.mapKey,
 				sizeBytes = entry.sizeBytes,
 				doneBytes = done.coerceAtMost(entry.sizeBytes),
@@ -1153,8 +1176,10 @@ class MapTorrentEngine(
 			pendingReload.set(true)
 			reloadMapsSoon()
 			Log.i(TAG, "ready ${finalDest.name}")
+			TorrentMapsLog.append("file ready: ${finalDest.name}")
 		} catch (e: Exception) {
 			Log.e(TAG, "finalize ${item.torrentName}", e)
+			TorrentMapsLog.append("finalize failed ${item.torrentName}: ${e.message}")
 		}
 	}
 

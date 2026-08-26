@@ -56,7 +56,9 @@ class MapTorrentService : Service() {
 			} else {
 				startForeground(NOTIFICATION_ID, buildNotification())
 			}
+			TorrentMapsLog.append("service foreground")
 		} catch (_: Exception) {
+			TorrentMapsLog.append("service foreground failed")
 			stopSelf()
 			return START_NOT_STICKY
 		}

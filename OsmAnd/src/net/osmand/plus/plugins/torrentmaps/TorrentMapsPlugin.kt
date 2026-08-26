@@ -47,6 +47,8 @@ class TorrentMapsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 		private const val PREF_COOKIE = "ev_bms_torrent_rutracker_cookie"
 		private const val PREF_DOWNLOADED = "ev_bms_torrent_downloaded"
 		private const val PREF_UPLOADED = "ev_bms_torrent_uploaded"
+		private const val PREF_SORT_KEY = "torrent_maps_sort_key"
+		private const val PREF_SORT_ASC = "torrent_maps_sort_asc"
 	}
 
 	val TORRENT_ENABLED: CommonPreference<Boolean> =
@@ -72,6 +74,10 @@ class TorrentMapsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 		registerLongPreference(PREF_DOWNLOADED, 0L).makeGlobal()
 	val TORRENT_UPLOADED: CommonPreference<Long> =
 		registerLongPreference(PREF_UPLOADED, 0L).makeGlobal()
+	val TORRENT_SORT_KEY: CommonPreference<String> =
+		registerStringPreference(PREF_SORT_KEY, TorrentSortKey.NAME.name).makeGlobal().makeShared()
+	val TORRENT_SORT_ASC: CommonPreference<Boolean> =
+		registerBooleanPreference(PREF_SORT_ASC, true).makeGlobal().makeShared()
 	val STOP_SPEED_KMH: CommonPreference<Int> =
 		registerIntPreference("torrent_maps_stop_speed_kmh", STOP_SPEED_KMH_DEFAULT).makeGlobal().makeShared()
 
@@ -104,6 +110,8 @@ class TorrentMapsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 		SettingsScreenType.TORRENT_MAPS_SETTINGS
 
 	override fun init(app: OsmandApplication, activity: Activity?): Boolean {
+		TorrentMapsLog.init(app)
+		TorrentMapsLog.append("plugin init")
 		registerTorrentWatchers()
 		handler.postDelayed({ syncMapTorrent() }, 2000)
 		return true
@@ -111,6 +119,7 @@ class TorrentMapsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 
 	override fun disable(app: OsmandApplication) {
 		super.disable(app)
+		TorrentMapsLog.append("plugin disable")
 		unregisterTorrentWatchers()
 		mapTorrent.stop()
 	}
@@ -168,8 +177,27 @@ class TorrentMapsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 			app.showToastMessage(R.string.torrent_maps_path_empty)
 			return
 		}
+		TorrentMapsLog.append("Maps & Resources → torrent download (${rawNames.size})")
 		mapTorrent.downloadMapKeys(rawNames)
 		app.showToastMessage(R.string.torrent_maps_download_started)
+	}
+
+	fun getSortKey(): TorrentSortKey {
+		return try {
+			TorrentSortKey.valueOf(TORRENT_SORT_KEY.get().orEmpty())
+		} catch (_: Exception) {
+			TorrentSortKey.NAME
+		}
+	}
+
+	fun setSortKey(key: TorrentSortKey) {
+		TORRENT_SORT_KEY.set(key.name)
+	}
+
+	fun isSortAscending(): Boolean = TORRENT_SORT_ASC.get()
+
+	fun setSortAscending(asc: Boolean) {
+		TORRENT_SORT_ASC.set(asc)
 	}
 
 	fun refreshTorrentFromRutracker(onDone: ((Boolean, String) -> Unit)? = null) {
@@ -177,6 +205,7 @@ class TorrentMapsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 			"https://rutracker.org/forum/viewtopic.php?t=5233935"
 		}
 		val cookie = TORRENT_RUTRACKER_COOKIE.get()
+		TorrentMapsLog.append("RuTracker refresh started")
 		Thread({
 			val result = RutrackerTorrentFetcher.fetchTorrent(url, cookie)
 			var message: String
@@ -208,6 +237,7 @@ class TorrentMapsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 					else -> app.getString(R.string.torrent_maps_refresh_failed_detail, result.message)
 				}
 			}
+			TorrentMapsLog.append(if (ok) "RuTracker refresh ok: $message" else "RuTracker refresh failed: $message")
 			handler.post {
 				app.showToastMessage(message)
 				onDone?.invoke(ok, message)
@@ -224,10 +254,12 @@ class TorrentMapsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 	}
 
 	fun startMapTorrentManual() {
+		TorrentMapsLog.append("manual start")
 		mapTorrent.startManual()
 	}
 
 	fun stopMapTorrent() {
+		TorrentMapsLog.append("manual stop")
 		mapTorrent.stop()
 	}
 
