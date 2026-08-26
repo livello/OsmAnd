@@ -1072,6 +1072,7 @@ BMS UART (JBD / ANT) + controller UART (FarDriver / VESC) + BLE CSC wheel + GPS 
 • <b>protocol/</b> — JbdBmsProtocol, JbdBleModuleProtocol, AntBmsProtocol, FarDriverProtocol, VescProtocol, BmsSnapshot<br/>
 Layouts: <i>res/layout/ev_bms_*.xml</i>. Preferences: <i>res/xml/ev_bms_settings.xml</i>. Strings: <i>res/values/strings.xml</i> and <i>values-ru</i>.]]></string>
 	<string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+• 🧲 Update maps from torrent only when torrent file mtime is newer than local OBF dateCreated; seed exact matches; Maps & Resources shows «Also in EV torrent» and context action to download via torrent<br/>
 • 🧲 Fix launch crash: never keep alert-owned torrent handles (dangling JNI); resolve via session.find(infoHash); download-missing only on manual start<br/>
 • ⚙️ Jump-bar green rectangle outlines emoji buttons for preference groups visible while scrolling settings<br/>
 • 🧲 Map torrent: match Russia_x.obf to Russia_x_2.obf.zip, download missing maps and load them into OsmAnd<br/>
@@ -1310,7 +1311,7 @@ Layouts: <i>res/layout/ev_bms_*.xml</i>. Preferences: <i>res/xml/ev_bms_settings
     <string name="ev_bms_driver_mass_desc">Rider mass added to the vehicle for climb energy and descent regen.</string>
     <string name="ev_bms_torrent_title">Maps from torrent</string>
     <string name="ev_bms_torrent_enabled">Update maps from torrent</string>
-    <string name="ev_bms_torrent_enabled_desc">Seed and update map files that match local maps by region key, and optionally download missing ones. Matching ignores paths, .zip and _2 version suffixes.</string>
+    <string name="ev_bms_torrent_enabled_desc">Seed exact torrent matches. Update a local map only when the torrent copy is newer (file mtime vs OBF dateCreated) or when sizes differ and you force download. Same-size matches (e.g. Russia_x.obf vs Russia_x_2.obf) are treated as current. Matching ignores paths, .zip and _2 suffixes.</string>
     <string name="ev_bms_torrent_path">Torrent file path</string>
     <string name="ev_bms_torrent_path_empty">Tap to pick a .torrent file</string>
     <string name="ev_bms_torrent_seed_charge">Seed while charging</string>
@@ -1318,7 +1319,7 @@ Layouts: <i>res/layout/ev_bms_*.xml</i>. Preferences: <i>res/xml/ev_bms_settings
     <string name="ev_bms_torrent_wifi_only">Seed on Wi‑Fi only</string>
     <string name="ev_bms_torrent_wifi_only_desc">Do not transfer torrent data over mobile networks.</string>
     <string name="ev_bms_torrent_download_new">Download missing maps</string>
-    <string name="ev_bms_torrent_download_new_desc">Also download map files from the torrent that are not on the device yet (only when you start manually), then load them into OsmAnd. Matching ignores .zip and _2 version suffixes (Russia_x_asia.obf ↔ Russia_x_asia_2.obf.zip). Auto-run on charge only updates maps you already have.</string>
+    <string name="ev_bms_torrent_download_new_desc">Also download map files from the torrent that are not on the device yet (only when you start manually), then load them into OsmAnd. Matching ignores .zip and _2 version suffixes (Russia_x_asia.obf ↔ Russia_x_asia_2.obf.zip). Auto-run on charge only updates maps you already have when the torrent copy is newer.</string>
     <string name="ev_bms_torrent_start">Start update manually</string>
     <string name="ev_bms_torrent_start_desc">Open status and start seeding / updating now</string>
     <string name="ev_bms_torrent_status_title">Torrent status</string>
@@ -1338,8 +1339,12 @@ Layouts: <i>res/layout/ev_bms_*.xml</i>. Preferences: <i>res/xml/ev_bms_settings
     <string name="ev_bms_torrent_invalid">Cannot read this torrent file</string>
     <string name="ev_bms_torrent_no_match">No local map files match this torrent</string>
     <string name="ev_bms_torrent_no_match_hint">No selectable maps. Examples in torrent: %1$s</string>
-    <string name="ev_bms_torrent_selected_hint">Update %1$d · download %2$d</string>
+    <string name="ev_bms_torrent_all_current_hint">Local maps are current (%1$d skipped). Nothing to download.</string>
+    <string name="ev_bms_torrent_selected_hint">Update %1$d · download %2$d · seed %3$d · skip %4$d</string>
     <string name="ev_bms_torrent_enable_first">Turn on «Update maps from torrent» first</string>
+    <string name="ev_bms_torrent_download_via">Download from EV torrent</string>
+    <string name="ev_bms_torrent_download_started">Torrent download started</string>
+    <string name="ev_bms_torrent_in_catalog">Also in EV torrent</string>
     <string name="ev_bms_torrent_state_starting">starting</string>
     <string name="ev_bms_torrent_state_paused">paused</string>
     <string name="ev_bms_torrent_state_seeding">seeding</string>

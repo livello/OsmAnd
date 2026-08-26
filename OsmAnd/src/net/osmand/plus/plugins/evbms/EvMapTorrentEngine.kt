@@ -11,6 +11,7 @@ import net.osmand.IndexConstants
 import net.osmand.plus.OsmandApplication
 import net.osmand.plus.R
 import org.libtorrent4j.AlertListener
+import org.libtorrent4j.FileStorage
 import org.libtorrent4j.Priority
 import org.libtorrent4j.SessionManager
 import org.libtorrent4j.SessionParams
@@ -24,6 +25,7 @@ import org.libtorrent4j.alerts.Alert
 import org.libtorrent4j.alerts.FileCompletedAlert
 import org.libtorrent4j.alerts.SaveResumeDataAlert
 import java.io.File
+import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -89,8 +91,15 @@ class EvMapTorrentEngine(
 		val size: Long,
 		val local: File?,
 		val dest: File,
-		val replaceExisting: Boolean
+		val replaceExisting: Boolean,
+		val seedOnly: Boolean
 	)
+
+	private enum class SelectKind {
+		SEED,
+		UPDATE,
+		DOWNLOAD_NEW
+	}
 
 	private val torrentThread = HandlerThread("ev-map-torrent").apply { start() }
 	private val torrentHandler = Handler(torrentThread.looper)
@@ -109,6 +118,9 @@ class EvMapTorrentEngine(
 	private var baseDown = 0L
 	private var baseUp = 0L
 	private var selected = emptyList<SelectedFile>()
+	@Volatile
+	private var catalog = emptyList<EvTorrentCatalogEntry>()
+	private val forceDownloadKeys = HashSet<String>()
 	private val pendingSwaps = HashMap<Int, File>()
 	private val pendingReload = AtomicBoolean(false)
 	private val renamed = AtomicBoolean(false)
@@ -116,6 +128,7 @@ class EvMapTorrentEngine(
 	private var manualRun = false
 	private val started = AtomicBoolean(false)
 	private var attachAttempts = 0
+	private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
 
 	private val poll = object : Runnable {
 		override fun run() {
@@ -218,7 +231,9 @@ class EvMapTorrentEngine(
 			}
 			plugin.TORRENT_PATH.set(dest.absolutePath)
 			plugin.TORRENT_NAME.set(displayName(uri) ?: dest.name)
-			writeListing(TorrentInfo(dest))
+			val ti = TorrentInfo(dest)
+			writeListing(ti)
+			catalog = buildCatalog(ti)
 			true
 		} catch (e: Exception) {
 			Log.e(TAG, "import torrent", e)
@@ -232,6 +247,52 @@ class EvMapTorrentEngine(
 		}
 		val name = plugin.TORRENT_NAME.get().orEmpty().ifBlank { torrentFile().name }
 		return name
+	}
+
+	fun catalogEntries(): List<EvTorrentCatalogEntry> {
+		val cached = catalog
+		if (cached.isNotEmpty()) {
+			return cached
+		}
+		return try {
+			val file = torrentFile()
+			if (!file.isFile) {
+				emptyList()
+			} else {
+				buildCatalog(TorrentInfo(file)).also { catalog = it }
+			}
+		} catch (e: Exception) {
+			Log.w(TAG, "catalog", e)
+			emptyList()
+		}
+	}
+
+	fun findCatalogEntry(rawName: String): EvTorrentCatalogEntry? {
+		val key = mapKey(rawName)
+		return catalogEntries().firstOrNull { it.mapKey == key }
+	}
+
+	fun hasCatalogEntry(rawName: String): Boolean = findCatalogEntry(rawName) != null
+
+	/**
+	 * Force-download specific maps from the torrent (Maps & Resources bridge).
+	 * Ignores freshness for these keys; starts a manual session.
+	 */
+	fun downloadMapKeys(rawNames: Collection<String>) {
+		val keys = rawNames.map { mapKey(it) }.filter { it.isNotBlank() }.toSet()
+		if (keys.isEmpty()) {
+			return
+		}
+		torrentHandler.post {
+			forceDownloadKeys.clear()
+			forceDownloadKeys.addAll(keys)
+			if (started.get()) {
+				stopLocked()
+			}
+			manualRun = true
+			startLocked()
+			EvMapTorrentService.sync(app, started.get())
+		}
 	}
 
 	fun startManual() {
@@ -264,7 +325,8 @@ class EvMapTorrentEngine(
 					waitingReason = if (!started.get()) waitingReason() else snapshot.waitingReason
 				)
 			}
-			EvMapTorrentService.sync(app, want || (manualRun && plugin.TORRENT_ENABLED.get()))
+			// Only keep the FGS while a session is actually running.
+			EvMapTorrentService.sync(app, started.get())
 		}
 	}
 
@@ -336,6 +398,7 @@ class EvMapTorrentEngine(
 				return
 			}
 			writeListing(ti)
+			catalog = buildCatalog(ti)
 			val mapsDir = app.getAppPath(IndexConstants.MAPS_PATH)
 			mapsDir.mkdirs()
 			val localByKey = scanLocalMaps()
@@ -350,7 +413,10 @@ class EvMapTorrentEngine(
 			attachAttempts = 0
 			infoHash = ti.infoHash()
 			val downloadNew = plugin.TORRENT_DOWNLOAD_NEW.get() && manualRun
+			val forced = HashSet(forceDownloadKeys)
+			forceDownloadKeys.clear()
 			var mapFilesInTorrent = 0
+			var skippedCurrent = 0
 			for (i in 0 until n) {
 				if (files.padFileAt(i)) {
 					continue
@@ -362,34 +428,40 @@ class EvMapTorrentEngine(
 				mapFilesInTorrent++
 				val key = mapKey(torrentName)
 				val local = localByKey[key]
-				val missing = local == null
-				if (missing && !downloadNew) {
-					continue
-				}
 				val destName = torrentName.substringAfterLast('/').substringAfterLast('\\')
 				val dest = File(mapsDir, destName)
-				val sameFile = local != null &&
-						local.isFile &&
-						local.length() == files.fileSize(i) &&
-						local.name.equals(destName, ignoreCase = true)
-				val replaceExisting = local != null && !sameFile
+				val torrentSize = files.fileSize(i)
+				val kind = decideSelectKind(
+					key = key,
+					local = local,
+					destName = destName,
+					torrentSize = torrentSize,
+					torrentMtimeMs = torrentMtimeMs(files, i),
+					downloadNew = downloadNew,
+					force = key in forced
+				)
+				if (kind == null) {
+					skippedCurrent++
+					continue
+				}
+				val replaceExisting = kind == SelectKind.UPDATE
+				val seedOnly = kind == SelectKind.SEED
 				chosen.add(
 					SelectedFile(
 						index = i,
 						torrentName = torrentName,
 						key = key,
-						size = files.fileSize(i),
+						size = torrentSize,
 						local = local,
 						dest = dest,
-						replaceExisting = replaceExisting
+						replaceExisting = replaceExisting,
+						seedOnly = seedOnly
 					)
 				)
 				priorities[i] = Priority.DEFAULT
-				if (replaceExisting || (local == null && downloadNew)) {
+				if (replaceExisting || kind == SelectKind.DOWNLOAD_NEW) {
 					if (replaceExisting && local != null && local.name.equals(destName, ignoreCase = true)) {
 						pendingSwaps[i] = local
-					} else if (replaceExisting && local != null) {
-						pendingSwaps[i] = dest
 					} else {
 						pendingSwaps[i] = dest
 					}
@@ -398,16 +470,20 @@ class EvMapTorrentEngine(
 			selected = chosen
 			if (chosen.isEmpty()) {
 				val samples = sampleTorrentNames(ti, 8)
-				val hint = if (samples.isNotEmpty()) {
+				val hint = if (skippedCurrent > 0) {
+					app.getString(R.string.ev_bms_torrent_all_current_hint, skippedCurrent)
+				} else if (samples.isNotEmpty()) {
 					app.getString(R.string.ev_bms_torrent_no_match_hint, samples.joinToString(", "))
 				} else {
 					app.getString(R.string.ev_bms_torrent_no_match)
 				}
-				Log.w(TAG, "no selectable maps local=${localByKey.size} torrentMaps=$mapFilesInTorrent samples=$samples")
+				Log.w(TAG, "no selectable maps local=${localByKey.size} torrentMaps=$mapFilesInTorrent skipped=$skippedCurrent samples=$samples")
+				android.util.Log.w("EvBms", "torrent skip-all skipped=$skippedCurrent maps=$mapFilesInTorrent")
 				snapshot = EvMapTorrentStatus(
 					torrentName = ti.name(),
 					torrentFiles = n,
 					matchedFiles = 0,
+					skippedCurrentFiles = skippedCurrent,
 					error = hint
 				)
 				infoHash = null
@@ -430,8 +506,9 @@ class EvMapTorrentEngine(
 			val resume = resumeFile().takeIf { it.isFile }
 			sm.download(ti, mapsDir, resume, priorities, null, TorrentFlags.PAUSED)
 			started.set(true)
-			val updating = chosen.count { it.local != null }
-			val downloading = chosen.size - updating
+			val seeding = chosen.count { it.seedOnly }
+			val updating = chosen.count { it.replaceExisting }
+			val downloading = chosen.count { it.local == null }
 			snapshot = EvMapTorrentStatus(
 				running = true,
 				paused = true,
@@ -442,9 +519,26 @@ class EvMapTorrentEngine(
 				totalDownloaded = baseDown,
 				totalUploaded = baseUp,
 				error = null,
-				waitingReason = app.getString(R.string.ev_bms_torrent_selected_hint, updating, downloading)
+				seedingFiles = seeding,
+				updatingFiles = updating,
+				downloadingFiles = downloading,
+				skippedCurrentFiles = skippedCurrent,
+				waitingReason = app.getString(
+					R.string.ev_bms_torrent_selected_hint,
+					updating,
+					downloading,
+					seeding,
+					skippedCurrent
+				)
 			)
-			Log.i(TAG, "start selected=${chosen.size} update=$updating download=$downloading of maps=$mapFilesInTorrent")
+			Log.i(
+				TAG,
+				"start selected=${chosen.size} update=$updating download=$downloading seed=$seeding skip=$skippedCurrent of maps=$mapFilesInTorrent"
+			)
+			android.util.Log.i(
+				"EvBms",
+				"torrent start selected=${chosen.size} update=$updating download=$downloading seed=$seeding skip=$skippedCurrent"
+			)
 			torrentHandler.removeCallbacks(poll)
 			torrentHandler.postDelayed(poll, 300)
 		} catch (e: UnsatisfiedLinkError) {
@@ -454,6 +548,114 @@ class EvMapTorrentEngine(
 			Log.e(TAG, "start", e)
 			snapshot = EvMapTorrentStatus(error = e.message)
 		}
+	}
+
+	/**
+	 * Decide whether to seed, update, download, or skip.
+	 * Freshness (in order):
+	 * 1) Exact torrent filename + size on disk → seed.
+	 * 2) Same size under a matched mapKey (e.g. local Russia_x.obf vs torrent Russia_x_2.obf) → already current, skip.
+	 * 3) Torrent file mtime > local OBF dateCreated (ResourceManager / index dates, else mtime) → update.
+	 * 4) Otherwise do not re-download (cannot prove the torrent is newer). Maps & Resources can force.
+	 */
+	private fun decideSelectKind(
+		key: String,
+		local: File?,
+		destName: String,
+		torrentSize: Long,
+		torrentMtimeMs: Long,
+		downloadNew: Boolean,
+		force: Boolean
+	): SelectKind? {
+		if (local == null) {
+			return if (downloadNew || force) SelectKind.DOWNLOAD_NEW else null
+		}
+		val sizeMatch = local.isFile && local.length() == torrentSize
+		val exactMatch = sizeMatch && local.name.equals(destName, ignoreCase = true)
+		if (exactMatch && !force) {
+			return SelectKind.SEED
+		}
+		if (sizeMatch && !force) {
+			Log.i(TAG, "skip $key (same size, already current)")
+			return null
+		}
+		if (force) {
+			return SelectKind.UPDATE
+		}
+		val localDate = localMapDateMs(local)
+		if (torrentMtimeMs > 0L && localDate > 0L) {
+			return if (torrentMtimeMs > localDate) {
+				SelectKind.UPDATE
+			} else {
+				Log.i(TAG, "skip $key (local current/newer local=$localDate torrent=$torrentMtimeMs)")
+				null
+			}
+		}
+		Log.i(TAG, "skip $key (no newer proof sizeLocal=${local.length()} sizeTorrent=$torrentSize mtime=$torrentMtimeMs localDate=$localDate)")
+		return null
+	}
+
+	private fun torrentMtimeMs(files: FileStorage, index: Int): Long {
+		return try {
+			val sec = files.swig().mtime(index)
+			if (sec > 0L) sec * 1000L else 0L
+		} catch (_: Exception) {
+			0L
+		} catch (_: Error) {
+			0L
+		}
+	}
+
+	private fun localMapDateMs(file: File): Long {
+		try {
+			for (resource in app.resourceManager.fileReaders) {
+				if (resource.fileName.equals(file.name, ignoreCase = true)) {
+					val created = resource.shallowReader?.dateCreated ?: 0L
+					if (created > 0L) {
+						return created
+					}
+				}
+			}
+		} catch (_: Exception) {
+		}
+		try {
+			val formatted = app.resourceManager.indexFileNames[file.name]
+			if (!formatted.isNullOrBlank()) {
+				synchronized(dateFormat) {
+					val parsed = dateFormat.parse(formatted)?.time ?: 0L
+					if (parsed > 0L) {
+						return parsed
+					}
+				}
+			}
+		} catch (_: Exception) {
+		}
+		// Avoid opening every OBF here (slow / conflicts with active readers).
+		return file.lastModified().coerceAtLeast(0L)
+	}
+
+	private fun buildCatalog(ti: TorrentInfo): List<EvTorrentCatalogEntry> {
+		val out = ArrayList<EvTorrentCatalogEntry>()
+		val files = ti.files()
+		for (i in 0 until ti.numFiles()) {
+			if (files.padFileAt(i)) {
+				continue
+			}
+			val name = files.fileName(i)
+			if (!isMapFile(name)) {
+				continue
+			}
+			out.add(
+				EvTorrentCatalogEntry(
+					index = i,
+					torrentName = name,
+					mapKey = mapKey(name),
+					sizeBytes = files.fileSize(i),
+					torrentMtimeMs = torrentMtimeMs(files, i)
+				)
+			)
+		}
+		return out
 	}
 
 	private fun onTorrentAdded(error: String?) {
@@ -552,6 +754,9 @@ class EvMapTorrentEngine(
 
 	private fun renameSelected(th: TorrentHandle) {
 		for (item in selected) {
+			if (item.seedOnly) {
+				continue
+			}
 			val target = if (item.replaceExisting &&
 				item.local != null &&
 				item.local.name.equals(item.dest.name, ignoreCase = true)
@@ -805,6 +1010,7 @@ class EvMapTorrentEngine(
 				val name = files.fileName(i)
 				sb.append(i).append('\t')
 					.append(files.fileSize(i)).append('\t')
+					.append(torrentMtimeMs(files, i)).append('\t')
 					.append(mapKey(name)).append('\t')
 					.append(name).append('\n')
 			}

@@ -17,5 +17,9 @@ data class EvMapTorrentStatus(
 	val sessionUploaded: Long = 0L,
 	val totalDownloaded: Long = 0L,
 	val totalUploaded: Long = 0L,
-	val waitingReason: String? = null
+	val waitingReason: String? = null,
+	val seedingFiles: Int = 0,
+	val updatingFiles: Int = 0,
+	val downloadingFiles: Int = 0,
+	val skippedCurrentFiles: Int = 0
 )

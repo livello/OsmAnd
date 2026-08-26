@@ -49,14 +49,17 @@ import net.osmand.plus.download.local.OperationType;
 import net.osmand.plus.helpers.FileNameTranslationHelper;
 import net.osmand.plus.inapp.InAppPurchaseUtils;
 import net.osmand.plus.plugins.PluginsFragment;
+import net.osmand.plus.plugins.PluginsHelper;
 import net.osmand.plus.plugins.accessibility.AccessibilityAssistant;
 import net.osmand.plus.plugins.custom.CustomIndexItem;
+import net.osmand.plus.plugins.evbms.EvBmsPlugin;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.ColorUtilities;
 import net.osmand.util.Algorithms;
 
 import java.io.File;
 import java.text.DateFormat;
+import java.util.Collections;
 import java.util.List;
 
 public class ItemViewHolder {
@@ -349,7 +352,25 @@ public class ItemViewHolder {
 			}
 			fullDescription = String.format(pattern, size, date);
 		}
+		String torrentHint = torrentCatalogHint(item);
+		if (!Algorithms.isEmpty(torrentHint)) {
+			fullDescription = context.getString(R.string.ltr_or_rtl_combine_via_bold_point,
+					fullDescription, torrentHint);
+		}
 		tvDesc.setText(fullDescription);
+	}
+
+	@Nullable
+	private String torrentCatalogHint(@NonNull DownloadItem item) {
+		EvBmsPlugin plugin = PluginsHelper.getPlugin(EvBmsPlugin.class);
+		if (plugin == null || !plugin.isActive()) {
+			return null;
+		}
+		String name = item.getFileName();
+		if (Algorithms.isEmpty(name) || !plugin.hasTorrentMapOffer(name)) {
+			return null;
+		}
+		return context.getString(R.string.ev_bms_torrent_in_catalog);
 	}
 
 	private void showIndeterminateProgress() {
@@ -517,6 +538,17 @@ public class ItemViewHolder {
 			download(downloadItem, parentOptional);
 			return true;
 		});
+
+		EvBmsPlugin evPlugin = PluginsHelper.getPlugin(EvBmsPlugin.class);
+		if (evPlugin != null && evPlugin.isActive() && evPlugin.hasTorrentMapOffer(downloadItem.getFileName())) {
+			optionsMenu.getMenu()
+					.add(R.string.ev_bms_torrent_download_via)
+					.setIcon(getThemedIcon(context, R.drawable.ic_action_import))
+					.setOnMenuItemClickListener(_item -> {
+						evPlugin.downloadMapsFromTorrent(Collections.singletonList(downloadItem.getFileName()));
+						return true;
+					});
+		}
 
 		optionsMenu.show();
 	}

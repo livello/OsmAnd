@@ -3874,6 +3874,27 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 
 	fun torrentPathSummary(): String = mapTorrent.pathSummary()
 
+	fun torrentCatalogEntries(): List<EvTorrentCatalogEntry> = mapTorrent.catalogEntries()
+
+	fun hasTorrentMapOffer(rawName: String): Boolean =
+		TORRENT_ENABLED.get() && mapTorrent.hasTorrentFile() && mapTorrent.hasCatalogEntry(rawName)
+
+	fun findTorrentMapOffer(rawName: String): EvTorrentCatalogEntry? =
+		if (hasTorrentMapOffer(rawName)) mapTorrent.findCatalogEntry(rawName) else null
+
+	fun downloadMapsFromTorrent(rawNames: Collection<String>) {
+		if (!TORRENT_ENABLED.get()) {
+			app.showToastMessage(R.string.ev_bms_torrent_enable_first)
+			return
+		}
+		if (!mapTorrent.hasTorrentFile()) {
+			app.showToastMessage(R.string.ev_bms_torrent_path_empty)
+			return
+		}
+		mapTorrent.downloadMapKeys(rawNames)
+		app.showToastMessage(R.string.ev_bms_torrent_download_started)
+	}
+
 	fun importTorrentFile(uri: android.net.Uri): Boolean {
 		val ok = mapTorrent.importTorrent(uri)
 		if (ok) {

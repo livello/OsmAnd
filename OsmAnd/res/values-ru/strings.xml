@@ -4572,6 +4572,7 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
 • <b>protocol/</b> — JbdBmsProtocol, JbdBleModuleProtocol, AntBmsProtocol, FarDriverProtocol, VescProtocol, BmsSnapshot<br/>
 Вёрстка: <i>res/layout/ev_bms_*.xml</i>. Настройки: <i>res/xml/ev_bms_settings.xml</i>. Строки: <i>res/values/strings.xml</i> и <i>values-ru</i>.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Список изменений</b> · %1$s<br/>
+• 🧲 Обновление из торрента только если mtime в торренте новее dateCreated локального OBF; раздача точных совпадений; в «Карты и ресурсы» — метка и пункт «Скачать из EV-торрента»<br/>
 • 🧲 Исправление краша при запуске: не хранить torrent handle из alert (dangling JNI); брать через session.find(infoHash); закачка отсутствующих только при ручном старте<br/>
 • ⚙️ Зелёный прямоугольник на панели перехода обводит emoji-кнопки групп, видимых при прокрутке настроек<br/>
 • 🧲 Торрент карт: сопоставление Russia_x.obf ↔ Russia_x_2.obf.zip, закачка отсутствующих карт и подключение в OsmAnd<br/>
@@ -4810,7 +4811,7 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
     <string name="ev_bms_driver_mass_desc">Масса водителя, добавляется к массе ТС для набора высоты и рекуперации.</string>
     <string name="ev_bms_torrent_title">Карты из торрента</string>
     <string name="ev_bms_torrent_enabled">Обновлять карты из торрента</string>
-    <string name="ev_bms_torrent_enabled_desc">Раздавать и обновлять карты, совпадающие с локальными по ключу региона, и при необходимости скачивать отсутствующие. Сопоставление игнорирует пути, .zip и суффикс версии _2.</string>
+    <string name="ev_bms_torrent_enabled_desc">Раздавать точные совпадения. Обновлять локальную карту только если копия в торренте новее (mtime vs dateCreated OBF) или при принудительной загрузке. Совпадение размера (Russia_x.obf ↔ Russia_x_2.obf) считается актуальным. Сопоставление игнорирует пути, .zip и суффикс _2.</string>
     <string name="ev_bms_torrent_path">Указать путь к торренту</string>
     <string name="ev_bms_torrent_path_empty">Нажмите, чтобы выбрать файл .torrent</string>
     <string name="ev_bms_torrent_seed_charge">Раздавать на зарядке</string>
@@ -4818,7 +4819,7 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
     <string name="ev_bms_torrent_wifi_only">Раздавать только по Wi‑Fi</string>
     <string name="ev_bms_torrent_wifi_only_desc">Не передавать данные торрента по мобильной сети.</string>
     <string name="ev_bms_torrent_download_new">Скачивать отсутствующие карты</string>
-    <string name="ev_bms_torrent_download_new_desc">Также скачивать карты из торрента, которых ещё нет на устройстве (только при ручном запуске), и подключать их в OsmAnd. Сопоставление игнорирует .zip и суффикс версии _2. Автозапуск на зарядке обновляет только уже установленные карты.</string>
+    <string name="ev_bms_torrent_download_new_desc">Также скачивать карты из торрента, которых ещё нет на устройстве (только при ручном запуске), и подключать их в OsmAnd. Сопоставление игнорирует .zip и суффикс версии _2. Автозапуск на зарядке обновляет уже установленные карты только если копия в торренте новее.</string>
     <string name="ev_bms_torrent_start">Запустить обновление вручную</string>
     <string name="ev_bms_torrent_start_desc">Открыть статус и начать раздачу / обновление сейчас</string>
     <string name="ev_bms_torrent_status_title">Статус торрента</string>
@@ -4838,8 +4839,12 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
     <string name="ev_bms_torrent_invalid">Не удалось прочитать файл торрента</string>
     <string name="ev_bms_torrent_no_match">В торренте нет совпадений с локальными картами</string>
     <string name="ev_bms_torrent_no_match_hint">Нет подходящих карт. Примеры в торренте: %1$s</string>
-    <string name="ev_bms_torrent_selected_hint">Обновить %1$d · скачать %2$d</string>
+    <string name="ev_bms_torrent_all_current_hint">Локальные карты актуальны (пропущено %1$d). Качать нечего.</string>
+    <string name="ev_bms_torrent_selected_hint">Обновить %1$d · скачать %2$d · раздавать %3$d · пропуск %4$d</string>
     <string name="ev_bms_torrent_enable_first">Сначала включите «Обновлять карты из торрента»</string>
+    <string name="ev_bms_torrent_download_via">Скачать из EV-торрента</string>
+    <string name="ev_bms_torrent_download_started">Загрузка из торрента запущена</string>
+    <string name="ev_bms_torrent_in_catalog">Есть в EV-торренте</string>
     <string name="ev_bms_torrent_state_starting">запуск</string>
     <string name="ev_bms_torrent_state_paused">пауза</string>
     <string name="ev_bms_torrent_state_seeding">раздача</string>
