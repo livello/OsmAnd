@@ -8,10 +8,12 @@ import android.text.SpannableStringBuilder
 import android.text.TextUtils
 import android.text.method.LinkMovementMethod
 import android.text.style.RelativeSizeSpan
+import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.CheckBox
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.PopupMenu
 import android.widget.RadioButton
@@ -64,6 +66,7 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	private val uiHandler = Handler(Looper.getMainLooper())
 	private var buttonsParent: ViewGroup? = null
 	private var buttonsBar: View? = null
+	private var jumpBar: View? = null
 	private var lastCalRunning = false
 	private var actionButtonsVisible = true
 	private var currentTab = EvBmsSheetTab.SETTINGS
@@ -189,7 +192,13 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			EvBmsSheetTab.SETTINGS -> {}
 		}
 		val showActions = tab == EvBmsSheetTab.SETTINGS
-		buttonsParent?.visibility = if (showActions && actionButtonsVisible) View.VISIBLE else View.GONE
+		if (!showActions) {
+			buttonsParent?.visibility = View.GONE
+			buttonsBar?.visibility = View.GONE
+			jumpBar?.visibility = View.GONE
+		} else {
+			applyFooterMode(animate = false)
+		}
 		if (shouldLiveTick()) {
 			uiHandler.removeCallbacks(liveTick)
 			uiHandler.post(liveTick)
@@ -212,28 +221,47 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			return
 		}
 		actionButtonsVisible = visible
-		val overlay = buttonsParent
-		val bar = buttonsBar
-		if (overlay == null || bar == null) {
+		applyFooterMode(animate = true)
+	}
+
+	private fun applyFooterMode(animate: Boolean) {
+		val overlay = buttonsParent ?: return
+		val session = buttonsBar
+		val jump = jumpBar
+		if (currentTab != EvBmsSheetTab.SETTINGS) {
+			overlay.visibility = View.GONE
+			session?.visibility = View.GONE
+			jump?.visibility = View.GONE
+			settingsFragment()?.setActionFooterInset(sessionVisible = false, jumpVisible = false)
 			return
 		}
-		bar.animate().cancel()
-		overlay.animate().cancel()
-		settingsFragment()?.setActionFooterInset(visible)
-		if (visible) {
-			overlay.visibility = View.VISIBLE
-			bar.visibility = View.VISIBLE
-			overlay.animate().alpha(1f).setDuration(160).start()
-			bar.animate().alpha(1f).setDuration(160).start()
-		} else {
-			overlay.animate().alpha(0f).setDuration(160).withEndAction {
-				if (!actionButtonsVisible) {
-					overlay.visibility = View.GONE
-					bar.visibility = View.GONE
-				}
-			}.start()
-			bar.animate().alpha(0f).setDuration(160).start()
+		overlay.visibility = View.VISIBLE
+		overlay.alpha = 1f
+		val showSession = actionButtonsVisible
+		settingsFragment()?.setActionFooterInset(sessionVisible = showSession, jumpVisible = !showSession)
+		fun show(view: View?, visible: Boolean) {
+			if (view == null) {
+				return
+			}
+			view.animate().cancel()
+			if (!animate) {
+				view.alpha = if (visible) 1f else 0f
+				view.visibility = if (visible) View.VISIBLE else View.GONE
+				return
+			}
+			if (visible) {
+				view.visibility = View.VISIBLE
+				view.animate().alpha(1f).setDuration(160).start()
+			} else {
+				view.animate().alpha(0f).setDuration(160).withEndAction {
+					if (view.alpha == 0f) {
+						view.visibility = View.GONE
+					}
+				}.start()
+			}
 		}
+		show(session, showSession)
+		show(jump, !showSession)
 	}
 
 	fun onCalibrationTick() {
@@ -1090,17 +1118,16 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		val topPadding = getDimensionPixelSize(R.dimen.context_menu_first_line_top_margin)
 		val paused = plugin.isTelemetryPaused()
 		val bar = inflate(R.layout.preference_button_with_icon_triple)
+		bar.layoutParams = FrameLayout.LayoutParams(
+			FrameLayout.LayoutParams.MATCH_PARENT,
+			FrameLayout.LayoutParams.WRAP_CONTENT,
+			Gravity.BOTTOM
+		)
 		bar.setPadding(contentPadding, topPadding, contentPadding, contentPadding)
 		parent.setBackgroundColor(ColorUtilities.getListBgColor(app, nightMode))
 		parent.addView(bar)
 		buttonsBar = bar
-		bar.alpha = if (actionButtonsVisible) 1f else 0f
-		parent.alpha = if (actionButtonsVisible) 1f else 0f
-		val overlayState =
-			if (currentTab == EvBmsSheetTab.SETTINGS && actionButtonsVisible) View.VISIBLE else View.GONE
-		bar.visibility = overlayState
-		parent.visibility = overlayState
-		settingsFragment()?.setActionFooterInset(actionButtonsVisible)
+		ensureJumpBar(parent)
 
 		val cancelButton = bar.findViewById<CardView>(R.id.button_left)
 		TripRecordingBottomSheet.createItem(app, nightMode, cancelButton, ItemType.CANCEL, true, null)
@@ -1146,6 +1173,47 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 					}
 				}
 			}
+		}
+		applyFooterMode(animate = false)
+	}
+
+	private fun ensureJumpBar(parent: ViewGroup) {
+		if (jumpBar?.parent == parent) {
+			return
+		}
+		jumpBar?.let { (it.parent as? ViewGroup)?.removeView(it) }
+		val bar = inflate(R.layout.ev_bms_settings_jump_bar)
+		bar.layoutParams = FrameLayout.LayoutParams(
+			FrameLayout.LayoutParams.MATCH_PARENT,
+			AndroidUtils.dpToPx(app, 36f),
+			Gravity.BOTTOM
+		)
+		parent.addView(bar)
+		jumpBar = bar
+		val row = bar.findViewById<LinearLayout>(R.id.ev_bms_jump_buttons)
+		row.removeAllViews()
+		val ctx = requireContext()
+		val color = ColorUtilities.getPrimaryTextColor(ctx, nightMode)
+		val typed = android.util.TypedValue()
+		ctx.theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, typed, true)
+		for (jump in EvBmsSettingsFragment.SETTINGS_JUMPS) {
+			val btn = TextView(ctx).apply {
+				text = jump.emoji
+				textSize = 16f
+				gravity = Gravity.CENTER
+				includeFontPadding = false
+				minWidth = AndroidUtils.dpToPx(ctx, 36f)
+				layoutParams = LinearLayout.LayoutParams(
+					LinearLayout.LayoutParams.WRAP_CONTENT,
+					LinearLayout.LayoutParams.MATCH_PARENT
+				)
+				setPadding(AndroidUtils.dpToPx(ctx, 6f), 0, AndroidUtils.dpToPx(ctx, 6f), 0)
+				setTextColor(color)
+				contentDescription = getString(jump.titleRes)
+				setBackgroundResource(typed.resourceId)
+				setOnClickListener { settingsFragment()?.scrollToSettingsGroup(jump.key) }
+			}
+			row.addView(btn)
 		}
 	}
 

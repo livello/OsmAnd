@@ -3833,6 +3833,9 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	fun toggleAllAnnounces(): Boolean {
 		val enabled = !hasAnyAnnounceEnabled()
 		setAllAnnouncesEnabled(enabled)
+		if (enabled) {
+			voice.speakNow(app.getString(R.string.ev_bms_voice_alerts_on))
+		}
 		return enabled
 	}
 

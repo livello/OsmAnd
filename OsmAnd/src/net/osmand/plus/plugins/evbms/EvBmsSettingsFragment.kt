@@ -1,5 +1,6 @@
 package net.osmand.plus.plugins.evbms
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.Dialog
 import android.content.Context
@@ -27,6 +28,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ListView
 import android.widget.RadioButton
+import android.widget.RadioGroup
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
@@ -34,6 +36,8 @@ import androidx.appcompat.app.AlertDialog
 import androidx.core.text.HtmlCompat
 import androidx.fragment.app.FragmentManager
 import androidx.preference.Preference
+import androidx.preference.PreferenceGroupAdapter
+import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import net.osmand.plus.R
 import net.osmand.plus.plugins.PluginsHelper
@@ -57,6 +61,21 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 
 	companion object {
 		const val EMBEDDED_KEY = "ev_bms_settings_embedded"
+
+		data class SettingsJump(val key: String, val emoji: String, val titleRes: Int)
+
+		val SETTINGS_JUMPS = listOf(
+			SettingsJump("ev_bms_settings_profile_cat", "📁", R.string.ev_bms_settings_profile),
+			SettingsJump("ev_bms_devices", "🔋", R.string.ev_bms_devices),
+			SettingsJump("ev_bms_modes", "🏍️", R.string.ev_bms_ride_modes),
+			SettingsJump("ev_bms_hud", "👁️", R.string.ev_bms_hud),
+			SettingsJump("ev_bms_calibration", "📏", R.string.ev_bms_calibration),
+			SettingsJump("ev_bms_recording", "💾", R.string.ev_bms_recording),
+			SettingsJump("ev_bms_voice", "🔊", R.string.ev_bms_voice),
+			SettingsJump("ev_bms_charge", "🔌", R.string.ev_bms_charge_settings),
+			SettingsJump("ev_bms_history_cat", "📋", R.string.ev_bms_history_group),
+			SettingsJump("ev_bms_range", "🛣️", R.string.ev_bms_range_settings)
+		)
 	}
 
 	private val plugin = PluginsHelper.requirePlugin(EvBmsPlugin::class.java)
@@ -165,13 +184,39 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		return view
 	}
 
-	fun setActionFooterInset(buttonsVisible: Boolean) {
+	fun setActionFooterInset(sessionVisible: Boolean, jumpVisible: Boolean = false) {
 		if (!isEmbedded()) {
 			return
 		}
 		val list = listView ?: return
-		val bottom = AndroidUtils.dpToPx(app, if (buttonsVisible) 88f else 12f)
+		val bottom = AndroidUtils.dpToPx(
+			app,
+			when {
+				sessionVisible -> 88f
+				jumpVisible -> 48f
+				else -> 12f
+			}
+		)
 		list.setPadding(list.paddingLeft, list.paddingTop, list.paddingRight, bottom)
+	}
+
+	@SuppressLint("RestrictedApi")
+	fun scrollToSettingsGroup(key: String) {
+		val pref = findPreference<Preference>(key) ?: return
+		val list = listView ?: return
+		val adapter = list.adapter
+		if (adapter is PreferenceGroupAdapter) {
+			val pos = adapter.getPreferenceAdapterPosition(pref)
+			if (pos >= 0) {
+				(list.layoutManager as? LinearLayoutManager)?.scrollToPositionWithOffset(pos, 0)
+				list.post {
+					val atTop = !list.canScrollVertically(-1)
+					(parentFragment as? EvBmsSettingsBottomSheet)?.setActionButtonsVisible(atTop)
+				}
+				return
+			}
+		}
+		scrollToPreference(pref)
 	}
 
 	override fun updateStatusBar() {
@@ -181,7 +226,6 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 	}
 
 	override fun setupPreferences() {
-		findPreference<Preference>("ev_bms_devices")?.isVisible = false
 		setupProfiles()
 		setupDevicePrefs()
 		setupControllerTitle()
@@ -265,9 +309,19 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 
 	private fun setupIcons() {
 		decorate("ev_bms_settings_profile", "📁", R.drawable.ic_action_settings)
-		decorate("ev_bms_profile_rename", "✏️", R.drawable.ic_action_edit_dark)
-		decorate("ev_bms_profile_export", "📤", R.drawable.ic_action_gshare_dark)
-		decorate("ev_bms_profile_import", "📥", R.drawable.ic_action_import)
+		decorateCategory("ev_bms_settings_profile_cat", "📁")
+		decorateCategory("ev_bms_devices", "🔋")
+		decorateCategory("ev_bms_modes", "🏍️")
+		decorateCategory("ev_bms_hud", "👁️")
+		decorateCategory("ev_bms_calibration", "📏")
+		decorateCategory("ev_bms_recording", "💾")
+		decorateCategory("ev_bms_voice", "🔊")
+		decorateCategory("ev_bms_voice_stop_range", "🧭")
+		decorateCategory("ev_bms_voice_cells", "⚠️")
+		decorateCategory("ev_bms_voice_temps", "🌡️")
+		decorateCategory("ev_bms_charge", "🔌")
+		decorateCategory("ev_bms_history_cat", "📋")
+		decorateCategory("ev_bms_range", "🛣️")
 		decorate(plugin.BMS_ADDRESS.id, "🔋", R.drawable.ic_action_battery)
 		decorate(plugin.BMS_PROTOCOL.id, "🔗", R.drawable.ic_action_settings)
 		decorate(plugin.BMS_PASSWORD.id, "🔐", R.drawable.ic_action_lock)
@@ -352,6 +406,14 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		pref.icon = getContentIcon(iconRes)
 	}
 
+	private fun decorateCategory(key: String, emoji: String) {
+		val pref = findPreference<Preference>(key) ?: return
+		val title = pref.title?.toString().orEmpty()
+		if (title.isNotEmpty() && !title.startsWith(emoji)) {
+			pref.title = "$emoji $title"
+		}
+	}
+
 	override fun onResume() {
 		super.onResume()
 		plugin.scanListener = this
@@ -377,16 +439,9 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 
 	private fun setupProfiles() {
 		plugin.captureActiveProfile()
-		val pref = findPreference<ListPreferenceEx>(plugin.SETTINGS_PROFILE.id) ?: return
-		val names = plugin.profileNames()
-		val active = plugin.activeProfileName().ifBlank { names.firstOrNull().orEmpty() }
-		val entries = (names + getString(R.string.ev_bms_settings_profile_new)).toTypedArray()
-		val values = (names + EvBmsProfileStore.NEW_PROFILE_VALUE).toTypedArray<Any>()
-		pref.setEntries(entries)
-		pref.setEntryValues(values)
-		pref.setValue(active)
+		val pref = findPreference<Preference>(plugin.SETTINGS_PROFILE.id) ?: return
+		val active = plugin.activeProfileName()
 		pref.summary = active
-		findPreference<Preference>("ev_bms_profile_rename")?.summary = active
 	}
 
 	override fun onPause() {
@@ -956,26 +1011,6 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 	}
 
 	override fun onPreferenceChange(preference: Preference, newValue: Any?): Boolean {
-		if (preference.key == plugin.SETTINGS_PROFILE.id) {
-			val name = newValue as? String ?: return false
-			if (name == EvBmsProfileStore.NEW_PROFILE_VALUE) {
-				askProfileName(R.string.ev_bms_settings_profile_new, "") { typed ->
-					if (plugin.createSettingsProfile(typed)) {
-						app.showToastMessage(getString(R.string.ev_bms_settings_profile_saved, typed))
-						setupPreferences()
-					} else {
-						app.showToastMessage(R.string.ev_bms_settings_profile_exists)
-					}
-				}
-				return false
-			}
-			if (plugin.selectSettingsProfile(name)) {
-				app.showToastMessage(getString(R.string.ev_bms_settings_profile_loaded, name))
-				activity?.let { plugin.connectSavedDevices(it) }
-				setupPreferences()
-			}
-			return true
-		}
 		if (preference.key == plugin.HIKE_MODE.id) {
 			val enabled = newValue as? Boolean ?: return false
 			val mapActivity = getMapActivity()
@@ -1065,23 +1100,8 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 	override fun onPreferenceClick(preference: Preference): Boolean {
 		val activity = activity ?: return false
 		when (preference.key) {
-			"ev_bms_profile_rename" -> {
-				askProfileName(R.string.ev_bms_settings_profile_rename, plugin.activeProfileName()) { typed ->
-					if (plugin.renameSettingsProfile(typed)) {
-						setupProfiles()
-					} else {
-						app.showToastMessage(R.string.ev_bms_settings_profile_exists)
-					}
-				}
-				return true
-			}
-			"ev_bms_profile_export" -> {
-				plugin.captureActiveProfile()
-				exportProfileLauncher.launch(plugin.settingsProfileExportFileName())
-				return true
-			}
-			"ev_bms_profile_import" -> {
-				importProfileLauncher.launch(arrayOf("application/json", "*/*"))
+			plugin.SETTINGS_PROFILE.id -> {
+				showProfileModal()
 				return true
 			}
 			plugin.BMS_ADDRESS.id -> {
@@ -1157,6 +1177,89 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			}
 		}
 		return super.onPreferenceClick(preference)
+	}
+
+	private fun showProfileModal() {
+		val activity = activity ?: return
+		val themed = UiUtilities.getThemedContext(activity, isNightMode())
+		val content = LayoutInflater.from(themed).inflate(R.layout.ev_bms_profile_dialog, null)
+		val namesGroup = content.findViewById<RadioGroup>(R.id.profile_names)
+		val actions = content.findViewById<LinearLayout>(R.id.profile_actions)
+		val active = plugin.activeProfileName()
+		val textColor = ColorUtilities.getPrimaryTextColor(themed, isNightMode())
+		for (name in plugin.profileNames()) {
+			val radio = RadioButton(themed).apply {
+				id = View.generateViewId()
+				text = name
+				isChecked = name == active
+				setTextColor(textColor)
+			}
+			UiUtilities.setupCompoundButton(radio, isNightMode(), UiUtilities.CompoundButtonType.GLOBAL)
+			namesGroup.addView(radio)
+		}
+		val dialog = AlertDialog.Builder(themed)
+			.setTitle(R.string.ev_bms_settings_profile_select)
+			.setView(content)
+			.setNegativeButton(R.string.shared_string_close, null)
+			.create()
+		namesGroup.setOnCheckedChangeListener { group, checkedId ->
+			val button = group.findViewById<RadioButton>(checkedId) ?: return@setOnCheckedChangeListener
+			val name = button.text.toString()
+			if (name == plugin.activeProfileName()) {
+				return@setOnCheckedChangeListener
+			}
+			if (plugin.selectSettingsProfile(name)) {
+				app.showToastMessage(getString(R.string.ev_bms_settings_profile_loaded, name))
+				plugin.connectSavedDevices(activity)
+				setupPreferences()
+			}
+			dialog.dismiss()
+		}
+		fun addAction(titleRes: Int, emoji: String, onClick: () -> Unit) {
+			val padH = AndroidUtils.dpToPx(themed, 16f)
+			val padV = AndroidUtils.dpToPx(themed, 12f)
+			val row = TextView(themed).apply {
+				text = "$emoji  ${getString(titleRes)}"
+				setTextColor(textColor)
+				textSize = 16f
+				setPadding(padH, padV, padH, padV)
+				val typed = android.util.TypedValue()
+				themed.theme.resolveAttribute(android.R.attr.selectableItemBackground, typed, true)
+				setBackgroundResource(typed.resourceId)
+				setOnClickListener {
+					dialog.dismiss()
+					onClick()
+				}
+			}
+			actions.addView(row)
+		}
+		addAction(R.string.ev_bms_settings_profile_rename, "✏️") {
+			askProfileName(R.string.ev_bms_settings_profile_rename, plugin.activeProfileName()) { typed ->
+				if (plugin.renameSettingsProfile(typed)) {
+					setupProfiles()
+				} else {
+					app.showToastMessage(R.string.ev_bms_settings_profile_exists)
+				}
+			}
+		}
+		addAction(R.string.ev_bms_settings_profile_export_action, "📤") {
+			plugin.captureActiveProfile()
+			exportProfileLauncher.launch(plugin.settingsProfileExportFileName())
+		}
+		addAction(R.string.ev_bms_settings_profile_import_action, "📥") {
+			importProfileLauncher.launch(arrayOf("application/json", "*/*"))
+		}
+		addAction(R.string.ev_bms_settings_profile_create, "➕") {
+			askProfileName(R.string.ev_bms_settings_profile_create, "") { typed ->
+				if (plugin.createSettingsProfile(typed)) {
+					app.showToastMessage(getString(R.string.ev_bms_settings_profile_saved, typed))
+					setupPreferences()
+				} else {
+					app.showToastMessage(R.string.ev_bms_settings_profile_exists)
+				}
+			}
+		}
+		dialog.show()
 	}
 
 	private fun askProfileName(titleRes: Int, initial: String, onOk: (String) -> Unit) {

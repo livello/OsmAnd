@@ -527,6 +527,10 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 		}
 	}
 
+	fun speakNow(text: String) {
+		speak(text)
+	}
+
 	private fun speak(text: String) {
 		val player = app.routingHelper.voiceRouter.player
 		if (player is JsTtsCommandPlayer && player.speakAdditional(text)) {

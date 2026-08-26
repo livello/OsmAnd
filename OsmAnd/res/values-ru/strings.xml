@@ -1,5 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="ev_bms_voice_alerts_on">голосовые оповещения включены</string>
+    <string name="ev_bms_ride_modes">Режимы поездки</string>
+    <string name="ev_bms_history_group">История</string>
+    <string name="ev_bms_voice_pack">Напряжение пакета</string>
+    <string name="ev_bms_voice_stop_range">Остановка и запас</string>
+    <string name="ev_bms_voice_cells">Ячейки</string>
+    <string name="ev_bms_voice_temps">Температура</string>
+    <string name="ev_bms_settings_profile_create">Создать новый</string>
+    <string name="ev_bms_settings_profile_export_action">Экспортировать</string>
+    <string name="ev_bms_settings_profile_import_action">Загрузить</string>
     <string name="obd_fuel_type_not_provided">Тип топлива не предоставлен</string>
     <string name="obd_fuel_type_gasoline">Бензин</string>
     <string name="obd_fuel_type_methanol">Метанол</string>
@@ -4562,6 +4572,9 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
 • <b>protocol/</b> — JbdBmsProtocol, JbdBleModuleProtocol, AntBmsProtocol, FarDriverProtocol, VescProtocol, BmsSnapshot<br/>
 Вёрстка: <i>res/layout/ev_bms_*.xml</i>. Настройки: <i>res/xml/ev_bms_settings.xml</i>. Строки: <i>res/values/strings.xml</i> и <i>values-ru</i>.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Список изменений</b> · %1$s<br/>
+• 📁 «Выбор профиля» открывает модалку: переименовать, экспортировать, загрузить, создать новый<br/>
+• 🔊 Включение всех оповещений нажатием на «EV-Телеметрия» озвучивает «голосовые оповещения включены»<br/>
+• ⚙️ Настройки сгруппированы с заголовками и линиями; при прокрутке вместо управления сессией — компактные кнопки перехода к группам<br/>
 • 🚴 Датчик каденса BK6LC отдельно от датчика колеса BK6LS; поле «каденс» и графики; одометры поездки сбрасываются только при старте новой записи телеметрии<br/>
 • 📐 Вкладка «О плагине»: полная методика запаса хода и карта файлов<br/>
 • 📏 Дистанция для запаса хода и ПНЗ: BLE переднего колеса, затем GPS с фильтром, затем одометр контроллера (заднее может буксовать)<br/>

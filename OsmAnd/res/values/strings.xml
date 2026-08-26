@@ -11,6 +11,16 @@
 	Strings for OsmAnd core
 	Thx - Hardy
 -->
+	<string name="ev_bms_voice_alerts_on">Voice alerts enabled</string>
+	<string name="ev_bms_ride_modes">Ride modes</string>
+	<string name="ev_bms_history_group">History</string>
+	<string name="ev_bms_voice_pack">Pack voltage</string>
+	<string name="ev_bms_voice_stop_range">Stop and range</string>
+	<string name="ev_bms_voice_cells">Cell alerts</string>
+	<string name="ev_bms_voice_temps">Temperature alerts</string>
+	<string name="ev_bms_settings_profile_create">Create new</string>
+	<string name="ev_bms_settings_profile_export_action">Export</string>
+	<string name="ev_bms_settings_profile_import_action">Load</string>
 	<string name="share_favorites_media_preparation_failed">Couldn\'t include attached media. Sharing points only.</string>
 	<plurals name="files_count">
 		<item quantity="one">%d file</item>
@@ -1061,7 +1071,10 @@ BMS UART (JBD / ANT) + controller UART (FarDriver / VESC) + BLE CSC wheel + GPS 
 • <b>ble/EvBleUartClient.kt</b> — GATT UART for BMS, controller and speed sensor<br/>
 • <b>protocol/</b> — JbdBmsProtocol, JbdBleModuleProtocol, AntBmsProtocol, FarDriverProtocol, VescProtocol, BmsSnapshot<br/>
 Layouts: <i>res/layout/ev_bms_*.xml</i>. Preferences: <i>res/xml/ev_bms_settings.xml</i>. Strings: <i>res/values/strings.xml</i> and <i>values-ru</i>.]]></string>
-    <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+	<string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+• 📁 Select profile opens a dialog with rename, export, load and create new<br/>
+• 🔊 Enabling all alerts by tapping EV-Telemetry speaks «Voice alerts enabled»<br/>
+• ⚙️ Settings grouped with titled divider lines; compact jump icons replace session controls when scrolling<br/>
 • 🚴 Cadence sensor (BK6LC) is separate from the wheel sensor (BK6LS); cadence_rpm field and charts; trip odometers reset only when a new telemetry recording starts<br/>
 • 📐 About tab: full remaining-range methodology and plugin file map<br/>
 • 📏 Distance for range and DOC: front-wheel BLE, then filtered GPS, then controller odometer (rear wheel can slip)<br/>

@@ -8,29 +8,11 @@
 		android:layout="@layout/ev_bms_preference_category_divider"
 		android:title="@string/ev_bms_settings_profile" />
 
-	<net.osmand.plus.settings.preferences.ListPreferenceEx
+	<Preference
 		android:key="ev_bms_settings_profile"
 		android:layout="@layout/ev_bms_preference_with_descr"
 		android:persistent="false"
 		android:title="@string/ev_bms_settings_profile_select" />
-
-	<Preference
-		android:key="ev_bms_profile_rename"
-		android:layout="@layout/ev_bms_preference_with_descr"
-		android:persistent="false"
-		android:title="@string/ev_bms_settings_profile_rename" />
-
-	<Preference
-		android:key="ev_bms_profile_export"
-		android:layout="@layout/ev_bms_preference_with_descr"
-		android:persistent="false"
-		android:title="@string/ev_bms_settings_profile_export" />
-
-	<Preference
-		android:key="ev_bms_profile_import"
-		android:layout="@layout/ev_bms_preference_with_descr"
-		android:persistent="false"
-		android:title="@string/ev_bms_settings_profile_import" />
 
 	<PreferenceCategory
 		android:key="ev_bms_devices"
@@ -92,7 +74,7 @@
 	<PreferenceCategory
 		android:key="ev_bms_modes"
 		android:layout="@layout/ev_bms_preference_category_divider"
-		android:title="@string/ev_bms_widget_hike" />
+		android:title="@string/ev_bms_ride_modes" />
 
 	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
 		android:key="ev_bms_hike_mode"
@@ -100,11 +82,6 @@
 		android:summaryOff="@string/shared_string_disabled"
 		android:summaryOn="@string/shared_string_enabled"
 		android:title="@string/ev_bms_widget_hike" />
-
-	<PreferenceCategory
-		android:key="ev_bms_speed_profile"
-		android:layout="@layout/ev_bms_preference_category_divider"
-		android:title="@string/ev_bms_speed_profile" />
 
 	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
 		android:key="ev_bms_speed_profile_auto"
@@ -306,6 +283,11 @@
 		android:layout="@layout/ev_bms_preference_with_descr"
 		android:title="@string/ev_bms_soc_step" />
 
+	<PreferenceCategory
+		android:key="ev_bms_voice_stop_range"
+		android:layout="@layout/ev_bms_preference_category_divider"
+		android:title="@string/ev_bms_voice_stop_range" />
+
 	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
 		android:key="ev_bms_announce_range_on_stop"
 		android:layout="@layout/ev_bms_preference_switch"
@@ -361,6 +343,11 @@
 		android:layout="@layout/ev_bms_preference_with_descr"
 		android:title="@string/ev_bms_stop_speed" />
 
+	<PreferenceCategory
+		android:key="ev_bms_voice_cells"
+		android:layout="@layout/ev_bms_preference_category_divider"
+		android:title="@string/ev_bms_voice_cells" />
+
 	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
 		android:key="ev_bms_announce_cell_voltage"
 		android:layout="@layout/ev_bms_preference_switch"
@@ -382,6 +369,11 @@
 		android:key="ev_bms_cell_alert_interval_sec"
 		android:layout="@layout/ev_bms_preference_with_descr"
 		android:title="@string/ev_bms_cell_alert_interval" />
+
+	<PreferenceCategory
+		android:key="ev_bms_voice_temps"
+		android:layout="@layout/ev_bms_preference_category_divider"
+		android:title="@string/ev_bms_voice_temps" />
 
 	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
 		android:key="ev_bms_announce_motor_heat"
@@ -462,6 +454,11 @@
 		android:summaryOff="@string/shared_string_disabled"
 		android:summaryOn="@string/shared_string_enabled"
 		android:title="@string/ev_bms_announce_charge_eta" />
+
+	<PreferenceCategory
+		android:key="ev_bms_history_cat"
+		android:layout="@layout/ev_bms_preference_category_divider"
+		android:title="@string/ev_bms_history_group" />
 
 	<Preference
 		android:key="ev_bms_charge_history"
