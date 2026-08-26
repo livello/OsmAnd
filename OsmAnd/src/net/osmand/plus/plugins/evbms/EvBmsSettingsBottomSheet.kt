@@ -705,6 +705,9 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			buildString {
 				append("⏱️ ").append(getString(R.string.ev_bms_history_duration, bNum(fmtDuration(row.durationMs()))))
 				append(" · 🔋 ").append(getString(R.string.ev_bms_history_charged_ah, bNum(n(row.chargedAh))))
+				if (row.energyWh != null) {
+					append(" · ⚡ ").append(getString(R.string.ev_bms_history_charge_energy_wh, bNum(n0(row.energyWh))))
+				}
 				if (row.avgCurrentA != null) {
 					append(" · 🔌 ").append(getString(R.string.ev_bms_history_avg_charge_a, bNum(n(row.avgCurrentA))))
 				}
@@ -716,7 +719,14 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 				append("⏸️ ").append(
 					getString(
 						R.string.ev_bms_history_stop_time,
-						bNum(row.stopMs?.let { fmtDuration(it) } ?: getString(R.string.ev_bms_value_none))
+						bNum(
+							when {
+								plugin.isChargeStopPending(row.startMs) || row.isOpen() ->
+									getString(R.string.ev_bms_history_stop_pending)
+								row.stopMs != null -> fmtDuration(row.stopMs)
+								else -> getString(R.string.ev_bms_value_none)
+							}
+						)
 					)
 				)
 			}

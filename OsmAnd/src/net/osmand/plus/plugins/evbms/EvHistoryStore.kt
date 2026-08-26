@@ -18,9 +18,12 @@ class EvHistoryStore(private val app: OsmandApplication) {
 		private const val CHARGE_FILE = "charge_history.csv"
 		private const val TRIP_FILE = "charge_trip_history.csv"
 		private const val CHARGE_HEADER =
-			"start_time;end_time;duration_min;start_temp_c;end_temp_c;charged_ah;avg_current_a;start_lat;start_lon;end_lat;end_lon"
+			"start_time;end_time;duration_min;start_temp_c;end_temp_c;charged_ah;energy_wh;avg_current_a;start_lat;start_lon;end_lat;end_lon"
 		private const val TRIP_HEADER =
 			"start_time;end_time;date;duration_min;moving_min;stop_min;distance_km;energy_wh;used_ah;wh_per_km;avg_moving_kmh;start_voltage_v;end_voltage_v;min_cell_v;start_temp_c;end_temp_c;start_lat;start_lon;end_lat;end_lon"
+		private const val REAL_TRIP_KM = 0.2
+		private const val REAL_TRIP_MOVING_MS = 60_000L
+		private const val MERGE_GAP_MS = 30 * 60_000L
 	}
 
 	data class ChargeRecord(
@@ -33,6 +36,7 @@ class EvHistoryStore(private val app: OsmandApplication) {
 		val startMinCellV: Double? = null,
 		val endMinCellV: Double? = null,
 		val stopMs: Long? = null,
+		val energyWh: Double? = null,
 		val startLat: Double?,
 		val startLon: Double?,
 		val endLat: Double?,
@@ -56,6 +60,7 @@ class EvHistoryStore(private val app: OsmandApplication) {
 				.putOpt("startMinCellV", startMinCellV)
 				.putOpt("endMinCellV", endMinCellV)
 				.putOpt("stopMs", stopMs)
+				.putOpt("energyWh", energyWh)
 				.putOpt("startLat", startLat)
 				.putOpt("startLon", startLon)
 				.putOpt("endLat", endLat)
@@ -74,6 +79,7 @@ class EvHistoryStore(private val app: OsmandApplication) {
 					startMinCellV = json.optNullableDouble("startMinCellV"),
 					endMinCellV = json.optNullableDouble("endMinCellV"),
 					stopMs = if (json.has("stopMs") && !json.isNull("stopMs")) json.optLong("stopMs") else null,
+					energyWh = json.optNullableDouble("energyWh"),
 					startLat = json.optNullableDouble("startLat"),
 					startLon = json.optNullableDouble("startLon"),
 					endLat = json.optNullableDouble("endLat"),
@@ -106,6 +112,9 @@ class EvHistoryStore(private val app: OsmandApplication) {
 		val endLon: Double?
 	) {
 		fun durationMs(): Long = (endMs - startMs).coerceAtLeast(0L)
+
+		fun isRealRide(): Boolean =
+			(distanceKm ?: 0.0) >= REAL_TRIP_KM || movingMs >= REAL_TRIP_MOVING_MS
 
 		fun toJson(): JSONObject {
 			return JSONObject()
@@ -175,24 +184,81 @@ class EvHistoryStore(private val app: OsmandApplication) {
 		return JSONArray().also { arr -> rows.takeLast(MAX_ROWS).forEach { arr.put(it.toJson()) } }.toString()
 	}
 
-	fun appendChargeCsv(row: ChargeRecord) {
-		appendCsv(
-			CHARGE_FILE,
-			CHARGE_HEADER,
-			listOf(
-				fmtTime(row.startMs),
-				fmtTime(row.endMs),
-				n(row.durationMs() / 60000.0, "%.1f"),
-				n(row.startTempC, "%.1f"),
-				n(row.endTempC, "%.1f"),
-				n(row.chargedAh, "%.3f"),
-				n(row.avgCurrentA, "%.2f"),
-				n(row.startLat, "%.8f"),
-				n(row.startLon, "%.8f"),
-				n(row.endLat, "%.8f"),
-				n(row.endLon, "%.8f")
-			)
+	fun mergeChargesWithoutTrip(
+		charges: List<ChargeRecord>,
+		trips: List<ChargeTripRecord>
+	): List<ChargeRecord> {
+		if (charges.size < 2) {
+			return charges
+		}
+		val rides = trips.filter { it.isRealRide() }
+		val sorted = charges.sortedBy { it.startMs }
+		val out = ArrayList<ChargeRecord>(sorted.size)
+		var acc = sorted[0]
+		for (i in 1 until sorted.size) {
+			val next = sorted[i]
+			val accEnd = if (acc.endMs > 0L) acc.endMs else acc.startMs
+			val hasRide = rides.any { ride ->
+				ride.startMs > acc.startMs && ride.startMs < next.startMs
+			}
+			val gap = next.startMs - accEnd
+			val close = gap <= MERGE_GAP_MS || acc.isOpen() || next.isOpen()
+			if (hasRide || !close) {
+				out.add(acc)
+				acc = next
+			} else {
+				acc = mergeChargePair(acc, next)
+			}
+		}
+		out.add(acc)
+		return out
+	}
+
+	fun mergeChargePair(a: ChargeRecord, b: ChargeRecord): ChargeRecord {
+		val first = if (a.startMs <= b.startMs) a else b
+		val last = if (a.startMs <= b.startMs) b else a
+		val durA = a.durationMs().coerceAtLeast(1L).toDouble()
+		val durB = b.durationMs().coerceAtLeast(1L).toDouble()
+		val avg = when {
+			a.avgCurrentA != null && b.avgCurrentA != null ->
+				(a.avgCurrentA * durA + b.avgCurrentA * durB) / (durA + durB)
+			else -> last.avgCurrentA ?: first.avgCurrentA
+		}
+		val energy = sumNullable(a.energyWh, b.energyWh)
+		val charged = sumNullable(a.chargedAh, b.chargedAh)
+		val open = first.isOpen() || last.isOpen()
+		return ChargeRecord(
+			startMs = first.startMs,
+			endMs = if (open) 0L else maxOf(first.endMs, last.endMs),
+			startTempC = first.startTempC,
+			endTempC = last.endTempC ?: first.endTempC,
+			chargedAh = charged,
+			avgCurrentA = avg,
+			startMinCellV = first.startMinCellV,
+			endMinCellV = last.endMinCellV ?: first.endMinCellV,
+			stopMs = last.stopMs ?: first.stopMs,
+			energyWh = energy,
+			startLat = first.startLat,
+			startLon = first.startLon,
+			endLat = last.endLat ?: first.endLat,
+			endLon = last.endLon ?: first.endLon
 		)
+	}
+
+	fun appendChargeCsv(row: ChargeRecord) {
+		appendCsv(CHARGE_FILE, CHARGE_HEADER, chargeCells(row))
+	}
+
+	fun rewriteChargeCsv(rows: List<ChargeRecord>) {
+		writeCsv(CHARGE_FILE, CHARGE_HEADER, rows.filter { !it.isOpen() }.map { chargeCells(it) })
+	}
+
+	fun rewriteMergedChargeCsv(trips: List<ChargeTripRecord>) {
+		val fromFile = readChargeCsv()
+		if (fromFile.isEmpty()) {
+			return
+		}
+		rewriteChargeCsv(mergeChargesWithoutTrip(fromFile, trips))
 	}
 
 	fun appendTripCsv(row: ChargeTripRecord) {
@@ -224,6 +290,84 @@ class EvHistoryStore(private val app: OsmandApplication) {
 		)
 	}
 
+	private fun chargeCells(row: ChargeRecord): List<String> {
+		return listOf(
+			fmtTime(row.startMs),
+			if (row.endMs > 0L) fmtTime(row.endMs) else "",
+			n(row.durationMs() / 60000.0, "%.1f"),
+			n(row.startTempC, "%.1f"),
+			n(row.endTempC, "%.1f"),
+			n(row.chargedAh, "%.3f"),
+			n(row.energyWh, "%.1f"),
+			n(row.avgCurrentA, "%.2f"),
+			n(row.startLat, "%.8f"),
+			n(row.startLon, "%.8f"),
+			n(row.endLat, "%.8f"),
+			n(row.endLon, "%.8f")
+		)
+	}
+
+	fun readChargeCsv(): List<ChargeRecord> {
+		val file = File(app.getAppPath(TelemetryRecorder.DIR_NAME), CHARGE_FILE)
+		if (!file.isFile) {
+			return emptyList()
+		}
+		return try {
+			val lines = file.readLines()
+			if (lines.size < 2) {
+				return emptyList()
+			}
+			lines.drop(1).mapNotNull { parseChargeCsvLine(it) }
+		} catch (e: Exception) {
+			LOG.error("Cannot read $CHARGE_FILE", e)
+			emptyList()
+		}
+	}
+
+	private fun parseChargeCsvLine(line: String): ChargeRecord? {
+		val p = line.split(';')
+		if (p.size < 6) {
+			return null
+		}
+		val startMs = parseTime(p[0]) ?: return null
+		val endMs = parseTime(p[1]) ?: 0L
+		val startTemp = p.getOrNull(3)?.toDoubleOrNull()
+		val endTemp = p.getOrNull(4)?.toDoubleOrNull()
+		val chargedAh = p.getOrNull(5)?.toDoubleOrNull()
+		var energyWh: Double? = null
+		var avgCurrentA: Double? = null
+		var latIdx = 6
+		fun looksLikeLat(s: String?): Boolean {
+			val v = s?.toDoubleOrNull() ?: return false
+			return v in -90.0..90.0 && kotlin.math.abs(v) >= 1.0
+		}
+		when {
+			p.size >= 12 && looksLikeLat(p.getOrNull(8)) -> {
+				energyWh = p.getOrNull(6)?.toDoubleOrNull()
+				avgCurrentA = p.getOrNull(7)?.toDoubleOrNull()
+				latIdx = 8
+			}
+			p.size >= 11 && looksLikeLat(p.getOrNull(7)) -> {
+				avgCurrentA = p.getOrNull(6)?.toDoubleOrNull()
+				latIdx = 7
+			}
+			looksLikeLat(p.getOrNull(6)) -> latIdx = 6
+		}
+		return ChargeRecord(
+			startMs = startMs,
+			endMs = endMs,
+			startTempC = startTemp,
+			endTempC = endTemp,
+			chargedAh = chargedAh,
+			avgCurrentA = avgCurrentA,
+			energyWh = energyWh,
+			startLat = p.getOrNull(latIdx)?.toDoubleOrNull(),
+			startLon = p.getOrNull(latIdx + 1)?.toDoubleOrNull(),
+			endLat = p.getOrNull(latIdx + 2)?.toDoubleOrNull(),
+			endLon = p.getOrNull(latIdx + 3)?.toDoubleOrNull()
+		)
+	}
+
 	private fun appendCsv(name: String, header: String, cells: List<String>) {
 		try {
 			val dir = app.getAppPath(TelemetryRecorder.DIR_NAME)
@@ -240,6 +384,24 @@ class EvHistoryStore(private val app: OsmandApplication) {
 			}
 		} catch (e: Exception) {
 			LOG.error("Cannot append $name", e)
+		}
+	}
+
+	private fun writeCsv(name: String, header: String, rows: List<List<String>>) {
+		try {
+			val dir = app.getAppPath(TelemetryRecorder.DIR_NAME)
+			if (!dir.exists() && !dir.mkdirs()) {
+				return
+			}
+			val file = File(dir, name)
+			FileWriter(file, false).use { out ->
+				out.append(header).append('\n')
+				for (cells in rows) {
+					out.append(cells.joinToString(";")).append('\n')
+				}
+			}
+		} catch (e: Exception) {
+			LOG.error("Cannot write $name", e)
 		}
 	}
 
@@ -264,11 +426,29 @@ class EvHistoryStore(private val app: OsmandApplication) {
 		return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(ms))
 	}
 
+	private fun parseTime(raw: String): Long? {
+		if (raw.isBlank()) {
+			return null
+		}
+		return try {
+			SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).parse(raw)?.time
+		} catch (_: Exception) {
+			null
+		}
+	}
+
 	private fun n(v: Double?, fmt: String): String {
 		if (v == null || v.isNaN() || v.isInfinite()) {
 			return ""
 		}
 		return String.format(Locale.US, fmt, v)
+	}
+
+	private fun sumNullable(a: Double?, b: Double?): Double? {
+		if (a == null && b == null) {
+			return null
+		}
+		return (a ?: 0.0) + (b ?: 0.0)
 	}
 }
 

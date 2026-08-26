@@ -4,6 +4,35 @@
 	android:title="@string/ev_bms_plugin_name">
 
 	<PreferenceCategory
+		android:key="ev_bms_settings_profile_cat"
+		android:layout="@layout/ev_bms_preference_category_divider"
+		android:title="@string/ev_bms_settings_profile" />
+
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="ev_bms_settings_profile"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:persistent="false"
+		android:title="@string/ev_bms_settings_profile_select" />
+
+	<Preference
+		android:key="ev_bms_profile_rename"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:persistent="false"
+		android:title="@string/ev_bms_settings_profile_rename" />
+
+	<Preference
+		android:key="ev_bms_profile_export"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:persistent="false"
+		android:title="@string/ev_bms_settings_profile_export" />
+
+	<Preference
+		android:key="ev_bms_profile_import"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:persistent="false"
+		android:title="@string/ev_bms_settings_profile_import" />
+
+	<PreferenceCategory
 		android:key="ev_bms_devices"
 		android:layout="@layout/ev_bms_preference_category_divider"
 		android:title="@string/ev_bms_devices" />

@@ -11,7 +11,10 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.text.InputType
 import android.text.TextUtils
+import android.widget.EditText
+import android.widget.FrameLayout
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -111,6 +114,35 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		}
 	}
 
+	private val exportProfileLauncher = registerForActivityResult(
+		ActivityResultContracts.CreateDocument("application/json")
+	) { uri ->
+		if (uri == null) {
+			return@registerForActivityResult
+		}
+		if (plugin.exportSettingsProfile(uri)) {
+			app.showToastMessage(R.string.ev_bms_settings_profile_exported)
+		} else {
+			app.showToastMessage(R.string.ev_bms_settings_profile_failed)
+		}
+	}
+
+	private val importProfileLauncher = registerForActivityResult(
+		ActivityResultContracts.OpenDocument()
+	) { uri ->
+		if (uri == null) {
+			return@registerForActivityResult
+		}
+		val name = plugin.importSettingsProfile(uri)
+		if (name != null) {
+			app.showToastMessage(getString(R.string.ev_bms_settings_profile_loaded, name))
+			activity?.let { plugin.connectSavedDevices(it) }
+			setupPreferences()
+		} else {
+			app.showToastMessage(R.string.ev_bms_settings_profile_failed)
+		}
+	}
+
 	private fun isEmbedded(): Boolean = arguments?.getBoolean(EMBEDDED_KEY) == true
 
 	override fun onCreateView(
@@ -150,6 +182,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 
 	override fun setupPreferences() {
 		findPreference<Preference>("ev_bms_devices")?.isVisible = false
+		setupProfiles()
 		setupDevicePrefs()
 		setupControllerTitle()
 		setupBmsProtocol()
@@ -231,6 +264,10 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 	}
 
 	private fun setupIcons() {
+		decorate("ev_bms_settings_profile", "📁", R.drawable.ic_action_settings)
+		decorate("ev_bms_profile_rename", "✏️", R.drawable.ic_action_edit_dark)
+		decorate("ev_bms_profile_export", "📤", R.drawable.ic_action_gshare_dark)
+		decorate("ev_bms_profile_import", "📥", R.drawable.ic_action_import)
 		decorate(plugin.BMS_ADDRESS.id, "🔋", R.drawable.ic_action_battery)
 		decorate(plugin.BMS_PROTOCOL.id, "🔗", R.drawable.ic_action_settings)
 		decorate(plugin.BMS_PASSWORD.id, "🔐", R.drawable.ic_action_lock)
@@ -334,7 +371,27 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		dismissPicker()
 		plugin.scanListener = null
 		plugin.stopScans()
+		plugin.captureActiveProfile()
 		super.onDestroyView()
+	}
+
+	private fun setupProfiles() {
+		plugin.captureActiveProfile()
+		val pref = findPreference<ListPreferenceEx>(plugin.SETTINGS_PROFILE.id) ?: return
+		val names = plugin.profileNames()
+		val active = plugin.activeProfileName().ifBlank { names.firstOrNull().orEmpty() }
+		val entries = (names + getString(R.string.ev_bms_settings_profile_new)).toTypedArray()
+		val values = (names + EvBmsProfileStore.NEW_PROFILE_VALUE).toTypedArray<Any>()
+		pref.setEntries(entries)
+		pref.setEntryValues(values)
+		pref.setValue(active)
+		pref.summary = active
+		findPreference<Preference>("ev_bms_profile_rename")?.summary = active
+	}
+
+	override fun onPause() {
+		plugin.captureActiveProfile()
+		super.onPause()
 	}
 
 	private fun setupDevicePrefs() {
@@ -899,6 +956,26 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 	}
 
 	override fun onPreferenceChange(preference: Preference, newValue: Any?): Boolean {
+		if (preference.key == plugin.SETTINGS_PROFILE.id) {
+			val name = newValue as? String ?: return false
+			if (name == EvBmsProfileStore.NEW_PROFILE_VALUE) {
+				askProfileName(R.string.ev_bms_settings_profile_new, "") { typed ->
+					if (plugin.createSettingsProfile(typed)) {
+						app.showToastMessage(getString(R.string.ev_bms_settings_profile_saved, typed))
+						setupPreferences()
+					} else {
+						app.showToastMessage(R.string.ev_bms_settings_profile_exists)
+					}
+				}
+				return false
+			}
+			if (plugin.selectSettingsProfile(name)) {
+				app.showToastMessage(getString(R.string.ev_bms_settings_profile_loaded, name))
+				activity?.let { plugin.connectSavedDevices(it) }
+				setupPreferences()
+			}
+			return true
+		}
 		if (preference.key == plugin.HIKE_MODE.id) {
 			val enabled = newValue as? Boolean ?: return false
 			val mapActivity = getMapActivity()
@@ -988,6 +1065,25 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 	override fun onPreferenceClick(preference: Preference): Boolean {
 		val activity = activity ?: return false
 		when (preference.key) {
+			"ev_bms_profile_rename" -> {
+				askProfileName(R.string.ev_bms_settings_profile_rename, plugin.activeProfileName()) { typed ->
+					if (plugin.renameSettingsProfile(typed)) {
+						setupProfiles()
+					} else {
+						app.showToastMessage(R.string.ev_bms_settings_profile_exists)
+					}
+				}
+				return true
+			}
+			"ev_bms_profile_export" -> {
+				plugin.captureActiveProfile()
+				exportProfileLauncher.launch(plugin.settingsProfileExportFileName())
+				return true
+			}
+			"ev_bms_profile_import" -> {
+				importProfileLauncher.launch(arrayOf("application/json", "*/*"))
+				return true
+			}
 			plugin.BMS_ADDRESS.id -> {
 				startScan(activity, EvBleUartClient.Role.BMS)
 				return true
@@ -1061,6 +1157,33 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			}
 		}
 		return super.onPreferenceClick(preference)
+	}
+
+	private fun askProfileName(titleRes: Int, initial: String, onOk: (String) -> Unit) {
+		val activity = activity ?: return
+		val themed = UiUtilities.getThemedContext(activity, isNightMode())
+		val pad = AndroidUtils.dpToPx(themed, 16f)
+		val input = EditText(themed).apply {
+			setText(initial)
+			setSelection(text.length)
+			inputType = InputType.TYPE_CLASS_TEXT
+			setSingleLine()
+		}
+		val wrap = FrameLayout(themed).apply {
+			setPadding(pad, pad / 2, pad, 0)
+			addView(input)
+		}
+		AlertDialog.Builder(themed)
+			.setTitle(titleRes)
+			.setView(wrap)
+			.setNegativeButton(R.string.shared_string_cancel, null)
+			.setPositiveButton(R.string.shared_string_apply) { _, _ ->
+				val name = plugin.sanitizeProfileName(input.text?.toString())
+				if (name != null) {
+					onOk(name)
+				}
+			}
+			.show()
 	}
 
 	private fun confirmAction(titleRes: Int, messageRes: Int, onYes: () -> Unit) {
@@ -1309,7 +1432,8 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 				).append('\n')
 				buf.append(getString(R.string.ev_bms_history_duration, fmtDuration(row.durationMs()))).append('\n')
 				buf.append(getString(R.string.ev_bms_history_temp, n(row.startTempC), n(row.endTempC))).append('\n')
-				buf.append(getString(R.string.ev_bms_history_charged_ah, n(row.chargedAh))).append("\n\n")
+				buf.append(getString(R.string.ev_bms_history_charged_ah, n(row.chargedAh))).append('\n')
+				buf.append(getString(R.string.ev_bms_history_charge_energy_wh, n(row.energyWh))).append("\n\n")
 			}
 		}
 		AlertDialog.Builder(themed)
