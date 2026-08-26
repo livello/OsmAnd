@@ -521,6 +521,26 @@
 		android:persistent="false"
 		android:title="@string/ev_bms_torrent_path" />
 
+	<net.osmand.plus.settings.preferences.EditTextPreferenceEx
+		android:key="ev_bms_torrent_topic_url"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:persistent="false"
+		android:inputType="textUri"
+		android:title="@string/ev_bms_torrent_topic_url" />
+
+	<net.osmand.plus.settings.preferences.EditTextPreferenceEx
+		android:key="ev_bms_torrent_rutracker_cookie"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:persistent="false"
+		android:inputType="text"
+		android:title="@string/ev_bms_torrent_rutracker_cookie" />
+
+	<Preference
+		android:key="ev_bms_torrent_refresh_topic"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:persistent="false"
+		android:title="@string/ev_bms_torrent_refresh_topic" />
+
 	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
 		android:key="ev_bms_torrent_seed_charge"
 		android:layout="@layout/ev_bms_preference_switch"

@@ -4811,9 +4811,25 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
     <string name="ev_bms_driver_mass_desc">Масса водителя, добавляется к массе ТС для набора высоты и рекуперации.</string>
     <string name="ev_bms_torrent_title">Карты из торрента</string>
     <string name="ev_bms_torrent_enabled">Обновлять карты из торрента</string>
-    <string name="ev_bms_torrent_enabled_desc">Раздавать точные совпадения. Обновлять локальную карту только если копия в торренте новее (mtime vs dateCreated OBF) или при принудительной загрузке. Совпадение размера (Russia_x.obf ↔ Russia_x_2.obf) считается актуальным. Сопоставление игнорирует пути, .zip и суффикс _2.</string>
+    <string name="ev_bms_torrent_enabled_desc">Раздавать каждую локальную карту, которая есть в торренте (имя или mapKey) и совпадает по размеру (полная). Обновлять только если копия в торренте новее (mtime vs dateCreated OBF) или размеры отличаются и вы принудительно качаете. Сопоставление игнорирует пути, .zip и суффикс _2.</string>
     <string name="ev_bms_torrent_path">Указать путь к торренту</string>
     <string name="ev_bms_torrent_path_empty">Нажмите, чтобы выбрать файл .torrent</string>
+    <string name="ev_bms_torrent_topic_url">URL темы RuTracker</string>
+    <string name="ev_bms_torrent_topic_url_desc">Страница темы с вложением .torrent (например viewtopic.php?t=…). Для кнопки «Обновить торрент с RuTracker».</string>
+    <string name="ev_bms_torrent_topic_url_empty">Сначала укажите URL темы RuTracker</string>
+    <string name="ev_bms_torrent_rutracker_cookie">Cookie RuTracker (необязательно)</string>
+    <string name="ev_bms_torrent_rutracker_cookie_desc">Вставьте свой Cookie из браузера, если Cloudflare блокирует анонимную загрузку. Никому не передавайте.</string>
+    <string name="ev_bms_torrent_rutracker_cookie_empty">Не задан — обновление может не пройти через Cloudflare</string>
+    <string name="ev_bms_torrent_rutracker_cookie_set">Cookie сохранён (скрыт)</string>
+    <string name="ev_bms_torrent_refresh_topic">Обновить торрент с RuTracker</string>
+    <string name="ev_bms_torrent_refresh_topic_desc">По возможности: скачать HTML темы, найти dl.php, загрузить .torrent. Cloudflare может блокировать.</string>
+    <string name="ev_bms_torrent_refresh_started">Обновление торрента с RuTracker…</string>
+    <string name="ev_bms_torrent_refresh_ok">Торрент обновлён: %1$s</string>
+    <string name="ev_bms_torrent_refresh_failed">Не удалось обновить торрент</string>
+    <string name="ev_bms_torrent_refresh_failed_detail">Ошибка обновления: %1$s</string>
+    <string name="ev_bms_torrent_refresh_cloudflare">RuTracker заблокирован Cloudflare. Вставьте свой Cookie в настройках или укажите файл .torrent вручную.</string>
+    <string name="ev_bms_torrent_refresh_no_link">На странице темы не найдена ссылка dl.php</string>
+    <string name="ev_bms_torrent_refresh_bad_file">Скачанный файл не является корректным .torrent</string>
     <string name="ev_bms_torrent_seed_charge">Раздавать на зарядке</string>
     <string name="ev_bms_torrent_seed_charge_desc">Автозапуск только при зарядке EV или когда телефон на зарядке и вы стоите. Ручной запуск работает в любой момент.</string>
     <string name="ev_bms_torrent_wifi_only">Раздавать только по Wi‑Fi</string>

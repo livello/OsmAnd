@@ -446,6 +446,10 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		decorate(plugin.DRIVER_MASS_KG.id, "👤", R.drawable.ic_action_user)
 		decorate(plugin.TORRENT_ENABLED.id, "🧲", R.drawable.ic_action_gsave_dark)
 		decorate("ev_bms_torrent_path", "📄", R.drawable.ic_action_folder)
+		decorate(plugin.TORRENT_TOPIC_URL.id, "🔗", R.drawable.ic_action_link)
+		decorate(plugin.TORRENT_RUTRACKER_COOKIE.id, "🍪", R.drawable.ic_action_lock)
+		decorate("ev_bms_torrent_refresh_topic", "🔄", R.drawable.ic_action_refresh_dark)
+		decorate("ev_bms_torrent_start", "▶️", R.drawable.ic_action_play_dark)
 		decorate(plugin.TORRENT_SEED_ON_CHARGE.id, "🔌", R.drawable.ic_action_battery)
 		decorate(plugin.TORRENT_WIFI_ONLY.id, "📶", R.drawable.ic_action_wifi_off)
 		decorate(plugin.TORRENT_DOWNLOAD_NEW.id, "⬇️", R.drawable.ic_action_gsave_dark)
@@ -1075,6 +1079,23 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		findPreference<SwitchPreferenceEx>(plugin.TORRENT_DOWNLOAD_NEW.id)
 			?.setDescription(R.string.ev_bms_torrent_download_new_desc)
 		findPreference<Preference>("ev_bms_torrent_path")?.summary = plugin.torrentPathSummary()
+		findPreference<EditTextPreferenceEx>(plugin.TORRENT_TOPIC_URL.id)?.apply {
+			text = plugin.TORRENT_TOPIC_URL.get()
+			summary = plugin.TORRENT_TOPIC_URL.get()
+			setDescription(R.string.ev_bms_torrent_topic_url_desc)
+		}
+		findPreference<EditTextPreferenceEx>(plugin.TORRENT_RUTRACKER_COOKIE.id)?.apply {
+			text = plugin.TORRENT_RUTRACKER_COOKIE.get()
+			val cookie = plugin.TORRENT_RUTRACKER_COOKIE.get().orEmpty()
+			summary = if (cookie.isBlank()) {
+				getString(R.string.ev_bms_torrent_rutracker_cookie_empty)
+			} else {
+				getString(R.string.ev_bms_torrent_rutracker_cookie_set)
+			}
+			setDescription(R.string.ev_bms_torrent_rutracker_cookie_desc)
+		}
+		findPreference<Preference>("ev_bms_torrent_refresh_topic")?.summary =
+			getString(R.string.ev_bms_torrent_refresh_topic_desc)
 		val start = findPreference<Preference>("ev_bms_torrent_start") ?: return
 		val st = plugin.mapTorrentStatus()
 		start.summary = when {
@@ -1178,6 +1199,17 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			}
 			return false
 		}
+		if (preference.key == plugin.TORRENT_TOPIC_URL.id) {
+			val url = (newValue as? String)?.trim().orEmpty()
+			plugin.TORRENT_TOPIC_URL.set(url)
+			setupTorrentPrefs()
+			return true
+		}
+		if (preference.key == plugin.TORRENT_RUTRACKER_COOKIE.id) {
+			plugin.TORRENT_RUTRACKER_COOKIE.set((newValue as? String).orEmpty())
+			setupTorrentPrefs()
+			return true
+		}
 		if (preference.key == plugin.TORRENT_ENABLED.id ||
 			preference.key == plugin.TORRENT_SEED_ON_CHARGE.id ||
 			preference.key == plugin.TORRENT_WIFI_ONLY.id ||
@@ -1271,6 +1303,13 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			}
 			"ev_bms_torrent_path" -> {
 				torrentFileLauncher.launch(arrayOf("application/x-bittorrent", "application/octet-stream", "*/*"))
+				return true
+			}
+			"ev_bms_torrent_refresh_topic" -> {
+				app.showToastMessage(R.string.ev_bms_torrent_refresh_started)
+				plugin.refreshTorrentFromRutracker { _, _ ->
+					setupTorrentPrefs()
+				}
 				return true
 			}
 			"ev_bms_torrent_start" -> {
@@ -1497,6 +1536,11 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			prefId == plugin.HUD_BUFFER2_KMH.id
 		) {
 			setupHudLimits()
+		}
+		if (prefId == plugin.TORRENT_TOPIC_URL.id ||
+			prefId == plugin.TORRENT_RUTRACKER_COOKIE.id
+		) {
+			setupTorrentPrefs()
 		}
 		if (prefId == plugin.TORRENT_ENABLED.id ||
 			prefId == plugin.TORRENT_SEED_ON_CHARGE.id ||

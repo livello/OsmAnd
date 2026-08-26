@@ -1311,9 +1311,25 @@ Layouts: <i>res/layout/ev_bms_*.xml</i>. Preferences: <i>res/xml/ev_bms_settings
     <string name="ev_bms_driver_mass_desc">Rider mass added to the vehicle for climb energy and descent regen.</string>
     <string name="ev_bms_torrent_title">Maps from torrent</string>
     <string name="ev_bms_torrent_enabled">Update maps from torrent</string>
-    <string name="ev_bms_torrent_enabled_desc">Seed exact torrent matches. Update a local map only when the torrent copy is newer (file mtime vs OBF dateCreated) or when sizes differ and you force download. Same-size matches (e.g. Russia_x.obf vs Russia_x_2.obf) are treated as current. Matching ignores paths, .zip and _2 suffixes.</string>
+    <string name="ev_bms_torrent_enabled_desc">Seed every local map that matches a torrent file by name or mapKey and has the same size (complete). Update only when the torrent copy is newer (mtime vs OBF dateCreated) or sizes differ and you force download. Matching ignores paths, .zip and _2 suffixes.</string>
     <string name="ev_bms_torrent_path">Torrent file path</string>
     <string name="ev_bms_torrent_path_empty">Tap to pick a .torrent file</string>
+    <string name="ev_bms_torrent_topic_url">RuTracker topic URL</string>
+    <string name="ev_bms_torrent_topic_url_desc">Topic page with the maps .torrent attachment (e.g. viewtopic.php?t=…). Used by «Refresh torrent from RuTracker».</string>
+    <string name="ev_bms_torrent_topic_url_empty">Set a RuTracker topic URL first</string>
+    <string name="ev_bms_torrent_rutracker_cookie">RuTracker cookie (optional)</string>
+    <string name="ev_bms_torrent_rutracker_cookie_desc">Paste your own browser Cookie header if Cloudflare blocks anonymous downloads. Never share this with others.</string>
+    <string name="ev_bms_torrent_rutracker_cookie_empty">Not set — refresh may fail behind Cloudflare</string>
+    <string name="ev_bms_torrent_rutracker_cookie_set">Cookie saved (hidden)</string>
+    <string name="ev_bms_torrent_refresh_topic">Refresh torrent from RuTracker</string>
+    <string name="ev_bms_torrent_refresh_topic_desc">Best-effort: fetch topic HTML, find dl.php, download .torrent. Cloudflare may block this.</string>
+    <string name="ev_bms_torrent_refresh_started">Refreshing torrent from RuTracker…</string>
+    <string name="ev_bms_torrent_refresh_ok">Torrent updated: %1$s</string>
+    <string name="ev_bms_torrent_refresh_failed">Could not refresh torrent</string>
+    <string name="ev_bms_torrent_refresh_failed_detail">Refresh failed: %1$s</string>
+    <string name="ev_bms_torrent_refresh_cloudflare">RuTracker blocked by Cloudflare. Paste your own Cookie in settings, or pick the .torrent file manually.</string>
+    <string name="ev_bms_torrent_refresh_no_link">No dl.php download link found on the topic page</string>
+    <string name="ev_bms_torrent_refresh_bad_file">Downloaded file is not a valid .torrent</string>
     <string name="ev_bms_torrent_seed_charge">Seed while charging</string>
     <string name="ev_bms_torrent_seed_charge_desc">Auto-run only when EV charging is detected or the phone is plugged in and you are stopped. Manual start still works anytime.</string>
     <string name="ev_bms_torrent_wifi_only">Seed on Wi‑Fi only</string>

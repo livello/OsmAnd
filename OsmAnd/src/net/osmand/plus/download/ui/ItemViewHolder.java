@@ -68,6 +68,8 @@ public class ItemViewHolder {
 	protected final View view;
 	protected final TextView tvName;
 	protected final TextView tvDesc;
+	@Nullable
+	protected final TextView tvTorrentBadge;
 	protected final ImageView ivLeft;
 	protected final ImageView ivBtnRight;
 	protected final Button btnRight;
@@ -119,6 +121,7 @@ public class ItemViewHolder {
 		tvDesc = view.findViewById(R.id.description);
 		ivBtnRight = view.findViewById(R.id.secondaryIcon);
 		tvName = view.findViewById(R.id.title);
+		tvTorrentBadge = view.findViewById(R.id.ev_torrent_badge);
 
 		ViewCompat.setAccessibilityDelegate(view, context.getAccessibilityAssistant());
 		ViewCompat.setAccessibilityDelegate(btnRight, context.getAccessibilityAssistant());
@@ -275,6 +278,11 @@ public class ItemViewHolder {
 				tvDesc.setVisibility(View.GONE);
 			}
 		}
+		if (!isDownloading) {
+			bindTorrentBadge(downloadItem);
+		} else if (tvTorrentBadge != null) {
+			tvTorrentBadge.setVisibility(View.GONE);
+		}
 	}
 
 	public void bindDownloadItem(CityItem cityItem) {
@@ -286,6 +294,9 @@ public class ItemViewHolder {
 			ivLeft.setImageDrawable(getThemedIcon(context, R.drawable.ic_map));
 			tvDesc.setVisibility(View.GONE);
 			pbProgress.setVisibility(View.GONE);
+			if (tvTorrentBadge != null) {
+				tvTorrentBadge.setVisibility(View.GONE);
+			}
 		}
 	}
 
@@ -352,12 +363,34 @@ public class ItemViewHolder {
 			}
 			fullDescription = String.format(pattern, size, date);
 		}
-		String torrentHint = torrentCatalogHint(item);
-		if (!Algorithms.isEmpty(torrentHint)) {
-			fullDescription = context.getString(R.string.ltr_or_rtl_combine_via_bold_point,
-					fullDescription, torrentHint);
-		}
 		tvDesc.setText(fullDescription);
+	}
+
+	private void bindTorrentBadge(@NonNull DownloadItem item) {
+		if (tvTorrentBadge == null) {
+			return;
+		}
+		boolean show = !Algorithms.isEmpty(torrentCatalogHint(item));
+		if (!show) {
+			tvTorrentBadge.setVisibility(View.GONE);
+			tvTorrentBadge.setShadowLayer(0f, 0f, 0f, 0);
+			return;
+		}
+		tvTorrentBadge.setVisibility(View.VISIBLE);
+		tvTorrentBadge.setText("🧲 " + context.getString(R.string.ev_bms_torrent_in_catalog));
+		tvTorrentBadge.setTextColor(0xFFFFFFFF);
+		android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+		bg.setColor(0xFF1565C0);
+		bg.setCornerRadius(AndroidUtils.dpToPx(context, 10f));
+		tvTorrentBadge.setBackground(bg);
+		// Soft blue glow on the badge font/chip.
+		tvTorrentBadge.setShadowLayer(
+				AndroidUtils.dpToPx(context, 6f),
+				0f,
+				0f,
+				0xFF42A5F5
+		);
+		tvTorrentBadge.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
 	}
 
 	@Nullable

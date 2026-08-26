@@ -310,6 +310,13 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerBooleanPreference("ev_bms_torrent_wifi_only", true).makeGlobal().makeShared()
 	val TORRENT_DOWNLOAD_NEW: CommonPreference<Boolean> =
 		registerBooleanPreference("ev_bms_torrent_download_new", false).makeGlobal().makeShared()
+	val TORRENT_TOPIC_URL: CommonPreference<String> =
+		registerStringPreference(
+			"ev_bms_torrent_topic_url",
+			"https://rutracker.org/forum/viewtopic.php?t=5233935"
+		).makeGlobal().makeShared()
+	val TORRENT_RUTRACKER_COOKIE: CommonPreference<String> =
+		registerStringPreference("ev_bms_torrent_rutracker_cookie", "").makeGlobal().makeShared()
 	val TORRENT_DOWNLOADED: CommonPreference<Long> =
 		registerLongPreference("ev_bms_torrent_downloaded", 0L).makeGlobal()
 	val TORRENT_UPLOADED: CommonPreference<Long> =
@@ -3893,6 +3900,49 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		}
 		mapTorrent.downloadMapKeys(rawNames)
 		app.showToastMessage(R.string.ev_bms_torrent_download_started)
+	}
+
+	fun refreshTorrentFromRutracker(onDone: ((Boolean, String) -> Unit)? = null) {
+		val url = TORRENT_TOPIC_URL.get().orEmpty().ifBlank {
+			"https://rutracker.org/forum/viewtopic.php?t=5233935"
+		}
+		val cookie = TORRENT_RUTRACKER_COOKIE.get()
+		Thread({
+			val result = EvRutrackerTorrentFetcher.fetchTorrent(url, cookie)
+			var message: String
+			var ok: Boolean
+			if (result.ok && result.bytes != null) {
+				val dest = mapTorrent.torrentFile()
+				try {
+					if (mapTorrent.isStarted()) {
+						mapTorrent.stop()
+					}
+					EvRutrackerTorrentFetcher.writeTo(dest, result.bytes)
+					TORRENT_PATH.set(dest.absolutePath)
+					TORRENT_NAME.set(result.fileName ?: dest.name)
+					mapTorrent.reloadCatalogFromDisk()
+					ok = true
+					message = app.getString(R.string.ev_bms_torrent_refresh_ok, result.fileName ?: dest.name)
+					handler.post { syncMapTorrent() }
+				} catch (e: Exception) {
+					ok = false
+					message = e.message ?: app.getString(R.string.ev_bms_torrent_refresh_failed)
+				}
+			} else {
+				ok = false
+				message = when (result.message) {
+					"cloudflare" -> app.getString(R.string.ev_bms_torrent_refresh_cloudflare)
+					"no_dl_link" -> app.getString(R.string.ev_bms_torrent_refresh_no_link)
+					"bad_torrent" -> app.getString(R.string.ev_bms_torrent_refresh_bad_file)
+					"empty_url" -> app.getString(R.string.ev_bms_torrent_topic_url_empty)
+					else -> app.getString(R.string.ev_bms_torrent_refresh_failed_detail, result.message)
+				}
+			}
+			handler.post {
+				app.showToastMessage(message)
+				onDone?.invoke(ok, message)
+			}
+		}, "ev-rutracker-torrent").start()
 	}
 
 	fun importTorrentFile(uri: android.net.Uri): Boolean {

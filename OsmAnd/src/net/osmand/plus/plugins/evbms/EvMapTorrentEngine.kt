@@ -267,6 +267,11 @@ class EvMapTorrentEngine(
 		}
 	}
 
+	fun reloadCatalogFromDisk() {
+		catalog = emptyList()
+		catalogEntries()
+	}
+
 	fun findCatalogEntry(rawName: String): EvTorrentCatalogEntry? {
 		val key = mapKey(rawName)
 		return catalogEntries().firstOrNull { it.mapKey == key }
@@ -427,10 +432,11 @@ class EvMapTorrentEngine(
 				}
 				mapFilesInTorrent++
 				val key = mapKey(torrentName)
-				val local = localByKey[key]
 				val destName = torrentName.substringAfterLast('/').substringAfterLast('\\')
 				val dest = File(mapsDir, destName)
 				val torrentSize = files.fileSize(i)
+				// Prefer the torrent's expected filename when present; otherwise mapKey match.
+				val local = resolveLocalFile(dest, localByKey[key], torrentSize)
 				val kind = decideSelectKind(
 					key = key,
 					local = local,
@@ -552,11 +558,10 @@ class EvMapTorrentEngine(
 
 	/**
 	 * Decide whether to seed, update, download, or skip.
-	 * Freshness (in order):
-	 * 1) Exact torrent filename + size on disk → seed.
-	 * 2) Same size under a matched mapKey (e.g. local Russia_x.obf vs torrent Russia_x_2.obf) → already current, skip.
-	 * 3) Torrent file mtime > local OBF dateCreated (ResourceManager / index dates, else mtime) → update.
-	 * 4) Otherwise do not re-download (cannot prove the torrent is newer). Maps & Resources can force.
+	 * Freshness / seeding:
+	 * 1) Local file size == torrent file size (exact name or mapKey alias) → seed (complete match).
+	 * 2) Torrent file mtime > local OBF dateCreated → update.
+	 * 3) Otherwise do not re-download unless forced / download-new for missing.
 	 */
 	private fun decideSelectKind(
 		key: String,
@@ -571,16 +576,11 @@ class EvMapTorrentEngine(
 			return if (downloadNew || force) SelectKind.DOWNLOAD_NEW else null
 		}
 		val sizeMatch = local.isFile && local.length() == torrentSize
-		val exactMatch = sizeMatch && local.name.equals(destName, ignoreCase = true)
-		if (exactMatch && !force) {
+		if (sizeMatch && !force) {
 			return SelectKind.SEED
 		}
-		if (sizeMatch && !force) {
-			Log.i(TAG, "skip $key (same size, already current)")
-			return null
-		}
 		if (force) {
-			return SelectKind.UPDATE
+			return if (sizeMatch) SelectKind.SEED else SelectKind.UPDATE
 		}
 		val localDate = localMapDateMs(local)
 		if (torrentMtimeMs > 0L && localDate > 0L) {
@@ -593,6 +593,38 @@ class EvMapTorrentEngine(
 		}
 		Log.i(TAG, "skip $key (no newer proof sizeLocal=${local.length()} sizeTorrent=$torrentSize mtime=$torrentMtimeMs localDate=$localDate)")
 		return null
+	}
+
+	/** Prefer torrent dest name when present; else mapKey hit, preferring same size. */
+	private fun resolveLocalFile(dest: File, byKey: File?, torrentSize: Long): File? {
+		if (dest.isFile) {
+			return dest
+		}
+		if (byKey != null && byKey.isFile) {
+			return byKey
+		}
+		// Scan siblings with same mapKey (e.g. both Russia_x.obf and Russia_x_2.obf).
+		val parent = dest.parentFile ?: return null
+		val key = mapKey(dest.name)
+		val files = parent.listFiles() ?: return null
+		var sizeHit: File? = null
+		var anyHit: File? = null
+		for (f in files) {
+			if (!f.isFile || !isMapFile(f.name)) {
+				continue
+			}
+			if (mapKey(f.name) != key) {
+				continue
+			}
+			if (anyHit == null) {
+				anyHit = f
+			}
+			if (f.length() == torrentSize) {
+				sizeHit = f
+				break
+			}
+		}
+		return sizeHit ?: anyHit
 	}
 
 	private fun torrentMtimeMs(files: FileStorage, index: Int): Long {
@@ -755,6 +787,23 @@ class EvMapTorrentEngine(
 	private fun renameSelected(th: TorrentHandle) {
 		for (item in selected) {
 			if (item.seedOnly) {
+				// Point libtorrent at the existing complete file (may differ only by _2 suffix).
+				val seedPath = item.local?.takeIf { it.isFile && it.length() == item.size }
+					?: item.dest.takeIf { it.isFile && it.length() == item.size }
+				if (seedPath != null &&
+					!seedPath.name.equals(item.dest.name, ignoreCase = true)
+				) {
+					try {
+						th.renameFile(item.index, seedPath.absolutePath)
+					} catch (e: Exception) {
+						Log.w(TAG, "seed rename ${item.torrentName}", e)
+					} catch (e: Error) {
+						Log.e(TAG, "seed rename native ${item.torrentName}", e)
+						snapshot = snapshot.copy(error = e.message ?: "libtorrent rename")
+						stopLocked()
+						return
+					}
+				}
 				continue
 			}
 			val target = if (item.replaceExisting &&
