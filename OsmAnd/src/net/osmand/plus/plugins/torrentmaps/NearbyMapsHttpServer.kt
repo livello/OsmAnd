@@ -28,7 +28,7 @@ class NearbyMapsHttpServer(
 	private val catalog: NearbyMapsCatalog,
 	private val token: String,
 	private val deviceName: String,
-	private val bindAddress: InetAddress
+	private val advertiseAddress: InetAddress
 ) {
 	companion object {
 		private const val TAG = "NearbyMapsHttp"
@@ -47,14 +47,18 @@ class NearbyMapsHttpServer(
 		if (!running.compareAndSet(false, true)) {
 			return port
 		}
-		val ss = ServerSocket(0, 32, bindAddress)
+		// Bind all interfaces so SoftAP / Wi‑Fi / Ethernet clients can connect.
+		// Advertise a specific LAN IPv4 separately via NSD TXT.
+		val ss = ServerSocket(0, 32, null)
 		serverSocket = ss
 		port = ss.localPort
 		pool = Executors.newCachedThreadPool { r ->
 			Thread(r, "nearby-http").apply { isDaemon = true }
 		}
 		acceptThread = Thread({
-			TorrentMapsLog.append("nearby HTTP listen ${bindAddress.hostAddress}:$port")
+			TorrentMapsLog.append(
+				"nearby HTTP listen 0.0.0.0:$port (advertise ${advertiseAddress.hostAddress})"
+			)
 			while (running.get()) {
 				try {
 					val socket = ss.accept()

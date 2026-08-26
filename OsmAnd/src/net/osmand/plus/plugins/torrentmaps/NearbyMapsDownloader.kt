@@ -97,6 +97,16 @@ class NearbyMapsDownloader(
 			.replace("+", "%20")
 		val url = URL("${peer.baseUrl}/file/$encoded?token=${URLEncoder.encode(peer.token, "UTF-8")}")
 		TorrentMapsLog.append("nearby download ${entry.path} from ${peer.deviceName}")
+		if (!probeQuick(peer)) {
+			TorrentMapsLog.append("nearby download unreachable ${peer.host}:${peer.port}")
+			throw java.net.ConnectException(
+				app.getString(
+					net.osmand.plus.R.string.torrent_maps_nearby_unreachable,
+					peer.deviceName,
+					"${peer.host}:${peer.port}"
+				)
+			)
+		}
 		val conn = (url.openConnection() as HttpURLConnection).apply {
 			connectTimeout = 15_000
 			readTimeout = 120_000
@@ -161,6 +171,25 @@ class NearbyMapsDownloader(
 			return true
 		} finally {
 			conn.disconnect()
+		}
+	}
+
+	private fun probeQuick(peer: NearbyPeer): Boolean {
+		return try {
+			val health = URL("${peer.baseUrl}/health")
+			val conn = (health.openConnection() as HttpURLConnection).apply {
+				connectTimeout = 4_000
+				readTimeout = 4_000
+				requestMethod = "GET"
+				instanceFollowRedirects = false
+			}
+			try {
+				conn.responseCode in 200..299
+			} finally {
+				conn.disconnect()
+			}
+		} catch (_: Exception) {
+			false
 		}
 	}
 }

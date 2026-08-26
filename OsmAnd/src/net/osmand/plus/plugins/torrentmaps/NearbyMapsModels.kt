@@ -23,7 +23,14 @@ data class NearbyPeer(
 	val deviceName: String
 ) {
 	val baseUrl: String
-		get() = "http://$host:$port"
+		get() = "http://${formatHostForUrl(host)}:$port"
+
+	companion object {
+		fun formatHostForUrl(host: String): String {
+			val h = host.trim().removePrefix("/").trim()
+			return if (h.contains(':') && !h.startsWith('[')) "[$h]" else h
+		}
+	}
 }
 
 enum class NearbyMapStatus {

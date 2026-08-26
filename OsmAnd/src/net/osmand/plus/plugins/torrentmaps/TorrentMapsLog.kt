@@ -144,7 +144,9 @@ object TorrentBrowser {
 		val folders = LinkedHashMap<String, MutableList<TorrentFileRow>>()
 		val direct = ArrayList<TorrentFileRow>()
 		for (file in files) {
-			val path = normalizePath(file.torrentPath)
+			val path = normalizePath(
+				file.browsePath.ifBlank { file.torrentPath }
+			)
 			val relative = when {
 				prefix.isEmpty() -> path
 				path.startsWith(prefix) -> path.removePrefix(prefix)

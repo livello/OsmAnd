@@ -10,9 +10,11 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import net.osmand.plus.OsmandApplication
+import java.net.HttpURLConnection
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.NetworkInterface
+import java.net.URL
 import java.security.SecureRandom
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
@@ -84,8 +86,8 @@ class NearbyMapsController(
 	fun startSharing() {
 		io.execute {
 			stopSharingLocked()
-			val bind = pickBindAddress()
-			if (bind == null) {
+			val advertise = pickAdvertiseAddress()
+			if (advertise == null) {
 				TorrentMapsLog.append("nearby: no Wi‑Fi/hotspot IPv4 — connect to same network or start hotspot")
 				ui.post {
 					app.showToastMessage(net.osmand.plus.R.string.torrent_maps_nearby_no_wifi)
@@ -94,7 +96,7 @@ class NearbyMapsController(
 			}
 			acquireMulticastLock()
 			token = newToken()
-			val http = NearbyMapsHttpServer(app, catalog, token, deviceName(), bind)
+			val http = NearbyMapsHttpServer(app, catalog, token, deviceName(), advertise)
 			val port = try {
 				http.start()
 			} catch (e: Exception) {
@@ -112,12 +114,13 @@ class NearbyMapsController(
 				ui.post { listeners.forEach { it.onPeersChanged(list) } }
 			}
 			discovery = nsd
-			nsd.advertise("OsmAndMaps-$token", port, token, deviceName())
+			val host = advertise.hostAddress
+			nsd.advertise("OsmAndMaps-$token", port, token, deviceName(), host)
 			nsd.startDiscovery()
 			sharing = true
-			endpoint = "${bind.hostAddress}:$port"
+			endpoint = "$host:$port"
 			NearbyMapsService.sync(app, true)
-			TorrentMapsLog.append("nearby sharing on $endpoint")
+			TorrentMapsLog.append("nearby sharing on $endpoint (HTTP 0.0.0.0:$port)")
 			ui.post {
 				listeners.forEach { it.onSharingChanged(true, endpoint) }
 				app.showToastMessage(net.osmand.plus.R.string.torrent_maps_nearby_sharing_on)
@@ -162,10 +165,21 @@ class NearbyMapsController(
 	fun fetchCatalog(peer: NearbyPeer, onDone: (NearbyCatalogResponse?, String?) -> Unit) {
 		io.execute {
 			try {
-				val url = java.net.URL(
+				val reachable = probeHealth(peer)
+				if (!reachable) {
+					val msg = app.getString(
+						net.osmand.plus.R.string.torrent_maps_nearby_unreachable,
+						peer.deviceName,
+						"${peer.host}:${peer.port}"
+					)
+					TorrentMapsLog.append("nearby catalog unreachable ${peer.host}:${peer.port}")
+					ui.post { onDone(null, msg) }
+					return@execute
+				}
+				val url = URL(
 					"${peer.baseUrl}/catalog?token=${java.net.URLEncoder.encode(peer.token, "UTF-8")}"
 				)
-				val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
+				val conn = (url.openConnection() as HttpURLConnection).apply {
 					connectTimeout = 10_000
 					readTimeout = 30_000
 					requestMethod = "GET"
@@ -178,7 +192,16 @@ class NearbyMapsController(
 				conn.disconnect()
 			} catch (e: Exception) {
 				TorrentMapsLog.append("nearby catalog failed: ${e.message}")
-				ui.post { onDone(null, e.message) }
+				val msg = if (isConnectFailure(e)) {
+					app.getString(
+						net.osmand.plus.R.string.torrent_maps_nearby_unreachable,
+						peer.deviceName,
+						"${peer.host}:${peer.port}"
+					)
+				} else {
+					e.message
+				}
+				ui.post { onDone(null, msg) }
 			}
 		}
 	}
@@ -199,8 +222,40 @@ class NearbyMapsController(
 	}
 
 	fun localWifiHint(): String {
-		val bind = pickBindAddress()
+		val bind = pickAdvertiseAddress()
 		return bind?.hostAddress ?: "—"
+	}
+
+	fun probeHealth(peer: NearbyPeer): Boolean {
+		return try {
+			val url = URL("${peer.baseUrl}/health")
+			val conn = (url.openConnection() as HttpURLConnection).apply {
+				connectTimeout = 4_000
+				readTimeout = 4_000
+				requestMethod = "GET"
+				instanceFollowRedirects = false
+			}
+			try {
+				val code = conn.responseCode
+				code in 200..299
+			} finally {
+				conn.disconnect()
+			}
+		} catch (e: Exception) {
+			TorrentMapsLog.append("nearby health failed ${peer.host}:${peer.port}: ${e.message}")
+			false
+		}
+	}
+
+	private fun isConnectFailure(e: Exception): Boolean {
+		val msg = (e.message ?: "").lowercase()
+		return e is java.net.ConnectException ||
+			e is java.net.SocketTimeoutException ||
+			e is java.net.NoRouteToHostException ||
+			msg.contains("failed to connect") ||
+			msg.contains("econnrefused") ||
+			msg.contains("enetunreach") ||
+			msg.contains("no route to host")
 	}
 
 	private fun stopSharingLocked() {
@@ -217,7 +272,18 @@ class NearbyMapsController(
 		TorrentMapsLog.append("nearby sharing stopped")
 	}
 
-	private fun pickBindAddress(): InetAddress? {
+	/**
+	 * Prefer SoftAP / hotspot IPv4 when hosting; otherwise Wi‑Fi / Ethernet client IPv4.
+	 * This address is advertised to peers (HTTP itself listens on 0.0.0.0).
+	 */
+	private fun pickAdvertiseAddress(): InetAddress? {
+		val softAp = findIpv4OnInterfaces { name ->
+			name.startsWith("ap") || name.startsWith("swlan") ||
+				name.startsWith("softap") || name.contains("ap0")
+		}
+		if (softAp != null) {
+			return softAp
+		}
 		try {
 			val cm = app.getSystemService(ConnectivityManager::class.java)
 			if (cm != null) {
@@ -229,8 +295,9 @@ class NearbyMapsController(
 					} else {
 						false
 					}
-					// SoftAP / hotspot clients often appear as WIFI; host AP may be local-only.
-					if (!hasWifi && !hasWifiAware && !caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) {
+					if (!hasWifi && !hasWifiAware &&
+						!caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+					) {
 						continue
 					}
 					val lp: LinkProperties = cm.getLinkProperties(network) ?: continue
@@ -244,17 +311,20 @@ class NearbyMapsController(
 			}
 		} catch (_: Exception) {
 		}
+		return findIpv4OnInterfaces { name ->
+			name.startsWith("wlan") || name.startsWith("ap") ||
+				name.startsWith("swlan") || name.startsWith("eth") ||
+				name.contains("wlan")
+		}
+	}
+
+	private fun findIpv4OnInterfaces(predicate: (String) -> Boolean): InetAddress? {
 		try {
 			val interfaces = NetworkInterface.getNetworkInterfaces() ?: return null
 			for (nif in interfaces) {
 				if (!nif.isUp || nif.isLoopback) continue
 				val name = nif.name.lowercase()
-				if (!(name.startsWith("wlan") || name.startsWith("ap") ||
-						name.startsWith("swlan") || name.startsWith("eth") ||
-						name.contains("wlan"))
-				) {
-					continue
-				}
+				if (!predicate(name)) continue
 				for (addr in nif.inetAddresses) {
 					if (addr is Inet4Address && !addr.isLoopbackAddress) {
 						return addr

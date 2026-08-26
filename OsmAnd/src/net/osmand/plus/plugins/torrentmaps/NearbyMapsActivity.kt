@@ -23,6 +23,7 @@ import net.osmand.plus.utils.UiUtilities
 
 /**
  * Offline peer map browser: NSD discovery + HTTP catalog / transfer.
+ * Header controls scroll linearly with the list (single RecyclerView).
  */
 class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 
@@ -36,12 +37,6 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 		get() = plugin.nearby
 
 	private val uiHandler = Handler(Looper.getMainLooper())
-	private lateinit var status: TextView
-	private lateinit var hint: TextView
-	private lateinit var breadcrumb: TextView
-	private lateinit var shareSwitch: SwitchCompat
-	private lateinit var scanBtn: TextView
-	private lateinit var backPeersBtn: TextView
 	private lateinit var list: RecyclerView
 	private lateinit var adapter: NearbyAdapter
 
@@ -50,6 +45,9 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 	private var peerRows: List<NearbyFileRow> = emptyList()
 	private var folderPath: String = ""
 	private var peersCache: List<NearbyPeer> = emptyList()
+	private var statusText: String = ""
+	private var breadcrumbText: String = ""
+	private var showCatalogChrome = false
 
 	private val progressTick = object : Runnable {
 		override fun run() {
@@ -66,45 +64,39 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 		setContentView(R.layout.torrent_maps_nearby_activity)
 		TorrentMapsLog.init(app)
 
-		status = findViewById(R.id.nearby_status)
-		hint = findViewById(R.id.nearby_hint)
-		breadcrumb = findViewById(R.id.nearby_path_breadcrumb)
-		shareSwitch = findViewById(R.id.nearby_share_switch)
-		scanBtn = findViewById(R.id.nearby_scan)
-		backPeersBtn = findViewById(R.id.nearby_back_peers)
 		list = findViewById(R.id.nearby_list)
-
-		findViewById<View>(R.id.nearby_close).setOnClickListener { finish() }
-		scanBtn.setOnClickListener {
-			nearby.ensureDiscovery()
-			app.showToastMessage(R.string.torrent_maps_nearby_scanning)
-			refreshPeerList()
-		}
-		backPeersBtn.setOnClickListener { showPeers() }
-		breadcrumb.setOnClickListener {
-			if (folderPath.isNotEmpty()) {
-				folderPath = TorrentBrowser.parentPath(folderPath)
-				refreshCatalogList()
-			}
-		}
-
-		adapter = NearbyAdapter { row -> onRowClick(row) }
+		adapter = NearbyAdapter(
+			onClose = { finish() },
+			onScan = {
+				nearby.ensureDiscovery()
+				app.showToastMessage(R.string.torrent_maps_nearby_scanning)
+				refreshPeerList()
+			},
+			onBackPeers = { showPeers() },
+			onBreadcrumb = {
+				if (folderPath.isNotEmpty()) {
+					folderPath = TorrentBrowser.parentPath(folderPath)
+					refreshCatalogList()
+				}
+			},
+			onShareToggle = { switch, checked ->
+				if (bindingSwitch) return@NearbyAdapter
+				confirmToggle(switch, checked, if (checked) {
+					R.string.torrent_maps_nearby_confirm_share_on
+				} else {
+					R.string.torrent_maps_nearby_confirm_share_off
+				}) {
+					if (checked) nearby.startSharing() else nearby.stopSharing()
+				}
+			},
+			onRowClick = { row -> onRowClick(row) },
+			shareChecked = { nearby.sharing },
+			statusProvider = { statusText },
+			breadcrumbProvider = { breadcrumbText },
+			catalogChrome = { showCatalogChrome }
+		)
 		list.layoutManager = LinearLayoutManager(this)
 		list.adapter = adapter
-
-		bindingSwitch = true
-		shareSwitch.isChecked = nearby.sharing
-		bindingSwitch = false
-		shareSwitch.setOnCheckedChangeListener { _, checked ->
-			if (bindingSwitch) return@setOnCheckedChangeListener
-			confirmToggle(shareSwitch, checked, if (checked) {
-				R.string.torrent_maps_nearby_confirm_share_on
-			} else {
-				R.string.torrent_maps_nearby_confirm_share_off
-			}) {
-				if (checked) nearby.startSharing() else nearby.stopSharing()
-			}
-		}
 
 		showPeers()
 		refreshStatusLine()
@@ -136,7 +128,7 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 
 	override fun onSharingChanged(sharing: Boolean, endpoint: String?) {
 		bindingSwitch = true
-		shareSwitch.isChecked = sharing
+		adapter.notifyHeaderChanged()
 		bindingSwitch = false
 		refreshStatusLine()
 	}
@@ -145,9 +137,7 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 		selectedPeer = null
 		peerRows = emptyList()
 		folderPath = ""
-		breadcrumb.isVisible = false
-		backPeersBtn.isVisible = false
-		scanBtn.isVisible = true
+		showCatalogChrome = false
 		refreshPeerList()
 		refreshStatusLine()
 	}
@@ -156,7 +146,8 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 		val rows = peersCache.map { NearbyBrowserRow.Peer(it) }
 		adapter.submit(rows)
 		if (rows.isEmpty()) {
-			status.text = getString(R.string.torrent_maps_nearby_no_peers)
+			statusText = getString(R.string.torrent_maps_nearby_no_peers)
+			adapter.notifyHeaderChanged()
 		}
 	}
 
@@ -176,11 +167,13 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 				folderPath = ""
 				nearby.refreshLocalIndex()
 				peerRows = catalog.maps.map { entry ->
-					NearbyFileRow(entry, nearby.compareStatus(entry))
+					NearbyFileRow(
+						entry = entry,
+						status = nearby.compareStatus(entry),
+						browsePath = TorrentRegionPaths.browsePath(app, entry.mapKey, entry.displayName)
+					)
 				}
-				breadcrumb.isVisible = true
-				backPeersBtn.isVisible = true
-				scanBtn.isVisible = false
+				showCatalogChrome = true
 				refreshCatalogList()
 				TorrentMapsLog.append("nearby catalog ${peer.deviceName}: ${catalog.maps.size} maps")
 			}
@@ -188,7 +181,7 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 	}
 
 	private fun refreshCatalogList() {
-		breadcrumb.text = if (folderPath.isEmpty()) {
+		breadcrumbText = if (folderPath.isEmpty()) {
 			getString(R.string.torrent_maps_path_root)
 		} else {
 			"/$folderPath"
@@ -234,7 +227,7 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 				app.showToastMessage(R.string.torrent_maps_nearby_busy)
 				return@confirmAction
 			}
-			nearby.downloader.download(peer, row.entry, { done, total ->
+			nearby.downloader.download(peer, row.entry, { _, _ ->
 				uiHandler.post { refreshStatusLine() }
 			}) { ok, message ->
 				uiHandler.post {
@@ -242,7 +235,12 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 					if (ok) {
 						nearby.refreshLocalIndex()
 						peerRows = peerRows.map {
-							NearbyFileRow(it.entry, nearby.compareStatus(it.entry), it.progressPercent)
+							NearbyFileRow(
+								it.entry,
+								nearby.compareStatus(it.entry),
+								it.progressPercent,
+								it.browsePath
+							)
 						}
 						refreshCatalogList()
 					}
@@ -268,7 +266,8 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 			} else 0
 			" · ↓ ${dl.progressPath?.substringAfterLast('/')} $pct%"
 		} else ""
-		status.text = "$sharePart · $peerPart$progress"
+		statusText = "$sharePart · $peerPart$progress"
+		adapter.notifyHeaderChanged()
 	}
 
 	private fun confirmToggle(
@@ -304,8 +303,23 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 	}
 
 	private class NearbyAdapter(
-		private val onClick: (NearbyBrowserRow) -> Unit
-	) : RecyclerView.Adapter<NearbyAdapter.Holder>() {
+		private val onClose: () -> Unit,
+		private val onScan: () -> Unit,
+		private val onBackPeers: () -> Unit,
+		private val onBreadcrumb: () -> Unit,
+		private val onShareToggle: (SwitchCompat, Boolean) -> Unit,
+		private val onRowClick: (NearbyBrowserRow) -> Unit,
+		private val shareChecked: () -> Boolean,
+		private val statusProvider: () -> String,
+		private val breadcrumbProvider: () -> String,
+		private val catalogChrome: () -> Boolean
+	) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+
+		companion object {
+			private const val TYPE_HEADER = 0
+			private const val TYPE_ROW = 1
+		}
+
 		private var rows: List<NearbyBrowserRow> = emptyList()
 
 		fun submit(newRows: List<NearbyBrowserRow>) {
@@ -313,19 +327,80 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 			notifyDataSetChanged()
 		}
 
-		override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
-			val view = LayoutInflater.from(parent.context)
-				.inflate(R.layout.torrent_maps_file_row, parent, false)
-			return Holder(view, onClick)
+		fun notifyHeaderChanged() {
+			notifyItemChanged(0)
 		}
 
-		override fun onBindViewHolder(holder: Holder, position: Int) {
-			holder.bind(rows[position])
+		override fun getItemViewType(position: Int): Int =
+			if (position == 0) TYPE_HEADER else TYPE_ROW
+
+		override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+			val inflater = LayoutInflater.from(parent.context)
+			return if (viewType == TYPE_HEADER) {
+				HeaderHolder(inflater.inflate(R.layout.torrent_maps_nearby_header, parent, false))
+			} else {
+				RowHolder(inflater.inflate(R.layout.torrent_maps_file_row, parent, false), onRowClick)
+			}
 		}
 
-		override fun getItemCount(): Int = rows.size
+		override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+			when (holder) {
+				is HeaderHolder -> holder.bind(
+					status = statusProvider(),
+					breadcrumb = breadcrumbProvider(),
+					shareOn = shareChecked(),
+					catalogMode = catalogChrome(),
+					onClose = onClose,
+					onScan = onScan,
+					onBackPeers = onBackPeers,
+					onBreadcrumb = onBreadcrumb,
+					onShareToggle = onShareToggle
+				)
+				is RowHolder -> holder.bind(rows[position - 1])
+			}
+		}
 
-		class Holder(
+		override fun getItemCount(): Int = rows.size + 1
+
+		class HeaderHolder(view: View) : RecyclerView.ViewHolder(view) {
+			private val status: TextView = view.findViewById(R.id.nearby_status)
+			private val hint: TextView = view.findViewById(R.id.nearby_hint)
+			private val breadcrumb: TextView = view.findViewById(R.id.nearby_path_breadcrumb)
+			private val shareSwitch: SwitchCompat = view.findViewById(R.id.nearby_share_switch)
+			private val scanBtn: TextView = view.findViewById(R.id.nearby_scan)
+			private val backPeersBtn: TextView = view.findViewById(R.id.nearby_back_peers)
+			private val closeBtn: View = view.findViewById(R.id.nearby_close)
+
+			fun bind(
+				status: String,
+				breadcrumb: String,
+				shareOn: Boolean,
+				catalogMode: Boolean,
+				onClose: () -> Unit,
+				onScan: () -> Unit,
+				onBackPeers: () -> Unit,
+				onBreadcrumb: () -> Unit,
+				onShareToggle: (SwitchCompat, Boolean) -> Unit
+			) {
+				this.status.text = status
+				hint.isVisible = !catalogMode
+				this.breadcrumb.text = breadcrumb
+				this.breadcrumb.isVisible = catalogMode
+				scanBtn.isVisible = !catalogMode
+				backPeersBtn.isVisible = catalogMode
+				shareSwitch.setOnCheckedChangeListener(null)
+				shareSwitch.isChecked = shareOn
+				shareSwitch.setOnCheckedChangeListener { _, checked ->
+					onShareToggle(shareSwitch, checked)
+				}
+				closeBtn.setOnClickListener { onClose() }
+				scanBtn.setOnClickListener { onScan() }
+				backPeersBtn.setOnClickListener { onBackPeers() }
+				this.breadcrumb.setOnClickListener { onBreadcrumb() }
+			}
+		}
+
+		class RowHolder(
 			view: View,
 			private val onClick: (NearbyBrowserRow) -> Unit
 		) : RecyclerView.ViewHolder(view) {

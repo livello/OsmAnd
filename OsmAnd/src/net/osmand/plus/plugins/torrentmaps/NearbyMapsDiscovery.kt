@@ -19,6 +19,7 @@ class NearbyMapsDiscovery(
 		const val SERVICE_TYPE = "_osmand-maps._tcp."
 		private const val ATTR_TOKEN = "token"
 		private const val ATTR_DEVICE = "device"
+		private const val ATTR_HOST = "ip"
 	}
 
 	private val nsd: NsdManager? =
@@ -31,7 +32,13 @@ class NearbyMapsDiscovery(
 	private var discoveryListener: NsdManager.DiscoveryListener? = null
 	private var discovering = false
 
-	fun advertise(serviceName: String, port: Int, token: String, deviceName: String) {
+	fun advertise(
+		serviceName: String,
+		port: Int,
+		token: String,
+		deviceName: String,
+		advertiseHost: String? = null
+	) {
 		val manager = nsd ?: return
 		stopAdvertising()
 		val info = NsdServiceInfo().apply {
@@ -40,6 +47,9 @@ class NearbyMapsDiscovery(
 			this.port = port
 			setAttribute(ATTR_TOKEN, token.take(48))
 			setAttribute(ATTR_DEVICE, deviceName.take(48))
+			if (!advertiseHost.isNullOrBlank()) {
+				setAttribute(ATTR_HOST, advertiseHost.take(48))
+			}
 		}
 		val listener = object : NsdManager.RegistrationListener {
 			override fun onRegistrationFailed(serviceInfo: NsdServiceInfo?, errorCode: Int) {
@@ -79,9 +89,6 @@ class NearbyMapsDiscovery(
 
 	fun startDiscovery() {
 		val manager = nsd ?: return
-		if (discovering) {
-			return
-		}
 		stopDiscovery()
 		peers.clear()
 		notifyPeers()
@@ -153,7 +160,16 @@ class NearbyMapsDiscovery(
 				}
 
 				override fun onServiceResolved(resolved: NsdServiceInfo) {
-					val host = resolved.host?.hostAddress ?: return
+					val resolvedHost = pickIpv4(resolved.host) ?: resolved.host?.hostAddress
+					val txtHost = attribute(resolved, ATTR_HOST).trim()
+					// Prefer explicit IPv4 from TXT (stable across SoftAP / multi-homed devices).
+					val host = when {
+						txtHost.isNotBlank() && looksLikeIpv4(txtHost) -> txtHost
+						!resolvedHost.isNullOrBlank() && looksLikeIpv4(resolvedHost) -> resolvedHost
+						txtHost.isNotBlank() -> txtHost
+						!resolvedHost.isNullOrBlank() -> resolvedHost
+						else -> return
+					}
 					var token = attribute(resolved, ATTR_TOKEN)
 					if (token.isBlank()) {
 						val sn = resolved.serviceName.orEmpty()
@@ -201,4 +217,22 @@ class NearbyMapsDiscovery(
 
 	private fun sanitizeName(name: String): String =
 		name.replace(Regex("[^A-Za-z0-9_-]"), "_").take(48).ifBlank { "OsmAndMaps" }
+
+	private fun looksLikeIpv4(host: String): Boolean =
+		host.count { it == '.' } == 3 && host.all { it.isDigit() || it == '.' }
+
+	private fun pickIpv4(address: java.net.InetAddress?): String? {
+		if (address == null) return null
+		if (address is java.net.Inet4Address) {
+			return address.hostAddress
+		}
+		val mapped = address.hostAddress ?: return null
+		return if (mapped.startsWith("::ffff:")) {
+			mapped.removePrefix("::ffff:")
+		} else if (looksLikeIpv4(mapped)) {
+			mapped
+		} else {
+			null
+		}
+	}
 }

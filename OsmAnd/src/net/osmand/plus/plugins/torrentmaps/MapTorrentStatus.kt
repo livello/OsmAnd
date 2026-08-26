@@ -43,5 +43,10 @@ data class TorrentFileRow(
 	val sizeBytes: Long,
 	val doneBytes: Long,
 	val progressPercent: Int,
-	val state: TorrentFileState
+	val state: TorrentFileState,
+	/**
+	 * Virtual OsmAnd region path for the file browser (World/continent/country…).
+	 * When blank, [TorrentBrowser] falls back to [torrentPath].
+	 */
+	val browsePath: String = ""
 )

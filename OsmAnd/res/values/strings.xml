@@ -6440,7 +6440,7 @@ Download tile maps directly, or copy them as SQLite database files to OsmAnd\'s 
     <string name="torrent_maps_download_official">Official repository</string>
     <string name="torrent_maps_nearby_title">Nearby maps</string>
     <string name="torrent_maps_nearby_open">Nearby maps (LAN / hotspot)</string>
-    <string name="torrent_maps_nearby_hint">Phones must be on the same Wi‑Fi or one phone\'s hotspot (no Internet needed). Turn on Sharing on the phone that has maps, then Scan on the other.</string>
+    <string name="torrent_maps_nearby_hint">Phones must be on the same Wi‑Fi or one phone\'s hotspot (no Internet needed). Prefer a phone hotspot if the router blocks client-to-client traffic. Turn on Sharing on the phone that has maps, then Scan on the other.</string>
     <string name="torrent_maps_nearby_share">Share my maps on LAN</string>
     <string name="torrent_maps_nearby_scan">Scan peers</string>
     <string name="torrent_maps_nearby_back_peers">← Peers</string>
@@ -6455,6 +6455,7 @@ Download tile maps directly, or copy them as SQLite database files to OsmAnd\'s 
     <string name="torrent_maps_nearby_confirm_download">Download «%1$s» (%2$s)?\nStatus: %3$s</string>
     <string name="torrent_maps_nearby_loading_catalog">Loading peer catalog…</string>
     <string name="torrent_maps_nearby_catalog_failed">Catalog failed: %1$s</string>
+    <string name="torrent_maps_nearby_unreachable">Cannot reach %1$s at %2$s. Many Wi‑Fi routers block phone-to-phone traffic — start a hotspot on one phone and join it from the other, then retry.</string>
     <string name="torrent_maps_nearby_busy">Another download is already running</string>
     <string name="torrent_maps_nearby_download_ok">Saved map %1$s</string>
     <string name="torrent_maps_nearby_download_failed">Download failed: %1$s</string>

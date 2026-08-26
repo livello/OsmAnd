@@ -5867,7 +5867,7 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
     <string name="torrent_maps_download_official">Официальный репозиторий</string>
     <string name="torrent_maps_nearby_title">Карты поблизости</string>
     <string name="torrent_maps_nearby_open">Карты поблизости (LAN / точка доступа)</string>
-    <string name="torrent_maps_nearby_hint">Телефоны должны быть в одной Wi‑Fi сети или на точке доступа одного из них (Интернет не нужен). Включите «Раздачу» на телефоне с картами, на другом нажмите «Сканировать».</string>
+    <string name="torrent_maps_nearby_hint">Телефоны должны быть в одной Wi‑Fi сети или на точке доступа одного из них (Интернет не нужен). Если роутер блокирует обмен между клиентами — включите точку доступа на одном телефоне и подключите второй. Включите «Раздачу» на телефоне с картами, на другом нажмите «Сканировать».</string>
     <string name="torrent_maps_nearby_share">Раздавать мои карты по LAN</string>
     <string name="torrent_maps_nearby_scan">Сканировать</string>
     <string name="torrent_maps_nearby_back_peers">← Устройства</string>
@@ -5882,6 +5882,7 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
     <string name="torrent_maps_nearby_confirm_download">Скачать «%1$s» (%2$s)?\nСтатус: %3$s</string>
     <string name="torrent_maps_nearby_loading_catalog">Загрузка каталога…</string>
     <string name="torrent_maps_nearby_catalog_failed">Каталог недоступен: %1$s</string>
+    <string name="torrent_maps_nearby_unreachable">Нет доступа к %1$s (%2$s). Многие Wi‑Fi роутеры блокируют обмен между телефонами — включите точку доступа на одном и подключите второй, затем повторите.</string>
     <string name="torrent_maps_nearby_busy">Уже идёт другая загрузка</string>
     <string name="torrent_maps_nearby_download_ok">Карта сохранена: %1$s</string>
     <string name="torrent_maps_nearby_download_failed">Ошибка загрузки: %1$s</string>

@@ -1,142 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-	xmlns:app="http://schemas.android.com/apk/res-auto"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
 	android:layout_width="match_parent"
 	android:layout_height="match_parent"
 	android:background="#121212"
-	android:fitsSystemWindows="true"
-	android:orientation="vertical">
-
-	<LinearLayout
-		android:layout_width="match_parent"
-		android:layout_height="wrap_content"
-		android:gravity="center_vertical"
-		android:orientation="horizontal"
-		android:paddingStart="10dp"
-		android:paddingTop="4dp"
-		android:paddingEnd="2dp"
-		android:paddingBottom="2dp">
-
-		<LinearLayout
-			android:layout_width="0dp"
-			android:layout_height="wrap_content"
-			android:layout_weight="1"
-			android:orientation="vertical">
-
-			<TextView
-				android:id="@+id/nearby_title"
-				android:layout_width="match_parent"
-				android:layout_height="wrap_content"
-				android:ellipsize="end"
-				android:maxLines="1"
-				android:text="@string/torrent_maps_nearby_title"
-				android:textColor="#FFFFFF"
-				android:textSize="20sp"
-				android:textStyle="bold" />
-
-			<TextView
-				android:id="@+id/nearby_status"
-				android:layout_width="match_parent"
-				android:layout_height="wrap_content"
-				android:ellipsize="end"
-				android:maxLines="2"
-				android:textColor="#90CAF9"
-				android:textSize="16sp" />
-		</LinearLayout>
-
-		<androidx.appcompat.widget.AppCompatImageButton
-			android:id="@+id/nearby_close"
-			android:layout_width="36dp"
-			android:layout_height="36dp"
-			android:background="?attr/selectableItemBackgroundBorderless"
-			android:contentDescription="@string/shared_string_close"
-			android:src="@drawable/ic_action_close"
-			android:tint="#EEEEEE" />
-	</LinearLayout>
-
-	<TextView
-		android:id="@+id/nearby_hint"
-		android:layout_width="match_parent"
-		android:layout_height="wrap_content"
-		android:paddingHorizontal="10dp"
-		android:paddingBottom="4dp"
-		android:text="@string/torrent_maps_nearby_hint"
-		android:textColor="#B0BEC5"
-		android:textSize="14sp" />
-
-	<LinearLayout
-		android:layout_width="match_parent"
-		android:layout_height="wrap_content"
-		android:gravity="center_vertical"
-		android:orientation="horizontal"
-		android:paddingHorizontal="10dp"
-		android:paddingVertical="4dp">
-
-		<TextView
-			android:layout_width="0dp"
-			android:layout_height="wrap_content"
-			android:layout_weight="1"
-			android:text="@string/torrent_maps_nearby_share"
-			android:textColor="#EEEEEE"
-			android:textSize="18sp" />
-
-		<androidx.appcompat.widget.SwitchCompat
-			android:id="@+id/nearby_share_switch"
-			android:layout_width="wrap_content"
-			android:layout_height="wrap_content" />
-	</LinearLayout>
-
-	<TextView
-		android:id="@+id/nearby_path_breadcrumb"
-		android:layout_width="match_parent"
-		android:layout_height="wrap_content"
-		android:ellipsize="start"
-		android:maxLines="1"
-		android:paddingHorizontal="10dp"
-		android:paddingBottom="4dp"
-		android:singleLine="true"
-		android:textColor="#80CBC4"
-		android:textSize="16sp"
-		android:visibility="gone" />
-
-	<LinearLayout
-		android:layout_width="match_parent"
-		android:layout_height="wrap_content"
-		android:orientation="horizontal"
-		android:paddingHorizontal="8dp"
-		android:paddingBottom="4dp">
-
-		<TextView
-			android:id="@+id/nearby_scan"
-			android:layout_width="0dp"
-			android:layout_height="wrap_content"
-			android:layout_weight="1"
-			android:background="?attr/selectableItemBackground"
-			android:gravity="center"
-			android:paddingVertical="10dp"
-			android:text="@string/torrent_maps_nearby_scan"
-			android:textColor="#90CAF9"
-			android:textSize="17sp" />
-
-		<TextView
-			android:id="@+id/nearby_back_peers"
-			android:layout_width="0dp"
-			android:layout_height="wrap_content"
-			android:layout_weight="1"
-			android:background="?attr/selectableItemBackground"
-			android:gravity="center"
-			android:paddingVertical="10dp"
-			android:text="@string/torrent_maps_nearby_back_peers"
-			android:textColor="#90CAF9"
-			android:textSize="17sp"
-			android:visibility="gone" />
-	</LinearLayout>
+	android:fitsSystemWindows="true">
 
 	<androidx.recyclerview.widget.RecyclerView
 		android:id="@+id/nearby_list"
 		android:layout_width="match_parent"
-		android:layout_height="0dp"
-		android:layout_weight="1"
+		android:layout_height="match_parent"
 		android:clipToPadding="false"
 		android:paddingBottom="16dp" />
-</LinearLayout>
+</FrameLayout>

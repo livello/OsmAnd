@@ -385,26 +385,38 @@ class TorrentMapsActivity : AppCompatActivity() {
 	private fun idleCatalogRows(): List<TorrentFileRow> {
 		return plugin.torrentCatalogEntries().map {
 			val path = TorrentBrowser.normalizePath(it.torrentName)
+			val display = path.substringAfterLast('/')
 			TorrentFileRow(
 				index = it.index,
-				displayName = path.substringAfterLast('/'),
+				displayName = display,
 				torrentPath = path,
 				mapKey = it.mapKey,
 				sizeBytes = it.sizeBytes,
 				doneBytes = 0L,
 				progressPercent = 0,
-				state = TorrentFileState.IDLE
+				state = TorrentFileState.IDLE,
+				browsePath = TorrentRegionPaths.browsePath(app, it.mapKey, display)
 			)
 		}
 	}
 
 	private fun refreshBrowserList(keepFolder: Boolean) {
-		allFileRows = plugin.torrentFileRows().ifEmpty { idleCatalogRows() }
+		allFileRows = plugin.torrentFileRows().ifEmpty { idleCatalogRows() }.map { row ->
+			if (row.browsePath.isNotBlank()) {
+				row
+			} else {
+				row.copy(
+					browsePath = TorrentRegionPaths.browsePath(app, row.mapKey, row.displayName)
+				)
+			}
+		}
 		if (!keepFolder) {
 			currentFolderPath = ""
 		} else if (currentFolderPath.isNotEmpty()) {
 			val stillValid = allFileRows.any {
-				val path = TorrentBrowser.normalizePath(it.torrentPath)
+				val path = TorrentBrowser.normalizePath(
+					it.browsePath.ifBlank { it.torrentPath }
+				)
 				path == currentFolderPath || path.startsWith("$currentFolderPath/")
 			}
 			if (!stillValid) {
