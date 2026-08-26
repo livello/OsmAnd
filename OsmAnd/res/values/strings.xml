@@ -6369,7 +6369,7 @@ Download tile maps directly, or copy them as SQLite database files to OsmAnd\'s 
     <string name="torrent_maps_rutracker_auth_no_cookie">No cookies found yet — finish login / Cloudflare first</string>
     <string name="torrent_maps_confirm_start">Start torrent seeding / downloading?</string>
     <string name="torrent_maps_confirm_stop">Stop torrent client?</string>
-    <string name="torrent_maps_confirm_refresh">Refresh .torrent from RuTracker?</string>
+    <string name="torrent_maps_confirm_refresh">Refresh torrent metadata from the RuTracker magnet link?</string>
     <string name="torrent_maps_confirm_pick_file">Replace current torrent file?</string>
     <string name="torrent_maps_confirm_enable">Enable map torrent updates?</string>
     <string name="torrent_maps_confirm_disable">Disable map torrent updates?</string>
@@ -6377,13 +6377,15 @@ Download tile maps directly, or copy them as SQLite database files to OsmAnd\'s 
     <string name="torrent_maps_confirm_seed_charge">Change seed-while-charging setting?</string>
     <string name="torrent_maps_confirm_download_new">Change download-missing-maps setting?</string>
     <string name="torrent_maps_refresh_topic">Refresh torrent from RuTracker</string>
-    <string name="torrent_maps_refresh_topic_desc">Best-effort: fetch topic HTML, find dl.php, download .torrent. Cloudflare may block this.</string>
+    <string name="torrent_maps_refresh_topic_desc">Reads the magnet link from the topic page and resolves torrent metadata via DHT. Does not download the .torrent from dl.php.</string>
     <string name="torrent_maps_refresh_started">Refreshing torrent from RuTracker…</string>
     <string name="torrent_maps_refresh_ok">Torrent updated: %1$s</string>
     <string name="torrent_maps_refresh_failed">Could not refresh torrent</string>
     <string name="torrent_maps_refresh_failed_detail">Refresh failed: %1$s</string>
     <string name="torrent_maps_refresh_cloudflare">RuTracker blocked by Cloudflare. Use «Authorize in browser» in settings, or pick the .torrent file manually.</string>
     <string name="torrent_maps_refresh_no_link">No dl.php download link found on the topic page</string>
+    <string name="torrent_maps_refresh_no_magnet">No magnet link found on the topic page</string>
+    <string name="torrent_maps_refresh_magnet_timeout">Could not resolve magnet metadata (DHT timeout). Check Wi‑Fi and try again.</string>
     <string name="torrent_maps_refresh_bad_file">Downloaded file is not a valid .torrent</string>
     <string name="torrent_maps_seed_charge">Seed while charging</string>
     <string name="torrent_maps_seed_charge_desc">Auto-run only when EV charging is detected (if EV-Telemetry is on) or the phone is plugged in and you are stopped. Manual start still works anytime.</string>

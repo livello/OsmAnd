@@ -45,6 +45,7 @@ class TorrentMapsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 		private const val PREF_DOWNLOAD_NEW = "ev_bms_torrent_download_new"
 		private const val PREF_TOPIC_URL = "ev_bms_torrent_topic_url"
 		private const val PREF_COOKIE = "ev_bms_torrent_rutracker_cookie"
+		private const val PREF_MAGNET = "torrent_maps_magnet_uri"
 		private const val PREF_DOWNLOADED = "ev_bms_torrent_downloaded"
 		private const val PREF_UPLOADED = "ev_bms_torrent_uploaded"
 		private const val PREF_SORT_KEY = "torrent_maps_sort_key"
@@ -70,6 +71,8 @@ class TorrentMapsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 		).makeGlobal().makeShared()
 	val TORRENT_RUTRACKER_COOKIE: CommonPreference<String> =
 		registerStringPreference(PREF_COOKIE, "").makeGlobal().makeShared()
+	val TORRENT_MAGNET: CommonPreference<String> =
+		registerStringPreference(PREF_MAGNET, "").makeGlobal().makeShared()
 	val TORRENT_DOWNLOADED: CommonPreference<Long> =
 		registerLongPreference(PREF_DOWNLOADED, 0L).makeGlobal()
 	val TORRENT_UPLOADED: CommonPreference<Long> =
@@ -114,7 +117,10 @@ class TorrentMapsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 		TorrentMapsLog.init(app)
 		TorrentMapsLog.append("plugin init")
 		registerTorrentWatchers()
-		handler.postDelayed({ syncMapTorrent() }, 2000)
+		handler.postDelayed({
+			mapTorrent.cleanupDuplicateMaps()
+			syncMapTorrent()
+		}, 2000)
 		return true
 	}
 
@@ -229,6 +235,9 @@ class TorrentMapsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 					RutrackerTorrentFetcher.writeTo(dest, result.bytes)
 					TORRENT_PATH.set(dest.absolutePath)
 					TORRENT_NAME.set(result.fileName ?: dest.name)
+					if (!result.magnet.isNullOrBlank()) {
+						TORRENT_MAGNET.set(result.magnet)
+					}
 					mapTorrent.reloadCatalogFromDisk()
 					ok = true
 					message = app.getString(R.string.torrent_maps_refresh_ok, result.fileName ?: dest.name)
@@ -241,7 +250,8 @@ class TorrentMapsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 				ok = false
 				message = when (result.message) {
 					"cloudflare" -> app.getString(R.string.torrent_maps_refresh_cloudflare)
-					"no_dl_link" -> app.getString(R.string.torrent_maps_refresh_no_link)
+					"no_magnet" -> app.getString(R.string.torrent_maps_refresh_no_magnet)
+					"magnet_timeout" -> app.getString(R.string.torrent_maps_refresh_magnet_timeout)
 					"bad_torrent" -> app.getString(R.string.torrent_maps_refresh_bad_file)
 					"empty_url" -> app.getString(R.string.torrent_maps_topic_url_empty)
 					else -> app.getString(R.string.torrent_maps_refresh_failed_detail, result.message)

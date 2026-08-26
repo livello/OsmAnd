@@ -5796,7 +5796,7 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
     <string name="torrent_maps_rutracker_auth_no_cookie">Cookie ещё нет — сначала завершите вход / Cloudflare</string>
     <string name="torrent_maps_confirm_start">Запустить раздачу / загрузку торрента?</string>
     <string name="torrent_maps_confirm_stop">Остановить торрент-клиент?</string>
-    <string name="torrent_maps_confirm_refresh">Обновить .torrent с RuTracker?</string>
+    <string name="torrent_maps_confirm_refresh">Обновить торрент по magnet-ссылке из темы RuTracker?</string>
     <string name="torrent_maps_confirm_pick_file">Заменить текущий файл торрента?</string>
     <string name="torrent_maps_confirm_enable">Включить обновление карт из торрента?</string>
     <string name="torrent_maps_confirm_disable">Отключить обновление карт из торрента?</string>
@@ -5804,13 +5804,15 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
     <string name="torrent_maps_confirm_seed_charge">Изменить настройку раздачи на зарядке?</string>
     <string name="torrent_maps_confirm_download_new">Изменить настройку скачивания отсутствующих карт?</string>
     <string name="torrent_maps_refresh_topic">Обновить торрент с RuTracker</string>
-    <string name="torrent_maps_refresh_topic_desc">По возможности: скачать HTML темы, найти dl.php, загрузить .torrent. Cloudflare может блокировать.</string>
+    <string name="torrent_maps_refresh_topic_desc">Берёт magnet-ссылку со страницы темы и получает метаданные через DHT. Файл .torrent с dl.php не скачивается.</string>
     <string name="torrent_maps_refresh_started">Обновление торрента с RuTracker…</string>
     <string name="torrent_maps_refresh_ok">Торрент обновлён: %1$s</string>
     <string name="torrent_maps_refresh_failed">Не удалось обновить торрент</string>
     <string name="torrent_maps_refresh_failed_detail">Ошибка обновления: %1$s</string>
     <string name="torrent_maps_refresh_cloudflare">RuTracker заблокирован Cloudflare. Используйте «Авторизация» в настройках или укажите файл .torrent вручную.</string>
     <string name="torrent_maps_refresh_no_link">На странице темы не найдена ссылка dl.php</string>
+    <string name="torrent_maps_refresh_no_magnet">На странице темы не найдена magnet-ссылка</string>
+    <string name="torrent_maps_refresh_magnet_timeout">Не удалось получить метаданные по magnet (таймаут DHT). Проверьте Wi‑Fi и повторите.</string>
     <string name="torrent_maps_refresh_bad_file">Скачанный файл не является корректным .torrent</string>
     <string name="torrent_maps_seed_charge">Раздавать на зарядке</string>
     <string name="torrent_maps_seed_charge_desc">Автозапуск только при зарядке EV (если включён EV-Telemetry) или когда телефон на зарядке и вы стоите. Ручной запуск работает в любой момент.</string>

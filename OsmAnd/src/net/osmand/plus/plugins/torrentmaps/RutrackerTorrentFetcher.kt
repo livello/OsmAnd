@@ -1,6 +1,10 @@
 package net.osmand.plus.plugins.torrentmaps
 
 import android.util.Log
+import org.libtorrent4j.SessionManager
+import org.libtorrent4j.SessionParams
+import org.libtorrent4j.SettingsPack
+import org.libtorrent4j.TorrentInfo
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -9,26 +13,30 @@ import java.util.Locale
 import java.util.regex.Pattern
 
 /**
- * Best-effort download of a .torrent from a RuTracker topic page.
- * Cloudflare often blocks automated fetches; optional user Cookie helps when the user
- * pastes their own browser cookie for their account.
+ * Refresh torrent metadata from a RuTracker topic by reading the magnet link
+ * on the page (not dl.php) and resolving it via DHT.
  */
 object RutrackerTorrentFetcher {
 
 	private const val TAG = "RutrackerTorrent"
+	private const val MAGNET_TIMEOUT_SEC = 120
 	private const val UA =
 		"Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
-	private val DL_HREF = Pattern.compile(
-		"href\\s*=\\s*[\"']([^\"']*dl\\.php\\?t=\\d+[^\"']*)[\"']",
+	private val MAGNET_HREF = Pattern.compile(
+		"href\\s*=\\s*[\"'](magnet:\\?[^\"']+)[\"']",
 		Pattern.CASE_INSENSITIVE
 	)
-	private val TOPIC_ID = Pattern.compile("[?&]t=(\\d+)")
+	private val MAGNET_ANY = Pattern.compile(
+		"magnet:\\?xt=urn:btih:[a-zA-Z0-9]+[^\\s\"'<>]*",
+		Pattern.CASE_INSENSITIVE
+	)
 
 	data class Result(
 		val ok: Boolean,
 		val message: String,
 		val bytes: ByteArray? = null,
-		val fileName: String? = null
+		val fileName: String? = null,
+		val magnet: String? = null
 	)
 
 	fun fetchTorrent(topicUrl: String, cookie: String?): Result {
@@ -41,43 +49,71 @@ object RutrackerTorrentFetcher {
 			if (isCloudflareChallenge(html)) {
 				return Result(false, "cloudflare")
 			}
-			val dl = resolveDownloadUrl(url, html)
-				?: return Result(false, "no_dl_link")
-			val (bytes, name) = httpGetBytes(dl, cookie, referer = url)
+			val magnet = extractMagnet(html)
+				?: return Result(false, "no_magnet")
+			TorrentMapsLog.append("RuTracker magnet ${magnet.take(80)}")
+			val bytes = fetchMagnetMetadata(magnet)
 			if (bytes == null || bytes.size < 64 || !looksLikeTorrent(bytes)) {
-				return Result(false, "bad_torrent")
+				return Result(false, "magnet_timeout", magnet = magnet)
 			}
-			Result(true, "ok", bytes, name ?: "maps.torrent")
+			val name = try {
+				TorrentInfo(bytes).name()
+			} catch (_: Exception) {
+				"maps.torrent"
+			}
+			Result(true, "ok", bytes, name, magnet)
 		} catch (e: Exception) {
 			Log.w(TAG, "fetch", e)
 			Result(false, e.message ?: "error")
 		}
 	}
 
-	private fun resolveDownloadUrl(topicUrl: String, html: String): String? {
-		val matcher = DL_HREF.matcher(html)
-		if (matcher.find()) {
-			return absolutize(topicUrl, matcher.group(1)!!)
+	fun extractMagnet(html: String): String? {
+		val href = MAGNET_HREF.matcher(html)
+		if (href.find()) {
+			return unescapeHtml(href.group(1)!!).takeIf { it.startsWith("magnet:", ignoreCase = true) }
 		}
-		val idMatcher = TOPIC_ID.matcher(topicUrl)
-		if (idMatcher.find()) {
-			val id = idMatcher.group(1)
-			val base = topicUrl.substringBefore("/forum/")
-			if (base.startsWith("http")) {
-				return "$base/forum/dl.php?t=$id"
-			}
-			return "https://rutracker.org/forum/dl.php?t=$id"
+		val any = MAGNET_ANY.matcher(html)
+		if (any.find()) {
+			return unescapeHtml(any.group())
 		}
 		return null
 	}
 
-	private fun absolutize(pageUrl: String, href: String): String {
-		if (href.startsWith("http://") || href.startsWith("https://")) {
-			return href
+	private fun fetchMagnetMetadata(magnet: String): ByteArray? {
+		val tmp = File.createTempFile("osmand-magnet", ".dir").apply {
+			delete()
+			mkdirs()
 		}
-		val base = URL(pageUrl)
-		return URL(base, href).toString()
+		val sm = SessionManager()
+		return try {
+			val sp = SettingsPack()
+			sp.setEnableDht(true)
+			sp.setEnableLsd(true)
+			sp.listenInterfaces("0.0.0.0:0")
+			sm.start(SessionParams(sp))
+			sm.fetchMagnet(magnet, MAGNET_TIMEOUT_SEC, tmp)
+		} catch (e: Exception) {
+			Log.w(TAG, "fetchMagnet", e)
+			null
+		} catch (e: Error) {
+			Log.e(TAG, "fetchMagnet native", e)
+			null
+		} finally {
+			try {
+				sm.stop()
+			} catch (_: Exception) {
+			} catch (_: Error) {
+			}
+			tmp.deleteRecursively()
+		}
 	}
+
+	private fun unescapeHtml(raw: String): String =
+		raw.replace("&amp;", "&")
+			.replace("&#038;", "&")
+			.replace("&quot;", "\"")
+			.replace("&amp;amp;", "&")
 
 	private fun isCloudflareChallenge(body: String): Boolean {
 		val lower = body.lowercase(Locale.US)
@@ -89,7 +125,6 @@ object RutrackerTorrentFetcher {
 	}
 
 	private fun looksLikeTorrent(bytes: ByteArray): Boolean {
-		// bencoded torrent usually starts with "d" and contains "4:infod" / "6:pieces"
 		if (bytes.isEmpty() || bytes[0].toInt().toChar() != 'd') {
 			return false
 		}
@@ -98,7 +133,7 @@ object RutrackerTorrentFetcher {
 	}
 
 	private fun httpGetText(url: String, cookie: String?): String {
-		val conn = open(url, cookie, null)
+		val conn = open(url, cookie)
 		conn.instanceFollowRedirects = true
 		conn.connect()
 		val code = conn.responseCode
@@ -107,32 +142,7 @@ object RutrackerTorrentFetcher {
 		return stream.use { it.readBytes().toString(charset) }
 	}
 
-	private fun httpGetBytes(
-		url: String,
-		cookie: String?,
-		referer: String?
-	): Pair<ByteArray?, String?> {
-		val conn = open(url, cookie, referer)
-		conn.instanceFollowRedirects = true
-		conn.connect()
-		val code = conn.responseCode
-		if (code !in 200..299) {
-			val err = conn.errorStream?.use { it.readBytes().toString(Charsets.UTF_8) }.orEmpty()
-			if (isCloudflareChallenge(err)) {
-				throw IllegalStateException("cloudflare")
-			}
-			throw IllegalStateException("http_$code")
-		}
-		val name = fileNameFromDisposition(conn.getHeaderField("Content-Disposition"))
-		val bytes = conn.inputStream.use { it.readBytes() }
-		val asText = bytes.copyOfRange(0, minOf(bytes.size, 800)).toString(Charsets.UTF_8)
-		if (isCloudflareChallenge(asText)) {
-			throw IllegalStateException("cloudflare")
-		}
-		return bytes to name
-	}
-
-	private fun open(url: String, cookie: String?, referer: String?): HttpURLConnection {
+	private fun open(url: String, cookie: String?): HttpURLConnection {
 		val conn = URL(url).openConnection() as HttpURLConnection
 		conn.connectTimeout = 20000
 		conn.readTimeout = 60000
@@ -142,9 +152,6 @@ object RutrackerTorrentFetcher {
 		conn.setRequestProperty("Accept-Language", "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7")
 		if (!cookie.isNullOrBlank()) {
 			conn.setRequestProperty("Cookie", cookie.trim())
-		}
-		if (!referer.isNullOrBlank()) {
-			conn.setRequestProperty("Referer", referer)
 		}
 		return conn
 	}
@@ -163,18 +170,6 @@ object RutrackerTorrentFetcher {
 		} catch (_: Exception) {
 			null
 		}
-	}
-
-	private fun fileNameFromDisposition(header: String?): String? {
-		if (header.isNullOrBlank()) {
-			return null
-		}
-		val star = Regex("filename\\*=(?:UTF-8''|utf-8'')([^;]+)").find(header)
-		if (star != null) {
-			return star.groupValues[1].trim().removeSurrounding("\"")
-		}
-		val plain = Regex("filename=\"?([^\";]+)\"?").find(header)
-		return plain?.groupValues?.get(1)?.trim()
 	}
 
 	fun writeTo(file: File, bytes: ByteArray) {

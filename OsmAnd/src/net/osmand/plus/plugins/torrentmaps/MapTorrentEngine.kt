@@ -3,8 +3,6 @@ package net.osmand.plus.plugins.torrentmaps
 import android.net.Uri
 import android.os.Handler
 import android.os.HandlerThread
-import android.system.ErrnoException
-import android.system.Os
 import android.util.Log
 import net.osmand.IndexConstants
 import net.osmand.plus.OsmandApplication
@@ -64,7 +62,11 @@ class MapTorrentEngine(
 			"hidden", "backup", "rec", "import", "media", "help",
 			"telemetry", DIR
 		)
-		private val VERSION_SUFFIX = Regex("_\\d+(?=\\.obf(?:\\.zip)?$)", RegexOption.IGNORE_CASE)
+		// OsmAnd download names use _2 before the map extension (Foo_2.obf, Foo_2.wiki.obf).
+		private val VERSION_SUFFIX = Regex(
+			"_\\d+(?=\\.(?:(?:wiki|road|srtm|srtmf|depth|travel)\\.)?obf(?:\\.zip)?$)",
+			RegexOption.IGNORE_CASE
+		)
 
 		fun mapKey(rawName: String): String {
 			var n = rawName.substringAfterLast('/').substringAfterLast('\\').lowercase(Locale.US)
@@ -73,6 +75,11 @@ class MapTorrentEngine(
 			}
 			n = VERSION_SUFFIX.replace(n, "")
 			return n
+		}
+
+		fun hasVersionSuffix(rawName: String): Boolean {
+			val n = rawName.substringAfterLast('/').substringAfterLast('\\')
+			return VERSION_SUFFIX.containsMatchIn(n)
 		}
 
 		fun isMapFile(rawName: String): Boolean {
@@ -385,6 +392,17 @@ class MapTorrentEngine(
 		MapTorrentService.sync(app, false)
 	}
 
+	/** Drop alias copies (Foo.obf next to Foo_2.obf). Keep the newest file under one name. */
+	fun cleanupDuplicateMaps() {
+		torrentHandler.post {
+			val n = dedupeLocalMaps(app.getAppPath(IndexConstants.MAPS_PATH))
+			if (n > 0) {
+				pendingReload.set(true)
+				reloadMapsSoon()
+			}
+		}
+	}
+
 	fun shouldRun(): Boolean {
 		if (!plugin.TORRENT_ENABLED.get()) {
 			return false
@@ -441,6 +459,11 @@ class MapTorrentEngine(
 			catalog = buildCatalog(ti)
 			val mapsDir = app.getAppPath(IndexConstants.MAPS_PATH)
 			mapsDir.mkdirs()
+			val dropped = dedupeLocalMaps(mapsDir)
+			if (dropped > 0) {
+				pendingReload.set(true)
+				reloadMapsSoon()
+			}
 			val localByKey = scanLocalMaps()
 			val files = ti.files()
 			val n = ti.numFiles()
@@ -531,8 +554,8 @@ class MapTorrentEngine(
 				infoHash = null
 				return
 			}
-			// Place complete locals under torrent dest names before add (avoids renameFile for seeds).
-			linkSeedFiles(chosen)
+			// Seed/update the existing OsmAnd filename. Never create a second name.
+			prepareStorage(chosen)
 			val sp = SettingsPack()
 			sp.setEnableDht(true)
 			sp.setEnableLsd(true)
@@ -861,34 +884,15 @@ class MapTorrentEngine(
 	}
 
 	/**
-	 * Hard-link complete alias files to the torrent dest name so libtorrent does not need
-	 * renameFile for seeding (renameFile + concurrent status has aborted natively).
+	 * Point libtorrent at the existing local filename. Delete leftover torrent-dest
+	 * aliases so OsmAnd never sees Foo.obf and Foo_2.obf at the same time.
 	 */
-	private fun linkSeedFiles(chosen: List<SelectedFile>) {
+	private fun prepareStorage(chosen: List<SelectedFile>) {
 		for (item in chosen) {
-			if (!item.seedOnly) {
-				continue
-			}
-			val local = item.local ?: continue
-			if (!local.isFile || local.length() != item.size) {
-				continue
-			}
-			if (local.name.equals(item.dest.name, ignoreCase = true)) {
-				continue
-			}
-			if (item.dest.isFile && item.dest.length() == item.size) {
-				continue
-			}
-			if (item.dest.exists()) {
-				continue
-			}
-			try {
-				Os.link(local.absolutePath, item.dest.absolutePath)
-				Log.i(TAG, "seed link ${item.dest.name} <- ${local.name}")
-			} catch (e: ErrnoException) {
-				Log.w(TAG, "seed link ${item.dest.name}", e)
-			} catch (e: Exception) {
-				Log.w(TAG, "seed link ${item.dest.name}", e)
+			val canonical = item.local ?: item.dest
+			deleteSidecar(canonical)
+			if (item.dest.absolutePath != canonical.absolutePath && item.dest.exists()) {
+				closeAndDelete(item.dest)
 			}
 		}
 	}
@@ -902,40 +906,13 @@ class MapTorrentEngine(
 			return
 		}
 		for (item in selected) {
-			if (item.seedOnly) {
-				// Prefer hardlink (already done). Only renameFile if dest still missing.
-				val seedPath = item.local?.takeIf { it.isFile && it.length() == item.size }
-					?: item.dest.takeIf { it.isFile && it.length() == item.size }
-				if (seedPath != null &&
-					!seedPath.name.equals(item.dest.name, ignoreCase = true) &&
-					!(item.dest.isFile && item.dest.length() == item.size)
-				) {
-					try {
-						th.renameFile(item.index, seedPath.absolutePath)
-					} catch (e: Exception) {
-						Log.w(TAG, "seed rename ${item.torrentName}", e)
-					} catch (e: Error) {
-						Log.e(TAG, "seed rename native ${item.torrentName}", e)
-						snapshot = snapshot.copy(error = e.message ?: "libtorrent rename")
-						stopLocked()
-						return
-					}
-				}
-				continue
-			}
-			val target = if (item.replaceExisting &&
-				item.local != null &&
-				item.local.name.equals(item.dest.name, ignoreCase = true)
-			) {
-				File(item.local.absolutePath + ".new")
-			} else if (item.replaceExisting || item.local == null) {
-				if (item.dest.exists() && item.dest.length() != item.size) {
-					File(item.dest.absolutePath + ".new")
-				} else {
-					item.dest
-				}
+			val canonical = item.local ?: item.dest
+			val target = if (item.seedOnly) {
+				canonical
+			} else if (canonical.exists()) {
+				File(canonical.absolutePath + ".new")
 			} else {
-				item.local
+				canonical
 			}
 			try {
 				th.renameFile(item.index, target.absolutePath)
@@ -1127,56 +1104,25 @@ class MapTorrentEngine(
 
 	private fun onFileDone(index: Int) {
 		val item = selected.firstOrNull { it.index == index } ?: return
-		val staged = File(item.dest.absolutePath + ".new")
-		val localStaged = item.local?.let { File(it.absolutePath + ".new") }
+		if (item.seedOnly) {
+			return
+		}
+		val canonical = item.local ?: item.dest
+		val staged = File(canonical.absolutePath + ".new")
 		val src = when {
-			staged.isFile -> staged
-			localStaged?.isFile == true -> localStaged
+			staged.isFile && staged.length() == item.size -> staged
+			canonical.isFile && canonical.length() == item.size -> canonical
 			item.dest.isFile && item.dest.length() == item.size -> item.dest
 			else -> return
 		}
 		try {
-			if (src.absolutePath == item.dest.absolutePath && !item.replaceExisting) {
-				pendingReload.set(true)
-				reloadMapsSoon()
-				return
-			}
-			val finalDest = when {
-				item.local != null && item.local.name.equals(item.dest.name, ignoreCase = true) -> item.local
-				else -> item.dest
-			}
-			try {
-				app.resourceManager.closeFile(finalDest.name)
-			} catch (_: Exception) {
-			}
-			if (item.local != null && item.local != finalDest && item.local.exists()) {
-				try {
-					app.resourceManager.closeFile(item.local.name)
-				} catch (_: Exception) {
-				}
-			}
-			val bak = File(finalDest.absolutePath + ".bak")
-			if (finalDest.exists() && src != finalDest) {
-				bak.delete()
-				if (!finalDest.renameTo(bak)) {
-					finalDest.delete()
-				}
-			}
-			if (src != finalDest) {
-				if (!src.renameTo(finalDest)) {
-					src.copyTo(finalDest, overwrite = true)
-					src.delete()
-				}
-			}
-			bak.delete()
-			if (item.local != null && item.local != finalDest && item.local.exists()) {
-				item.local.delete()
-			}
+			replaceInPlace(src, canonical)
+			deleteMapKeyAliases(canonical)
 			pendingSwaps.remove(index)
 			pendingReload.set(true)
 			reloadMapsSoon()
-			Log.i(TAG, "ready ${finalDest.name}")
-			TorrentMapsLog.append("file ready: ${finalDest.name}")
+			Log.i(TAG, "ready ${canonical.name}")
+			TorrentMapsLog.append("file ready: ${canonical.name}")
 		} catch (e: Exception) {
 			Log.e(TAG, "finalize ${item.torrentName}", e)
 			TorrentMapsLog.append("finalize failed ${item.torrentName}: ${e.message}")
@@ -1219,7 +1165,126 @@ class MapTorrentEngine(
 			if (!isMapFile(file.name)) {
 				continue
 			}
-			out.putIfAbsent(mapKey(file.name), file)
+			out.merge(mapKey(file.name), file) { a, b -> betterLocal(a, b) }
+		}
+	}
+
+	/** Keep the newest map; on a size tie prefer OsmAnd's `_2` name. */
+	private fun betterLocal(a: File, b: File): File {
+		return when {
+			b.length() != a.length() -> if (b.length() > a.length()) b else a
+			hasVersionSuffix(b.name) != hasVersionSuffix(a.name) ->
+				if (hasVersionSuffix(b.name)) b else a
+			else -> if (b.lastModified() >= a.lastModified()) b else a
+		}
+	}
+
+	private fun pickCanonical(files: List<File>): File {
+		var best = files[0]
+		for (i in 1 until files.size) {
+			best = betterLocal(best, files[i])
+		}
+		return best
+	}
+
+	private fun dedupeLocalMaps(mapsDir: File): Int {
+		val groups = LinkedHashMap<String, ArrayList<File>>()
+		collectMapFiles(mapsDir, groups)
+		var deleted = 0
+		for (group in groups.values) {
+			if (group.size < 2) {
+				continue
+			}
+			val keep = pickCanonical(group)
+			for (file in group) {
+				if (file.absolutePath == keep.absolutePath) {
+					continue
+				}
+				if (closeAndDelete(file)) {
+					deleted++
+					TorrentMapsLog.append("dedupe drop ${file.name} keep ${keep.name}")
+				}
+			}
+			deleteSidecar(keep)
+		}
+		if (deleted > 0) {
+			Log.i(TAG, "dedupe removed $deleted alias map(s)")
+			TorrentMapsLog.append("dedupe removed $deleted alias map(s)")
+		}
+		return deleted
+	}
+
+	private fun collectMapFiles(dir: File, groups: LinkedHashMap<String, ArrayList<File>>) {
+		val files = dir.listFiles() ?: return
+		for (file in files) {
+			if (file.isDirectory) {
+				if (file.name.lowercase(Locale.US) in SKIP_DIRS) {
+					continue
+				}
+				collectMapFiles(file, groups)
+				continue
+			}
+			val lower = file.name.lowercase(Locale.US)
+			if (lower.endsWith(".new") || lower.endsWith(".bak")) {
+				closeAndDelete(file)
+				continue
+			}
+			if (!isMapFile(file.name)) {
+				continue
+			}
+			groups.getOrPut(mapKey(file.name)) { ArrayList() }.add(file)
+		}
+	}
+
+	private fun deleteMapKeyAliases(canonical: File) {
+		val parent = canonical.parentFile ?: return
+		val key = mapKey(canonical.name)
+		val files = parent.listFiles() ?: return
+		for (file in files) {
+			if (!file.isFile || file.absolutePath == canonical.absolutePath) {
+				continue
+			}
+			if (isMapFile(file.name) && mapKey(file.name) == key) {
+				closeAndDelete(file)
+			}
+		}
+		deleteSidecar(canonical)
+	}
+
+	private fun replaceInPlace(src: File, dest: File) {
+		if (src.absolutePath == dest.absolutePath) {
+			return
+		}
+		closeMapFile(dest)
+		closeMapFile(src)
+		if (dest.exists() && !dest.delete()) {
+			Log.w(TAG, "could not delete old ${dest.name} before replace")
+		}
+		if (!src.renameTo(dest)) {
+			src.copyTo(dest, overwrite = true)
+			src.delete()
+		}
+	}
+
+	private fun deleteSidecar(file: File) {
+		File(file.absolutePath + ".new").takeIf { it.exists() }?.let { closeAndDelete(it) }
+		File(file.absolutePath + ".bak").takeIf { it.exists() }?.let { closeAndDelete(it) }
+	}
+
+	private fun closeMapFile(file: File) {
+		try {
+			app.resourceManager.closeFile(file.name)
+		} catch (_: Exception) {
+		}
+	}
+
+	private fun closeAndDelete(file: File): Boolean {
+		closeMapFile(file)
+		return try {
+			!file.exists() || file.delete()
+		} catch (e: Exception) {
+			Log.w(TAG, "delete ${file.name}", e)
+			false
 		}
 	}
 
