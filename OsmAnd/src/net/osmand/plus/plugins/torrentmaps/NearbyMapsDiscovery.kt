@@ -89,6 +89,9 @@ class NearbyMapsDiscovery(
 
 	fun startDiscovery() {
 		val manager = nsd ?: return
+		if (discovering && discoveryListener != null) {
+			return
+		}
 		stopDiscovery()
 		peers.clear()
 		notifyPeers()

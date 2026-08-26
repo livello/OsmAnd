@@ -122,7 +122,7 @@ class TorrentMapsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 		super.disable(app)
 		TorrentMapsLog.append("plugin disable")
 		unregisterTorrentWatchers()
-		nearby.stopSharing()
+		nearby.shutdownAll()
 		mapTorrent.stop()
 	}
 

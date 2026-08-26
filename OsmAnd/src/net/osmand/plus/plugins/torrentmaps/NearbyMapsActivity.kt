@@ -66,13 +66,17 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 
 		list = findViewById(R.id.nearby_list)
 		adapter = NearbyAdapter(
-			onClose = { finish() },
+			onClose = { onClosePressed() },
 			onScan = {
-				nearby.ensureDiscovery()
+				nearby.rescan()
 				app.showToastMessage(R.string.torrent_maps_nearby_scanning)
 				refreshPeerList()
 			},
 			onBackPeers = { showPeers() },
+			onCancelDownload = {
+				nearby.downloader.cancel()
+				refreshStatusLine()
+			},
 			onBreadcrumb = {
 				if (folderPath.isNotEmpty()) {
 					folderPath = TorrentBrowser.parentPath(folderPath)
@@ -93,13 +97,38 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 			shareChecked = { nearby.sharing },
 			statusProvider = { statusText },
 			breadcrumbProvider = { breadcrumbText },
-			catalogChrome = { showCatalogChrome }
+			catalogChrome = { showCatalogChrome },
+			downloadBusy = { nearby.downloader.busy }
 		)
 		list.layoutManager = LinearLayoutManager(this)
 		list.adapter = adapter
 
 		showPeers()
 		refreshStatusLine()
+	}
+
+	/**
+	 * X on peer catalog → back to peer list (keep Scan).
+	 * X on peer list → leave Nearby only (do not stop remote share / local share).
+	 */
+	private fun onClosePressed() {
+		if (showCatalogChrome || selectedPeer != null) {
+			TorrentMapsLog.append("nearby UI: leave peer catalog")
+			showPeers()
+			nearby.ensureDiscovery()
+			return
+		}
+		TorrentMapsLog.append("nearby UI: exit activity")
+		finish()
+	}
+
+	@Deprecated("Deprecated in Java")
+	override fun onBackPressed() {
+		if (showCatalogChrome || selectedPeer != null) {
+			onClosePressed()
+		} else {
+			super.onBackPressed()
+		}
 	}
 
 	override fun onResume() {
@@ -113,10 +142,17 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 	override fun onPause() {
 		uiHandler.removeCallbacks(progressTick)
 		nearby.removeListener(this)
-		if (!nearby.sharing) {
+		// Do NOT stop discovery here — pausing for dialogs / multitasking must not
+		// kill Scan or tear down the peer session. Discovery stops in onDestroy if
+		// the user left Nearby and is not sharing.
+		super.onPause()
+	}
+
+	override fun onDestroy() {
+		if (isFinishing && !nearby.sharing) {
 			nearby.stopDiscoveryOnly()
 		}
-		super.onPause()
+		super.onDestroy()
 	}
 
 	override fun onPeersChanged(peers: List<NearbyPeer>) {
@@ -227,7 +263,7 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 				app.showToastMessage(R.string.torrent_maps_nearby_busy)
 				return@confirmAction
 			}
-			nearby.downloader.download(peer, row.entry, { _, _ ->
+			nearby.downloader.download(peer, row.entry, { _, _, _ ->
 				uiHandler.post { refreshStatusLine() }
 			}) { ok, message ->
 				uiHandler.post {
@@ -247,6 +283,7 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 					refreshStatusLine()
 				}
 			}
+			refreshStatusLine()
 		}
 	}
 
@@ -264,7 +301,8 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 			val pct = if (dl.progressTotal > 0) {
 				((dl.progressBytes * 100L) / dl.progressTotal).toInt()
 			} else 0
-			" · ↓ ${dl.progressPath?.substringAfterLast('/')} $pct%"
+			val rate = NearbyMapsDownloader.formatRate(dl.progressBytesPerSec)
+			" · ↓ ${dl.progressPath?.substringAfterLast('/')} $pct% · $rate"
 		} else ""
 		statusText = "$sharePart · $peerPart$progress"
 		adapter.notifyHeaderChanged()
@@ -306,13 +344,15 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 		private val onClose: () -> Unit,
 		private val onScan: () -> Unit,
 		private val onBackPeers: () -> Unit,
+		private val onCancelDownload: () -> Unit,
 		private val onBreadcrumb: () -> Unit,
 		private val onShareToggle: (SwitchCompat, Boolean) -> Unit,
 		private val onRowClick: (NearbyBrowserRow) -> Unit,
 		private val shareChecked: () -> Boolean,
 		private val statusProvider: () -> String,
 		private val breadcrumbProvider: () -> String,
-		private val catalogChrome: () -> Boolean
+		private val catalogChrome: () -> Boolean,
+		private val downloadBusy: () -> Boolean
 	) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
 		companion object {
@@ -350,9 +390,11 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 					breadcrumb = breadcrumbProvider(),
 					shareOn = shareChecked(),
 					catalogMode = catalogChrome(),
+					busy = downloadBusy(),
 					onClose = onClose,
 					onScan = onScan,
 					onBackPeers = onBackPeers,
+					onCancelDownload = onCancelDownload,
 					onBreadcrumb = onBreadcrumb,
 					onShareToggle = onShareToggle
 				)
@@ -369,6 +411,7 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 			private val shareSwitch: SwitchCompat = view.findViewById(R.id.nearby_share_switch)
 			private val scanBtn: TextView = view.findViewById(R.id.nearby_scan)
 			private val backPeersBtn: TextView = view.findViewById(R.id.nearby_back_peers)
+			private val cancelBtn: TextView = view.findViewById(R.id.nearby_cancel_download)
 			private val closeBtn: View = view.findViewById(R.id.nearby_close)
 
 			fun bind(
@@ -376,9 +419,11 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 				breadcrumb: String,
 				shareOn: Boolean,
 				catalogMode: Boolean,
+				busy: Boolean,
 				onClose: () -> Unit,
 				onScan: () -> Unit,
 				onBackPeers: () -> Unit,
+				onCancelDownload: () -> Unit,
 				onBreadcrumb: () -> Unit,
 				onShareToggle: (SwitchCompat, Boolean) -> Unit
 			) {
@@ -387,7 +432,9 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 				this.breadcrumb.text = breadcrumb
 				this.breadcrumb.isVisible = catalogMode
 				scanBtn.isVisible = !catalogMode
+				scanBtn.isEnabled = true
 				backPeersBtn.isVisible = catalogMode
+				cancelBtn.isVisible = busy
 				shareSwitch.setOnCheckedChangeListener(null)
 				shareSwitch.isChecked = shareOn
 				shareSwitch.setOnCheckedChangeListener { _, checked ->
@@ -396,6 +443,7 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 				closeBtn.setOnClickListener { onClose() }
 				scanBtn.setOnClickListener { onScan() }
 				backPeersBtn.setOnClickListener { onBackPeers() }
+				cancelBtn.setOnClickListener { onCancelDownload() }
 				this.breadcrumb.setOnClickListener { onBreadcrumb() }
 			}
 		}

@@ -1,5 +1,6 @@
 package net.osmand.plus.plugins.torrentmaps
 
+import android.os.SystemClock
 import android.util.Log
 import net.osmand.plus.OsmandApplication
 import java.io.BufferedInputStream
@@ -33,6 +34,8 @@ class NearbyMapsHttpServer(
 	companion object {
 		private const val TAG = "NearbyMapsHttp"
 		private const val MAX_HEADER = 64 * 1024
+		private const val IO_BUFFER = 256 * 1024
+		private const val SOCKET_BUF = 512 * 1024
 	}
 
 	private val running = AtomicBoolean(false)
@@ -49,7 +52,13 @@ class NearbyMapsHttpServer(
 		}
 		// Bind all interfaces so SoftAP / Wi‑Fi / Ethernet clients can connect.
 		// Advertise a specific LAN IPv4 separately via NSD TXT.
-		val ss = ServerSocket(0, 32, null)
+		val ss = ServerSocket()
+		ss.reuseAddress = true
+		try {
+			ss.receiveBufferSize = SOCKET_BUF
+		} catch (_: Exception) {
+		}
+		ss.bind(java.net.InetSocketAddress(0), 64)
 		serverSocket = ss
 		port = ss.localPort
 		pool = Executors.newCachedThreadPool { r ->
@@ -96,20 +105,30 @@ class NearbyMapsHttpServer(
 	}
 
 	private fun handleClient(socket: Socket) {
-		socket.soTimeout = 60_000
 		try {
+			try {
+				socket.tcpNoDelay = true
+				socket.sendBufferSize = SOCKET_BUF
+				socket.receiveBufferSize = SOCKET_BUF
+			} catch (_: Exception) {
+			}
+			// Long timeout for large OBF transfers; catalog stays snappy via early response.
+			socket.soTimeout = 300_000
 			socket.use { s ->
-				val input = BufferedInputStream(s.getInputStream())
-				val output = BufferedOutputStream(s.getOutputStream())
+				val input = BufferedInputStream(s.getInputStream(), IO_BUFFER)
+				val output = BufferedOutputStream(s.getOutputStream(), IO_BUFFER)
 				val request = readRequest(input) ?: run {
 					writeResponse(output, 400, "text/plain", "bad request")
+					output.flush()
 					return
 				}
 				dispatch(request, output)
 				output.flush()
 			}
 		} catch (e: Exception) {
-			Log.w(TAG, "client", e)
+			if (running.get()) {
+				Log.w(TAG, "client", e)
+			}
 		}
 	}
 
@@ -214,6 +233,7 @@ class NearbyMapsHttpServer(
 			append("Content-Length: ").append(length).append("\r\n")
 			append("Content-Disposition: attachment; filename=\"")
 				.append(file.name.replace("\"", "")).append("\"\r\n")
+			append("Accept-Ranges: none\r\n")
 			append("Connection: close\r\n")
 			append("\r\n")
 		}.toByteArray(StandardCharsets.US_ASCII)
@@ -221,15 +241,34 @@ class NearbyMapsHttpServer(
 		if (headOnly) {
 			return
 		}
-		FileInputStream(file).use { input ->
-			val buf = ByteArray(64 * 1024)
-			while (true) {
-				val n = input.read(buf)
-				if (n <= 0) break
-				output.write(buf, 0, n)
+		NearbyTransferLocks.acquire(app, "serve")
+		val t0 = SystemClock.elapsedRealtime()
+		var sent = 0L
+		try {
+			FileInputStream(file).use { raw ->
+				BufferedInputStream(raw, IO_BUFFER).use { input ->
+					val buf = ByteArray(IO_BUFFER)
+					while (true) {
+						val n = input.read(buf)
+						if (n <= 0) break
+						output.write(buf, 0, n)
+						sent += n
+					}
+				}
 			}
+			output.flush()
+			val elapsed = (SystemClock.elapsedRealtime() - t0).coerceAtLeast(1L)
+			val bps = (sent * 1000L) / elapsed
+			TorrentMapsLog.append(
+				"nearby served ${file.name} $sent B in ${elapsed} ms " +
+					"(${NearbyMapsDownloader.formatRate(bps)})"
+			)
+		} catch (e: Exception) {
+			TorrentMapsLog.append("nearby serve aborted ${file.name} at $sent B: ${e.message}")
+			throw e
+		} finally {
+			NearbyTransferLocks.release("serve")
 		}
-		TorrentMapsLog.append("nearby served ${file.name} (${length} B)")
 	}
 
 	private fun writeResponse(

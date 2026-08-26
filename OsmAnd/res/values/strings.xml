@@ -6457,6 +6457,8 @@ Download tile maps directly, or copy them as SQLite database files to OsmAnd\'s 
     <string name="torrent_maps_nearby_catalog_failed">Catalog failed: %1$s</string>
     <string name="torrent_maps_nearby_unreachable">Cannot reach %1$s at %2$s. Many Wi‑Fi routers block phone-to-phone traffic — start a hotspot on one phone and join it from the other, then retry.</string>
     <string name="torrent_maps_nearby_busy">Another download is already running</string>
+    <string name="torrent_maps_nearby_cancel_download">Cancel download</string>
+    <string name="torrent_maps_nearby_download_cancelled">Download cancelled: %1$s</string>
     <string name="torrent_maps_nearby_download_ok">Saved map %1$s</string>
     <string name="torrent_maps_nearby_download_failed">Download failed: %1$s</string>
     <string name="torrent_maps_nearby_endpoint">Sharing %1$s</string>

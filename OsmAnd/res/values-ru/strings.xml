@@ -5884,6 +5884,8 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
     <string name="torrent_maps_nearby_catalog_failed">Каталог недоступен: %1$s</string>
     <string name="torrent_maps_nearby_unreachable">Нет доступа к %1$s (%2$s). Многие Wi‑Fi роутеры блокируют обмен между телефонами — включите точку доступа на одном и подключите второй, затем повторите.</string>
     <string name="torrent_maps_nearby_busy">Уже идёт другая загрузка</string>
+    <string name="torrent_maps_nearby_cancel_download">Отменить загрузку</string>
+    <string name="torrent_maps_nearby_download_cancelled">Загрузка отменена: %1$s</string>
     <string name="torrent_maps_nearby_download_ok">Карта сохранена: %1$s</string>
     <string name="torrent_maps_nearby_download_failed">Ошибка загрузки: %1$s</string>
     <string name="torrent_maps_nearby_endpoint">Раздача %1$s</string>

@@ -128,5 +128,18 @@
 			android:textColor="#90CAF9"
 			android:textSize="17sp"
 			android:visibility="gone" />
+
+		<TextView
+			android:id="@+id/nearby_cancel_download"
+			android:layout_width="0dp"
+			android:layout_height="wrap_content"
+			android:layout_weight="1"
+			android:background="?attr/selectableItemBackground"
+			android:gravity="center"
+			android:paddingVertical="10dp"
+			android:text="@string/torrent_maps_nearby_cancel_download"
+			android:textColor="#EF9A9A"
+			android:textSize="17sp"
+			android:visibility="gone" />
 	</LinearLayout>
 </LinearLayout>

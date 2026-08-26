@@ -14,6 +14,7 @@ import java.net.HttpURLConnection
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.NetworkInterface
+import java.net.Proxy
 import java.net.URL
 import java.security.SecureRandom
 import java.util.concurrent.CopyOnWriteArrayList
@@ -85,7 +86,7 @@ class NearbyMapsController(
 
 	fun startSharing() {
 		io.execute {
-			stopSharingLocked()
+			stopHttpOnlyLocked()
 			val advertise = pickAdvertiseAddress()
 			if (advertise == null) {
 				TorrentMapsLog.append("nearby: no Wi‑Fi/hotspot IPv4 — connect to same network or start hotspot")
@@ -102,18 +103,16 @@ class NearbyMapsController(
 			} catch (e: Exception) {
 				TorrentMapsLog.append("nearby HTTP start failed: ${e.message}")
 				http.stop()
-				releaseMulticastLock()
 				ui.post {
 					app.showToastMessage(net.osmand.plus.R.string.torrent_maps_nearby_share_failed)
 				}
 				return@execute
 			}
 			server = http
-			val nsd = NearbyMapsDiscovery(app) { list ->
+			val nsd = discovery ?: NearbyMapsDiscovery(app) { list ->
 				peers = list
 				ui.post { listeners.forEach { it.onPeersChanged(list) } }
-			}
-			discovery = nsd
+			}.also { discovery = it }
 			val host = advertise.hostAddress
 			nsd.advertise("OsmAndMaps-$token", port, token, deviceName(), host)
 			nsd.startDiscovery()
@@ -130,10 +129,31 @@ class NearbyMapsController(
 
 	fun stopSharing() {
 		io.execute {
-			stopSharingLocked()
+			// Stop HTTP + advertising only — keep Scan/discovery alive for the UI.
+			stopHttpOnlyLocked()
 			ui.post {
 				listeners.forEach { it.onSharingChanged(false, null) }
 			}
+		}
+	}
+
+	/**
+	 * Force a fresh Scan pass (clears current peer list and rediscovers).
+	 */
+	fun rescan() {
+		io.execute {
+			acquireMulticastLock()
+			var nsd = discovery
+			if (nsd == null) {
+				nsd = NearbyMapsDiscovery(app) { list ->
+					peers = list
+					ui.post { listeners.forEach { it.onPeersChanged(list) } }
+				}
+				discovery = nsd
+			} else {
+				nsd.stopDiscovery()
+			}
+			nsd.startDiscovery()
 		}
 	}
 
@@ -152,12 +172,17 @@ class NearbyMapsController(
 		}
 	}
 
+	/**
+	 * Stop Scan/discovery without touching the share HTTP server.
+	 * Used when leaving Nearby UI while not sharing.
+	 */
 	fun stopDiscoveryOnly() {
 		io.execute {
 			if (!sharing) {
 				discovery?.stopDiscovery()
 				discovery = null
 				releaseMulticastLock()
+				TorrentMapsLog.append("nearby discovery stopped (UI closed)")
 			}
 		}
 	}
@@ -179,17 +204,30 @@ class NearbyMapsController(
 				val url = URL(
 					"${peer.baseUrl}/catalog?token=${java.net.URLEncoder.encode(peer.token, "UTF-8")}"
 				)
-				val conn = (url.openConnection() as HttpURLConnection).apply {
+				val conn = (url.openConnection(Proxy.NO_PROXY) as HttpURLConnection).apply {
 					connectTimeout = 10_000
 					readTimeout = 30_000
 					requestMethod = "GET"
+					useCaches = false
+					instanceFollowRedirects = false
 				}
-				conn.inputStream.use { input ->
-					val text = input.bufferedReader().readText()
-					val parsed = catalog.parseCatalog(text)
-					ui.post { onDone(parsed, null) }
+				try {
+					val code = conn.responseCode
+					if (code !in 200..299) {
+						TorrentMapsLog.append("nearby catalog HTTP $code")
+						ui.post {
+							onDone(null, "HTTP $code")
+						}
+						return@execute
+					}
+					conn.inputStream.use { input ->
+						val text = input.bufferedReader().readText()
+						val parsed = catalog.parseCatalog(text)
+						ui.post { onDone(parsed, null) }
+					}
+				} finally {
+					conn.disconnect()
 				}
-				conn.disconnect()
 			} catch (e: Exception) {
 				TorrentMapsLog.append("nearby catalog failed: ${e.message}")
 				val msg = if (isConnectFailure(e)) {
@@ -229,11 +267,12 @@ class NearbyMapsController(
 	fun probeHealth(peer: NearbyPeer): Boolean {
 		return try {
 			val url = URL("${peer.baseUrl}/health")
-			val conn = (url.openConnection() as HttpURLConnection).apply {
+			val conn = (url.openConnection(Proxy.NO_PROXY) as HttpURLConnection).apply {
 				connectTimeout = 4_000
 				readTimeout = 4_000
 				requestMethod = "GET"
 				instanceFollowRedirects = false
+				useCaches = false
 			}
 			try {
 				val code = conn.responseCode
@@ -258,18 +297,41 @@ class NearbyMapsController(
 			msg.contains("no route to host")
 	}
 
-	private fun stopSharingLocked() {
+	/** Tear down share HTTP + NSD advertise; leave peer Scan running. */
+	private fun stopHttpOnlyLocked() {
+		val wasSharing = sharing
 		sharing = false
 		endpoint = null
 		server?.stop()
 		server = null
 		discovery?.stopAdvertising()
-		discovery?.stopDiscovery()
-		discovery = null
-		peers = emptyList()
 		NearbyMapsService.sync(app, false)
-		releaseMulticastLock()
-		TorrentMapsLog.append("nearby sharing stopped")
+		if (wasSharing) {
+			TorrentMapsLog.append("nearby sharing stopped (discovery kept)")
+		}
+	}
+
+	/** Full teardown (plugin disable / process cleanup). */
+	fun shutdownAll() {
+		io.execute {
+			sharing = false
+			endpoint = null
+			server?.stop()
+			server = null
+			discovery?.stopAdvertising()
+			discovery?.stopDiscovery()
+			discovery = null
+			peers = emptyList()
+			NearbyMapsService.sync(app, false)
+			releaseMulticastLock()
+			TorrentMapsLog.append("nearby fully stopped")
+			ui.post {
+				listeners.forEach {
+					it.onSharingChanged(false, null)
+					it.onPeersChanged(emptyList())
+				}
+			}
+		}
 	}
 
 	/**
