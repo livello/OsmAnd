@@ -24,7 +24,8 @@ import java.util.concurrent.Executors
  * Coordinates local HTTP sharing + NSD discovery for offline map exchange.
  */
 class NearbyMapsController(
-	private val app: OsmandApplication
+	private val app: OsmandApplication,
+	private val plugin: TorrentMapsPlugin
 ) {
 	companion object {
 		private val HEX = "0123456789abcdef".toCharArray()
@@ -97,7 +98,15 @@ class NearbyMapsController(
 			}
 			acquireMulticastLock()
 			token = newToken()
-			val http = NearbyMapsHttpServer(app, catalog, token, deviceName(), advertise)
+			val http = NearbyMapsHttpServer(
+				app,
+				catalog,
+				token,
+				deviceName(),
+				advertise,
+				torrentOffer = { plugin.nearbyTorrentOffer() },
+				torrentFile = { plugin.torrentFile().takeIf { it.isFile && it.length() > 64L } }
+			)
 			val port = try {
 				http.start()
 			} catch (e: Exception) {
@@ -117,6 +126,7 @@ class NearbyMapsController(
 			nsd.advertise("OsmAndMaps-$token", port, token, deviceName(), host)
 			nsd.startDiscovery()
 			sharing = true
+			plugin.NEARBY_SHARE.set(true)
 			endpoint = "$host:$port"
 			NearbyMapsService.sync(app, true)
 			TorrentMapsLog.append("nearby sharing on $endpoint (HTTP 0.0.0.0:$port)")
@@ -129,8 +139,8 @@ class NearbyMapsController(
 
 	fun stopSharing() {
 		io.execute {
-			// Stop HTTP + advertising only — keep Scan/discovery alive for the UI.
 			stopHttpOnlyLocked()
+			plugin.NEARBY_SHARE.set(false)
 			ui.post {
 				listeners.forEach { it.onSharingChanged(false, null) }
 			}
@@ -183,6 +193,33 @@ class NearbyMapsController(
 				discovery = null
 				releaseMulticastLock()
 				TorrentMapsLog.append("nearby discovery stopped (UI closed)")
+			}
+		}
+	}
+
+	fun fetchPeerTorrent(peer: NearbyPeer, onDone: (ByteArray?, String?) -> Unit) {
+		io.execute {
+			try {
+				val tokenEnc = java.net.URLEncoder.encode(peer.token, "UTF-8")
+				val url = URL("${peer.baseUrl}/torrent?token=$tokenEnc")
+				val conn = (url.openConnection(Proxy.NO_PROXY) as HttpURLConnection).apply {
+					connectTimeout = 15_000
+					readTimeout = 60_000
+					requestMethod = "GET"
+					useCaches = false
+				}
+				try {
+					if (conn.responseCode !in 200..299) {
+						ui.post { onDone(null, "HTTP ${conn.responseCode}") }
+						return@execute
+					}
+					val bytes = conn.inputStream.use { it.readBytes() }
+					ui.post { onDone(bytes, null) }
+				} finally {
+					conn.disconnect()
+				}
+			} catch (e: Exception) {
+				ui.post { onDone(null, e.message) }
 			}
 		}
 	}
@@ -302,6 +339,7 @@ class NearbyMapsController(
 		val wasSharing = sharing
 		sharing = false
 		endpoint = null
+		endpoint = null
 		server?.stop()
 		server = null
 		discovery?.stopAdvertising()
@@ -315,6 +353,7 @@ class NearbyMapsController(
 	fun shutdownAll() {
 		io.execute {
 			sharing = false
+			plugin.NEARBY_SHARE.set(false)
 			endpoint = null
 			server?.stop()
 			server = null

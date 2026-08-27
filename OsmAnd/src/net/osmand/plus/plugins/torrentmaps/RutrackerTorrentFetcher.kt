@@ -68,6 +68,28 @@ object RutrackerTorrentFetcher {
 		}
 	}
 
+	fun resolveMagnet(magnet: String): Result {
+		val uri = magnet.trim()
+		if (!uri.startsWith("magnet:", ignoreCase = true)) {
+			return Result(false, "empty_url")
+		}
+		return try {
+			val bytes = fetchMagnetMetadata(uri)
+			if (bytes == null || bytes.size < 64 || !looksLikeTorrent(bytes)) {
+				Result(false, "magnet_timeout", magnet = uri)
+			} else {
+				val name = try {
+					TorrentInfo(bytes).name()
+				} catch (_: Exception) {
+					"maps.torrent"
+				}
+				Result(true, "ok", bytes, name, uri)
+			}
+		} catch (e: Exception) {
+			Result(false, e.message ?: "error", magnet = uri)
+		}
+	}
+
 	fun extractMagnet(html: String): String? {
 		val href = MAGNET_HREF.matcher(html)
 		if (href.find()) {

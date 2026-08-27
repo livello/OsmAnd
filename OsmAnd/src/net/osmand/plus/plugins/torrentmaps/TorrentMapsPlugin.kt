@@ -50,6 +50,7 @@ class TorrentMapsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 		private const val PREF_UPLOADED = "ev_bms_torrent_uploaded"
 		private const val PREF_SORT_KEY = "torrent_maps_sort_key"
 		private const val PREF_SORT_ASC = "torrent_maps_sort_asc"
+		private const val PREF_NEARBY_SHARE = "torrent_maps_nearby_share"
 	}
 
 	val TORRENT_ENABLED: CommonPreference<Boolean> =
@@ -81,12 +82,14 @@ class TorrentMapsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 		registerStringPreference(PREF_SORT_KEY, TorrentSortKey.NAME.name).makeGlobal().makeShared()
 	val TORRENT_SORT_ASC: CommonPreference<Boolean> =
 		registerBooleanPreference(PREF_SORT_ASC, true).makeGlobal().makeShared()
+	val NEARBY_SHARE: CommonPreference<Boolean> =
+		registerBooleanPreference(PREF_NEARBY_SHARE, false).makeGlobal().makeShared()
 	val STOP_SPEED_KMH: CommonPreference<Int> =
 		registerIntPreference("torrent_maps_stop_speed_kmh", STOP_SPEED_KMH_DEFAULT).makeGlobal().makeShared()
 
 	private val handler = Handler(Looper.getMainLooper())
 	private val mapTorrent by lazy { MapTorrentEngine(app, this) }
-	val nearby by lazy { NearbyMapsController(app) }
+	val nearby by lazy { NearbyMapsController(app, this) }
 	private var torrentNetworkCallback: ConnectivityManager.NetworkCallback? = null
 	private var torrentPowerReceiver: BroadcastReceiver? = null
 
@@ -120,6 +123,9 @@ class TorrentMapsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 		handler.postDelayed({
 			mapTorrent.cleanupDuplicateMaps()
 			syncMapTorrent()
+			if (NEARBY_SHARE.get()) {
+				nearby.startSharing()
+			}
 		}, 2000)
 		return true
 	}
@@ -268,6 +274,30 @@ class TorrentMapsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 	fun importTorrentFile(uri: Uri): Boolean {
 		val ok = mapTorrent.importTorrent(uri)
 		if (ok) {
+			syncMapTorrent()
+		}
+		return ok
+	}
+
+	fun torrentFile(): java.io.File = mapTorrent.torrentFile()
+
+	fun nearbyTorrentOffer(): NearbyTorrentOffer {
+		val file = mapTorrent.torrentFile()
+		val available = file.isFile && file.length() > 64L
+		return NearbyTorrentOffer(
+			magnet = TORRENT_MAGNET.get().orEmpty(),
+			torrentName = TORRENT_NAME.get().orEmpty().ifBlank { if (available) file.name else "" },
+			torrentDateMs = if (available) file.lastModified() else 0L,
+			torrentAvailable = available
+		)
+	}
+
+	fun applyTorrentBytes(bytes: ByteArray, displayName: String, magnet: String?): Boolean {
+		val ok = mapTorrent.applyTorrentBytes(bytes, displayName)
+		if (ok) {
+			if (!magnet.isNullOrBlank()) {
+				TORRENT_MAGNET.set(magnet)
+			}
 			syncMapTorrent()
 		}
 		return ok

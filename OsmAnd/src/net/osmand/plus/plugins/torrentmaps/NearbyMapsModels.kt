@@ -42,10 +42,33 @@ enum class NearbyMapStatus {
 	UNKNOWN
 }
 
+enum class NearbyQueueState {
+	QUEUED,
+	RUNNING,
+	PAUSED,
+	FAILED
+}
+
+data class NearbyQueueItem(
+	val id: String,
+	val peer: NearbyPeer,
+	val entry: NearbyMapEntry,
+	val browsePath: String,
+	@Volatile var state: NearbyQueueState
+)
+
+data class NearbyTorrentOffer(
+	val magnet: String,
+	val torrentName: String,
+	val torrentDateMs: Long,
+	val torrentAvailable: Boolean
+)
+
 data class NearbyCatalogResponse(
 	val deviceName: String,
 	val tokenRequired: Boolean,
-	val maps: List<NearbyMapEntry>
+	val maps: List<NearbyMapEntry>,
+	val torrent: NearbyTorrentOffer? = null
 )
 
 object NearbyMapCompare {

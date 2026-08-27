@@ -36,6 +36,17 @@
 			android:textStyle="bold" />
 
 		<TextView
+			android:id="@+id/rutracker_open_browser"
+			android:layout_width="wrap_content"
+			android:layout_height="wrap_content"
+			android:background="?attr/selectableItemBackground"
+			android:paddingHorizontal="10dp"
+			android:paddingVertical="10dp"
+			android:text="@string/torrent_maps_rutracker_auth_browser"
+			android:textColor="#90CAF9"
+			android:textSize="14sp" />
+
+		<TextView
 			android:id="@+id/rutracker_done"
 			android:layout_width="wrap_content"
 			android:layout_height="wrap_content"

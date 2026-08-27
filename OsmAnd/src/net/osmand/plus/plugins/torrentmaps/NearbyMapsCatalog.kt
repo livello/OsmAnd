@@ -82,10 +82,20 @@ class NearbyMapsCatalog(private val app: OsmandApplication) {
 		return buildEntries(computeMissingHashes = false).firstOrNull { it.mapKey == mapKey }
 	}
 
-	fun toJson(entries: List<NearbyMapEntry>, deviceName: String): String {
+	fun toJson(
+		entries: List<NearbyMapEntry>,
+		deviceName: String,
+		torrent: NearbyTorrentOffer? = null
+	): String {
 		val root = JSONObject()
 		root.put("deviceName", deviceName)
 		root.put("tokenRequired", true)
+		if (torrent != null) {
+			root.put("magnet", torrent.magnet)
+			root.put("torrentName", torrent.torrentName)
+			root.put("torrentDate", torrent.torrentDateMs)
+			root.put("torrentAvailable", torrent.torrentAvailable)
+		}
 		val arr = JSONArray()
 		for (e in entries) {
 			arr.put(
@@ -132,7 +142,15 @@ class NearbyMapsCatalog(private val app: OsmandApplication) {
 		return NearbyCatalogResponse(
 			deviceName = root.optString("deviceName"),
 			tokenRequired = root.optBoolean("tokenRequired", true),
-			maps = maps
+			maps = maps,
+			torrent = NearbyTorrentOffer(
+				magnet = root.optString("magnet"),
+				torrentName = root.optString("torrentName"),
+				torrentDateMs = root.optLong("torrentDate"),
+				torrentAvailable = root.optBoolean("torrentAvailable")
+			).takeIf {
+				it.magnet.isNotBlank() || it.torrentAvailable || it.torrentName.isNotBlank()
+			}
 		)
 	}
 

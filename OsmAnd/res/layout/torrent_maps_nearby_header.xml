@@ -142,4 +142,56 @@
 			android:textSize="17sp"
 			android:visibility="gone" />
 	</LinearLayout>
+
+	<LinearLayout
+		android:id="@+id/nearby_queue_bar"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:orientation="horizontal"
+		android:paddingHorizontal="8dp"
+		android:paddingBottom="6dp"
+		android:visibility="gone">
+
+		<TextView
+			android:id="@+id/nearby_queue_summary"
+			android:layout_width="0dp"
+			android:layout_height="wrap_content"
+			android:layout_weight="1"
+			android:paddingVertical="8dp"
+			android:textColor="#FFE082"
+			android:textSize="15sp" />
+
+		<TextView
+			android:id="@+id/nearby_queue_pause"
+			android:layout_width="wrap_content"
+			android:layout_height="wrap_content"
+			android:background="?attr/selectableItemBackground"
+			android:paddingHorizontal="10dp"
+			android:paddingVertical="8dp"
+			android:text="@string/shared_string_pause"
+			android:textColor="#90CAF9"
+			android:textSize="16sp" />
+
+		<TextView
+			android:id="@+id/nearby_queue_resume"
+			android:layout_width="wrap_content"
+			android:layout_height="wrap_content"
+			android:background="?attr/selectableItemBackground"
+			android:paddingHorizontal="10dp"
+			android:paddingVertical="8dp"
+			android:text="@string/shared_string_resume"
+			android:textColor="#A5D6A7"
+			android:textSize="16sp" />
+
+		<TextView
+			android:id="@+id/nearby_queue_clear"
+			android:layout_width="wrap_content"
+			android:layout_height="wrap_content"
+			android:background="?attr/selectableItemBackground"
+			android:paddingHorizontal="10dp"
+			android:paddingVertical="8dp"
+			android:text="@string/shared_string_clear"
+			android:textColor="#EF9A9A"
+			android:textSize="16sp" />
+	</LinearLayout>
 </LinearLayout>

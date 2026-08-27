@@ -16,15 +16,22 @@ sealed class NearbyBrowserRow {
 		val name: String,
 		val path: String,
 		val childCount: Int,
-		val sizeBytes: Long
+		val sizeBytes: Long,
+		val progressPercent: Int = 0,
+		val downloadableCount: Int = 0
 	) : NearbyBrowserRow()
 	data class File(val row: NearbyFileRow) : NearbyBrowserRow()
 	data class Peer(val peer: NearbyPeer) : NearbyBrowserRow()
+	data class TorrentOffer(val offer: NearbyTorrentOffer) : NearbyBrowserRow()
 }
 
 object NearbyBrowser {
 
-	fun buildRows(files: List<NearbyFileRow>, currentPath: String): List<NearbyBrowserRow> {
+	fun buildRows(
+		files: List<NearbyFileRow>,
+		currentPath: String,
+		torrentOffer: NearbyTorrentOffer? = null
+	): List<NearbyBrowserRow> {
 		val cwd = TorrentBrowser.normalizePath(currentPath)
 		val prefix = if (cwd.isEmpty()) "" else "$cwd/"
 		val folders = LinkedHashMap<String, MutableList<NearbyFileRow>>()
@@ -48,15 +55,24 @@ object NearbyBrowser {
 			}
 		}
 		val out = ArrayList<NearbyBrowserRow>()
+		if (cwd.isEmpty() && torrentOffer != null &&
+			(torrentOffer.magnet.isNotBlank() || torrentOffer.torrentAvailable)
+		) {
+			out.add(NearbyBrowserRow.TorrentOffer(torrentOffer))
+		}
 		if (cwd.isNotEmpty()) {
 			out.add(NearbyBrowserRow.Up(TorrentBrowser.parentPath(cwd)))
 		}
 		val folderRows = folders.map { (name, children) ->
+			val total = children.sumOf { it.entry.sizeBytes }.coerceAtLeast(1L)
+			val filled = children.sumOf { it.entry.sizeBytes * it.progressPercent / 100L }
 			NearbyBrowserRow.Folder(
 				name = name,
 				path = if (cwd.isEmpty()) name else "$cwd/$name",
 				childCount = children.size,
-				sizeBytes = children.sumOf { it.entry.sizeBytes }
+				sizeBytes = children.sumOf { it.entry.sizeBytes },
+				progressPercent = ((filled * 100L) / total).toInt().coerceIn(0, 100),
+				downloadableCount = children.count { NearbyMapCompare.isDownloadable(it.status) }
 			)
 		}.sortedBy { it.name.lowercase(Locale.US) }
 		val fileRows = direct

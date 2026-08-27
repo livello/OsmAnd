@@ -29,7 +29,9 @@ class NearbyMapsHttpServer(
 	private val catalog: NearbyMapsCatalog,
 	private val token: String,
 	private val deviceName: String,
-	private val advertiseAddress: InetAddress
+	private val advertiseAddress: InetAddress,
+	private val torrentOffer: (() -> NearbyTorrentOffer?)? = null,
+	private val torrentFile: (() -> File?)? = null
 ) {
 	companion object {
 		private const val TAG = "NearbyMapsHttp"
@@ -196,8 +198,24 @@ class NearbyMapsHttpServer(
 					writeResponse(output, 401, "text/plain", "unauthorized")
 					return
 				}
-				val json = catalog.toJson(catalog.buildEntries(), deviceName)
+				val json = catalog.toJson(
+					catalog.buildEntries(),
+					deviceName,
+					torrentOffer?.invoke()
+				)
 				writeResponse(output, 200, "application/json; charset=utf-8", json, headOnly = req.method == "HEAD")
+			}
+			req.path == "/torrent" -> {
+				if (!checkToken(req)) {
+					writeResponse(output, 401, "text/plain", "unauthorized")
+					return
+				}
+				val file = torrentFile?.invoke()
+				if (file == null || !file.isFile || file.length() < 64L) {
+					writeResponse(output, 404, "text/plain", "no torrent")
+					return
+				}
+				streamFile(file, output, headOnly = req.method == "HEAD")
 			}
 			req.path.startsWith("/file/") || req.path == "/file" -> {
 				if (!checkToken(req)) {

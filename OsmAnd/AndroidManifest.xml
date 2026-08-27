@@ -1209,6 +1209,7 @@
 		<activity
 			android:name="net.osmand.plus.plugins.torrentmaps.RutrackerAuthActivity"
 			android:exported="false"
+			android:hardwareAccelerated="true"
 			android:label="@string/torrent_maps_rutracker_auth_title"
 			android:theme="@style/OsmandDarkTheme"
 			android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|uiMode" />

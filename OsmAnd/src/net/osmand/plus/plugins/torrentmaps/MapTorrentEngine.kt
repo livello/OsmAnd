@@ -24,6 +24,8 @@ import org.libtorrent4j.alerts.SaveResumeDataAlert
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Locale
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 class MapTorrentEngine(
@@ -287,6 +289,44 @@ class MapTorrentEngine(
 		} catch (e: Exception) {
 			Log.e(TAG, "import torrent", e)
 			TorrentMapsLog.append("import failed: ${e.message}")
+			false
+		}
+	}
+
+	fun applyTorrentBytes(bytes: ByteArray, displayName: String): Boolean {
+		return try {
+			if (bytes.size < 64) {
+				return false
+			}
+			if (started.get()) {
+				val done = CountDownLatch(1)
+				torrentHandler.post {
+					try {
+						stopLocked()
+					} finally {
+						done.countDown()
+					}
+				}
+				try {
+					done.await(8, TimeUnit.SECONDS)
+				} catch (_: InterruptedException) {
+					Thread.currentThread().interrupt()
+				}
+				MapTorrentService.sync(app, false)
+			}
+			val dest = torrentFile()
+			dest.parentFile?.mkdirs()
+			dest.writeBytes(bytes)
+			plugin.TORRENT_PATH.set(dest.absolutePath)
+			plugin.TORRENT_NAME.set(displayName.ifBlank { dest.name })
+			val ti = TorrentInfo(dest)
+			writeListing(ti)
+			catalog = buildCatalog(ti)
+			TorrentMapsLog.append("apply torrent ok: ${plugin.TORRENT_NAME.get()} (${ti.numFiles()} files)")
+			true
+		} catch (e: Exception) {
+			Log.e(TAG, "apply torrent", e)
+			TorrentMapsLog.append("apply torrent failed: ${e.message}")
 			false
 		}
 	}

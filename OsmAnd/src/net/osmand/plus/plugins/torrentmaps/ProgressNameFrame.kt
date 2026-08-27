@@ -18,7 +18,7 @@ class ProgressNameFrame @JvmOverloads constructor(
 
 	private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
 		style = Paint.Style.FILL
-		color = 0x3342A5F5
+		color = 0x8842A5F5.toInt()
 	}
 	private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
 		style = Paint.Style.STROKE
@@ -39,6 +39,12 @@ class ProgressNameFrame @JvmOverloads constructor(
 		if (clamped != progressPercent) {
 			progressPercent = clamped
 			invalidate()
+		}
+		for (i in 0 until childCount) {
+			val child = getChildAt(i)
+			if (child is ProgressGlowTextView) {
+				child.setProgressPercent(clamped)
+			}
 		}
 	}
 

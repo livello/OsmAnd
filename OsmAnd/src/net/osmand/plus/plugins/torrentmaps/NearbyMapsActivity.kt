@@ -48,11 +48,16 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 	private var statusText: String = ""
 	private var breadcrumbText: String = ""
 	private var showCatalogChrome = false
+	private var selectedTorrent: NearbyTorrentOffer? = null
 
 	private val progressTick = object : Runnable {
 		override fun run() {
 			if (isFinishing) return
-			refreshStatusLine()
+			if (selectedPeer != null) {
+				refreshQueueUi()
+			} else {
+				refreshStatusLine()
+			}
 			uiHandler.postDelayed(this, 1000)
 		}
 	}
@@ -74,8 +79,21 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 			},
 			onBackPeers = { showPeers() },
 			onCancelDownload = {
-				nearby.downloader.cancel()
-				refreshStatusLine()
+				nearby.downloader.pauseQueue()
+				refreshQueueUi()
+			},
+			onQueuePause = {
+				nearby.downloader.pauseQueue()
+				refreshQueueUi()
+			},
+			onQueueResume = {
+				nearby.downloader.resumeQueue { refreshQueueUi() }
+				refreshQueueUi()
+			},
+			onQueueClear = {
+				confirmAction(getString(R.string.torrent_maps_nearby_confirm_clear_queue)) {
+					nearby.downloader.clearQueue { refreshQueueUi() }
+				}
 			},
 			onBreadcrumb = {
 				if (folderPath.isNotEmpty()) {
@@ -94,11 +112,16 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 				}
 			},
 			onRowClick = { row -> onRowClick(row) },
+			onRowLongClick = { row -> onRowLongClick(row) },
+			onFolderDownload = { folder -> confirmFolderDownload(folder) },
 			shareChecked = { nearby.sharing },
 			statusProvider = { statusText },
 			breadcrumbProvider = { breadcrumbText },
 			catalogChrome = { showCatalogChrome },
-			downloadBusy = { nearby.downloader.busy }
+			downloadBusy = { nearby.downloader.busy },
+			queueSummary = { queueSummaryText() },
+			queueVisible = { nearby.downloader.queueSnapshot().isNotEmpty() },
+			queuePaused = { nearby.downloader.queuePaused }
 		)
 		list.layoutManager = LinearLayoutManager(this)
 		list.adapter = adapter
@@ -174,6 +197,7 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 		peerRows = emptyList()
 		folderPath = ""
 		showCatalogChrome = false
+		selectedTorrent = null
 		refreshPeerList()
 		refreshStatusLine()
 	}
@@ -202,6 +226,7 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 				selectedPeer = peer
 				folderPath = ""
 				nearby.refreshLocalIndex()
+				selectedTorrent = catalog.torrent
 				peerRows = catalog.maps.map { entry ->
 					NearbyFileRow(
 						entry = entry,
@@ -217,13 +242,60 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 	}
 
 	private fun refreshCatalogList() {
+		applyQueueProgress()
 		breadcrumbText = if (folderPath.isEmpty()) {
 			getString(R.string.torrent_maps_path_root)
 		} else {
 			"/$folderPath"
 		}
-		adapter.submit(NearbyBrowser.buildRows(peerRows, folderPath))
+		adapter.submit(
+			NearbyBrowser.buildRows(
+				peerRows,
+				folderPath,
+				if (folderPath.isEmpty()) selectedTorrent else null
+			)
+		)
 		refreshStatusLine()
+	}
+
+	private fun applyQueueProgress() {
+		val dl = nearby.downloader
+		peerRows = peerRows.map { row ->
+			row.copy(progressPercent = dl.progressPercentFor(row.entry.path))
+		}
+	}
+
+	private fun refreshQueueUi() {
+		if (selectedPeer != null) {
+			nearby.refreshLocalIndex()
+			peerRows = peerRows.map {
+				NearbyFileRow(
+					it.entry,
+					nearby.compareStatus(it.entry),
+					nearby.downloader.progressPercentFor(it.entry.path),
+					it.browsePath
+				)
+			}
+			refreshCatalogList()
+		} else {
+			refreshStatusLine()
+		}
+	}
+
+	private fun queueSummaryText(): String {
+		val snap = nearby.downloader.queueSnapshot()
+		if (snap.isEmpty()) return ""
+		val state = if (nearby.downloader.queuePaused) {
+			getString(R.string.torrent_maps_nearby_queue_paused)
+		} else if (nearby.downloader.busy) {
+			val pct = if (nearby.downloader.progressTotal > 0) {
+				((nearby.downloader.progressBytes * 100L) / nearby.downloader.progressTotal).toInt()
+			} else 0
+			"${nearby.downloader.progressPath?.substringAfterLast('/')} $pct%"
+		} else {
+			getString(R.string.torrent_maps_file_queued)
+		}
+		return getString(R.string.torrent_maps_nearby_queue_summary, snap.size, state)
 	}
 
 	private fun onRowClick(row: NearbyBrowserRow) {
@@ -238,11 +310,35 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 				refreshCatalogList()
 			}
 			is NearbyBrowserRow.File -> confirmDownload(row.row)
+			is NearbyBrowserRow.TorrentOffer -> confirmReplaceTorrent(row.offer)
 		}
 	}
 
+	private fun onRowLongClick(row: NearbyBrowserRow): Boolean {
+		when (row) {
+			is NearbyBrowserRow.File -> {
+				val item = nearby.downloader.queueSnapshot()
+					.firstOrNull { it.entry.path == row.row.entry.path }
+				if (item != null) {
+					confirmAction(
+						getString(R.string.torrent_maps_nearby_confirm_remove, row.row.entry.fileName)
+					) {
+						nearby.downloader.removeItem(item.id) { refreshQueueUi() }
+					}
+					return true
+				}
+			}
+			is NearbyBrowserRow.Folder -> {
+				confirmFolderDownload(row)
+				return true
+			}
+			else -> {}
+		}
+		return false
+	}
+
 	private fun confirmDownload(row: NearbyFileRow) {
-		val peer = selectedPeer ?: return
+		selectedPeer ?: return
 		val statusLabel = statusLabel(row.status)
 		if (!NearbyMapCompare.isDownloadable(row.status) && row.status != NearbyMapStatus.UNKNOWN) {
 			android.widget.Toast.makeText(
@@ -259,32 +355,92 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 			statusLabel
 		)
 		confirmAction(msg) {
-			if (nearby.downloader.busy) {
-				app.showToastMessage(R.string.torrent_maps_nearby_busy)
-				return@confirmAction
-			}
-			nearby.downloader.download(peer, row.entry, { _, _, _ ->
-				uiHandler.post { refreshStatusLine() }
-			}) { ok, message ->
-				uiHandler.post {
-					app.showToastMessage(message)
-					if (ok) {
-						nearby.refreshLocalIndex()
-						peerRows = peerRows.map {
-							NearbyFileRow(
-								it.entry,
-								nearby.compareStatus(it.entry),
-								it.progressPercent,
-								it.browsePath
+			enqueueEntries(listOf(row.entry))
+		}
+	}
+
+	private fun confirmFolderDownload(folder: NearbyBrowserRow.Folder) {
+		val prefix = "${folder.path}/"
+		val files = peerRows.filter {
+			val path = TorrentBrowser.normalizePath(it.browsePath.ifBlank { it.entry.path })
+			(path == folder.path || path.startsWith(prefix)) &&
+				NearbyMapCompare.isDownloadable(it.status)
+		}
+		if (files.isEmpty()) {
+			app.showToastMessage(R.string.torrent_maps_nearby_folder_empty)
+			return
+		}
+		val size = files.sumOf { it.entry.sizeBytes }
+		confirmAction(
+			getString(
+				R.string.torrent_maps_nearby_confirm_folder,
+				folder.name,
+				files.size,
+				AndroidUtils.formatSize(this, size)
+			)
+		) {
+			enqueueEntries(files.map { it.entry })
+		}
+	}
+
+	private fun enqueueEntries(entries: List<NearbyMapEntry>) {
+		val peer = selectedPeer ?: return
+		val added = nearby.downloader.enqueue(peer, entries, { entry ->
+			peerRows.firstOrNull { it.entry.path == entry.path }?.browsePath.orEmpty()
+		}) { refreshQueueUi() }
+		if (added > 0) {
+			app.showToastMessage(getString(R.string.torrent_maps_nearby_queued, added))
+		}
+		refreshQueueUi()
+	}
+
+	private fun confirmReplaceTorrent(offer: NearbyTorrentOffer) {
+		val peer = selectedPeer ?: return
+		confirmAction(
+			getString(R.string.torrent_maps_nearby_confirm_torrent, peer.deviceName)
+		) {
+			app.showToastMessage(R.string.torrent_maps_nearby_loading_catalog)
+			if (offer.torrentAvailable) {
+				nearby.fetchPeerTorrent(peer) { bytes, error ->
+					if (bytes == null) {
+						app.showToastMessage(
+							getString(R.string.torrent_maps_nearby_torrent_failed, error ?: "")
+						)
+					} else {
+						applyTorrentBytes(bytes, offer)
+					}
+				}
+			} else if (offer.magnet.isNotBlank()) {
+				Thread({
+					val result = RutrackerTorrentFetcher.resolveMagnet(offer.magnet)
+					uiHandler.post {
+						if (result.ok && result.bytes != null) {
+							applyTorrentBytes(result.bytes, offer.copy(torrentName = result.fileName ?: offer.torrentName))
+						} else {
+							app.showToastMessage(
+								getString(
+									R.string.torrent_maps_nearby_torrent_failed,
+									result.message
+								)
 							)
 						}
-						refreshCatalogList()
 					}
-					refreshStatusLine()
-				}
+				}, "nearby-magnet").start()
+			} else {
+				app.showToastMessage(
+					getString(R.string.torrent_maps_nearby_torrent_failed, "empty")
+				)
 			}
-			refreshStatusLine()
 		}
+	}
+
+	private fun applyTorrentBytes(bytes: ByteArray, offer: NearbyTorrentOffer) {
+		val name = offer.torrentName.ifBlank { "maps.torrent" }
+		val ok = plugin.applyTorrentBytes(bytes, name, offer.magnet)
+		app.showToastMessage(
+			if (ok) getString(R.string.torrent_maps_nearby_torrent_ok, name)
+			else getString(R.string.torrent_maps_nearby_torrent_failed, name)
+		)
 	}
 
 	private fun refreshStatusLine() {
@@ -297,13 +453,17 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 		val peerPart = selectedPeer?.let {
 			getString(R.string.torrent_maps_nearby_peer_open, it.deviceName, peerRows.size)
 		} ?: getString(R.string.torrent_maps_nearby_peers_count, peersCache.size)
-		val progress = if (dl.busy) {
-			val pct = if (dl.progressTotal > 0) {
-				((dl.progressBytes * 100L) / dl.progressTotal).toInt()
-			} else 0
-			val rate = NearbyMapsDownloader.formatRate(dl.progressBytesPerSec)
-			" · ↓ ${dl.progressPath?.substringAfterLast('/')} $pct% · $rate"
-		} else ""
+		val progress = when {
+			dl.busy -> {
+				val pct = if (dl.progressTotal > 0) {
+					((dl.progressBytes * 100L) / dl.progressTotal).toInt()
+				} else 0
+				val rate = NearbyMapsDownloader.formatRate(dl.progressBytesPerSec)
+				" · ↓ ${dl.progressPath?.substringAfterLast('/')} $pct% · $rate"
+			}
+			dl.queueSnapshot().isNotEmpty() -> " · ${queueSummaryText()}"
+			else -> ""
+		}
 		statusText = "$sharePart · $peerPart$progress"
 		adapter.notifyHeaderChanged()
 	}
@@ -345,14 +505,22 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 		private val onScan: () -> Unit,
 		private val onBackPeers: () -> Unit,
 		private val onCancelDownload: () -> Unit,
+		private val onQueuePause: () -> Unit,
+		private val onQueueResume: () -> Unit,
+		private val onQueueClear: () -> Unit,
 		private val onBreadcrumb: () -> Unit,
 		private val onShareToggle: (SwitchCompat, Boolean) -> Unit,
 		private val onRowClick: (NearbyBrowserRow) -> Unit,
+		private val onRowLongClick: (NearbyBrowserRow) -> Boolean,
+		private val onFolderDownload: (NearbyBrowserRow.Folder) -> Unit,
 		private val shareChecked: () -> Boolean,
 		private val statusProvider: () -> String,
 		private val breadcrumbProvider: () -> String,
 		private val catalogChrome: () -> Boolean,
-		private val downloadBusy: () -> Boolean
+		private val downloadBusy: () -> Boolean,
+		private val queueSummary: () -> String,
+		private val queueVisible: () -> Boolean,
+		private val queuePaused: () -> Boolean
 	) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
 		companion object {
@@ -379,7 +547,12 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 			return if (viewType == TYPE_HEADER) {
 				HeaderHolder(inflater.inflate(R.layout.torrent_maps_nearby_header, parent, false))
 			} else {
-				RowHolder(inflater.inflate(R.layout.torrent_maps_file_row, parent, false), onRowClick)
+				RowHolder(
+					inflater.inflate(R.layout.torrent_maps_file_row, parent, false),
+					onRowClick,
+					onRowLongClick,
+					onFolderDownload
+				)
 			}
 		}
 
@@ -391,10 +564,16 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 					shareOn = shareChecked(),
 					catalogMode = catalogChrome(),
 					busy = downloadBusy(),
+					queueText = queueSummary(),
+					showQueue = queueVisible(),
+					paused = queuePaused(),
 					onClose = onClose,
 					onScan = onScan,
 					onBackPeers = onBackPeers,
 					onCancelDownload = onCancelDownload,
+					onQueuePause = onQueuePause,
+					onQueueResume = onQueueResume,
+					onQueueClear = onQueueClear,
 					onBreadcrumb = onBreadcrumb,
 					onShareToggle = onShareToggle
 				)
@@ -413,6 +592,11 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 			private val backPeersBtn: TextView = view.findViewById(R.id.nearby_back_peers)
 			private val cancelBtn: TextView = view.findViewById(R.id.nearby_cancel_download)
 			private val closeBtn: View = view.findViewById(R.id.nearby_close)
+			private val queueBar: View = view.findViewById(R.id.nearby_queue_bar)
+			private val queueSummary: TextView = view.findViewById(R.id.nearby_queue_summary)
+			private val queuePause: View = view.findViewById(R.id.nearby_queue_pause)
+			private val queueResume: View = view.findViewById(R.id.nearby_queue_resume)
+			private val queueClear: View = view.findViewById(R.id.nearby_queue_clear)
 
 			fun bind(
 				status: String,
@@ -420,10 +604,16 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 				shareOn: Boolean,
 				catalogMode: Boolean,
 				busy: Boolean,
+				queueText: String,
+				showQueue: Boolean,
+				paused: Boolean,
 				onClose: () -> Unit,
 				onScan: () -> Unit,
 				onBackPeers: () -> Unit,
 				onCancelDownload: () -> Unit,
+				onQueuePause: () -> Unit,
+				onQueueResume: () -> Unit,
+				onQueueClear: () -> Unit,
 				onBreadcrumb: () -> Unit,
 				onShareToggle: (SwitchCompat, Boolean) -> Unit
 			) {
@@ -435,6 +625,10 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 				scanBtn.isEnabled = true
 				backPeersBtn.isVisible = catalogMode
 				cancelBtn.isVisible = busy
+				queueBar.isVisible = showQueue
+				queueSummary.text = queueText
+				queuePause.isVisible = showQueue && !paused
+				queueResume.isVisible = showQueue && paused
 				shareSwitch.setOnCheckedChangeListener(null)
 				shareSwitch.isChecked = shareOn
 				shareSwitch.setOnCheckedChangeListener { _, checked ->
@@ -444,13 +638,18 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 				scanBtn.setOnClickListener { onScan() }
 				backPeersBtn.setOnClickListener { onBackPeers() }
 				cancelBtn.setOnClickListener { onCancelDownload() }
+				queuePause.setOnClickListener { onQueuePause() }
+				queueResume.setOnClickListener { onQueueResume() }
+				queueClear.setOnClickListener { onQueueClear() }
 				this.breadcrumb.setOnClickListener { onBreadcrumb() }
 			}
 		}
 
 		class RowHolder(
 			view: View,
-			private val onClick: (NearbyBrowserRow) -> Unit
+			private val onClick: (NearbyBrowserRow) -> Unit,
+			private val onLongClick: (NearbyBrowserRow) -> Boolean,
+			private val onFolderDownload: (NearbyBrowserRow.Folder) -> Unit
 		) : RecyclerView.ViewHolder(view) {
 			private val icon: ImageView = view.findViewById(R.id.file_icon)
 			private val nameFrame: ProgressNameFrame = view.findViewById(R.id.file_name_frame)
@@ -461,6 +660,7 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 			fun bind(row: NearbyBrowserRow) {
 				val ctx = itemView.context
 				itemView.setOnClickListener { onClick(row) }
+				itemView.setOnLongClickListener { onLongClick(row) }
 				when (row) {
 					is NearbyBrowserRow.Peer -> {
 						icon.isVisible = true
@@ -490,9 +690,11 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 							row.childCount,
 							AndroidUtils.formatSize(ctx, row.sizeBytes)
 						)
-						nameFrame.setProgressPercent(0)
-						chip.text = "📁"
-						chip.setOnClickListener { onClick(row) }
+						nameFrame.setProgressPercent(row.progressPercent)
+						chip.text = if (row.downloadableCount > 0) "⬇️" else "📁"
+						chip.setOnClickListener {
+							if (row.downloadableCount > 0) onFolderDownload(row) else onClick(row)
+						}
 					}
 					is NearbyBrowserRow.File -> {
 						icon.isVisible = false
@@ -505,6 +707,21 @@ class NearbyMapsActivity : AppCompatActivity(), NearbyMapsController.Listener {
 						chip.setOnClickListener {
 							android.widget.Toast.makeText(ctx, label, android.widget.Toast.LENGTH_SHORT).show()
 						}
+					}
+					is NearbyBrowserRow.TorrentOffer -> {
+						icon.isVisible = true
+						icon.setImageResource(R.drawable.ic_action_gsave_dark)
+						name.text = ctx.getString(R.string.torrent_maps_nearby_torrent_row)
+						val date = if (row.offer.torrentDateMs > 0L) {
+							java.text.SimpleDateFormat("dd.MM.yyyy", java.util.Locale.US)
+								.format(java.util.Date(row.offer.torrentDateMs))
+						} else {
+							ctx.getString(R.string.torrent_maps_nearby_torrent_none)
+						}
+						meta.text = ctx.getString(R.string.torrent_maps_nearby_torrent_meta, date)
+						nameFrame.setProgressPercent(0)
+						chip.text = "🧲"
+						chip.setOnClickListener { onClick(row) }
 					}
 				}
 			}

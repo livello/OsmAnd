@@ -1,6 +1,8 @@
 package net.osmand.plus.plugins.torrentmaps
 
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import net.osmand.plus.OsmandApplication
@@ -44,8 +46,19 @@ class NearbyMapsDownloader(
 	private val executor = Executors.newSingleThreadExecutor { r ->
 		Thread(r, "nearby-maps-dl").apply { isDaemon = true }
 	}
+	private val ui = Handler(Looper.getMainLooper())
 	private val cancelled = AtomicBoolean(false)
 	private val activeConn = AtomicReference<HttpURLConnection?>(null)
+	private val queueLock = Any()
+	private val queue = ArrayList<NearbyQueueItem>()
+	private val pumpScheduled = AtomicBoolean(false)
+	@Volatile
+	private var cancelMode = CancelMode.NONE
+	@Volatile
+	var queuePaused: Boolean = false
+		private set
+
+	private enum class CancelMode { NONE, PAUSE, REMOVE, CLEAR }
 
 	@Volatile
 	var progressPath: String? = null
@@ -73,6 +86,7 @@ class NearbyMapsDownloader(
 		private set
 
 	fun cancel() {
+		cancelMode = CancelMode.CLEAR
 		cancelled.set(true)
 		wasCancelled = true
 		TorrentMapsLog.append("nearby download cancel requested")
@@ -82,65 +96,228 @@ class NearbyMapsDownloader(
 		}
 	}
 
-	fun download(
+	fun queueSnapshot(): List<NearbyQueueItem> = synchronized(queueLock) { queue.toList() }
+
+	fun queuedCount(): Int = synchronized(queueLock) {
+		queue.count { it.state == NearbyQueueState.QUEUED || it.state == NearbyQueueState.RUNNING }
+	}
+
+	fun progressPercentFor(path: String): Int {
+		if (progressPath == path && progressTotal > 0L) {
+			return ((progressBytes * 100L) / progressTotal).toInt().coerceIn(0, 100)
+		}
+		val item = synchronized(queueLock) { queue.firstOrNull { it.entry.path == path } }
+		return when (item?.state) {
+			NearbyQueueState.RUNNING -> if (progressTotal > 0L) {
+				((progressBytes * 100L) / progressTotal).toInt().coerceIn(0, 100)
+			} else 1
+			NearbyQueueState.QUEUED -> 0
+			NearbyQueueState.PAUSED -> 0
+			else -> 0
+		}
+	}
+
+	fun enqueue(
 		peer: NearbyPeer,
-		entry: NearbyMapEntry,
-		onProgress: ((Long, Long, Long) -> Unit)? = null,
-		onDone: (Boolean, String) -> Unit
-	) {
-		executor.execute {
-			busy = true
-			cancelled.set(false)
-			wasCancelled = false
-			progressPath = entry.path
-			progressBytes = 0L
-			progressTotal = entry.sizeBytes
-			progressBytesPerSec = 0L
-			NearbyTransferLocks.acquire(app, "download")
-			try {
-				val ok = downloadLocked(peer, entry, onProgress)
-				val msg = when {
-					wasCancelled || cancelled.get() ->
-						app.getString(
-							net.osmand.plus.R.string.torrent_maps_nearby_download_cancelled,
-							entry.fileName
-						)
-					ok ->
-						app.getString(
-							net.osmand.plus.R.string.torrent_maps_nearby_download_ok,
-							entry.fileName
-						)
-					else ->
-						app.getString(
-							net.osmand.plus.R.string.torrent_maps_nearby_download_failed,
-							entry.fileName
-						)
+		entries: List<NearbyMapEntry>,
+		browsePathFor: (NearbyMapEntry) -> String = { "" },
+		onChanged: () -> Unit
+	): Int {
+		var added = 0
+		synchronized(queueLock) {
+			for (entry in entries) {
+				if (queue.any { it.entry.path == entry.path && it.peer.host == peer.host }) {
+					continue
 				}
-				onDone(ok && !wasCancelled && !cancelled.get(), msg)
-			} catch (e: Exception) {
-				if (cancelled.get() || wasCancelled) {
-					TorrentMapsLog.append("nearby download cancelled")
-					onDone(
-						false,
-						app.getString(
-							net.osmand.plus.R.string.torrent_maps_nearby_download_cancelled,
-							entry.fileName
-						)
+				queue.add(
+					NearbyQueueItem(
+						id = java.util.UUID.randomUUID().toString(),
+						peer = peer,
+						entry = entry,
+						browsePath = browsePathFor(entry),
+						state = if (queuePaused) NearbyQueueState.PAUSED else NearbyQueueState.QUEUED
 					)
-				} else {
-					Log.e(TAG, "download", e)
-					TorrentMapsLog.append("nearby download error: ${e.message}")
-					onDone(false, e.message ?: "error")
+				)
+				added++
+			}
+		}
+		if (added > 0) {
+			TorrentMapsLog.append("nearby queue +$added (size ${queuedCount()})")
+			ensurePump(onChanged)
+		}
+		return added
+	}
+
+	fun pauseQueue() {
+		queuePaused = true
+		synchronized(queueLock) {
+			queue.filter { it.state == NearbyQueueState.QUEUED }.forEach {
+				it.state = NearbyQueueState.PAUSED
+			}
+		}
+		if (busy) {
+			cancelMode = CancelMode.PAUSE
+			cancelled.set(true)
+			wasCancelled = true
+			try {
+				activeConn.get()?.disconnect()
+			} catch (_: Exception) {
+			}
+		}
+		TorrentMapsLog.append("nearby queue paused")
+	}
+
+	fun resumeQueue(onChanged: () -> Unit) {
+		queuePaused = false
+		synchronized(queueLock) {
+			queue.filter { it.state == NearbyQueueState.PAUSED }.forEach {
+				it.state = NearbyQueueState.QUEUED
+			}
+		}
+		TorrentMapsLog.append("nearby queue resumed")
+		ensurePump(onChanged)
+	}
+
+	fun removeItem(id: String, onChanged: () -> Unit) {
+		val running = synchronized(queueLock) {
+			val item = queue.firstOrNull { it.id == id } ?: return
+			if (item.state == NearbyQueueState.RUNNING) {
+				true
+			} else {
+				queue.removeAll { it.id == id }
+				false
+			}
+		}
+		if (running) {
+			cancelMode = CancelMode.REMOVE
+			cancelled.set(true)
+			wasCancelled = true
+			try {
+				activeConn.get()?.disconnect()
+			} catch (_: Exception) {
+			}
+		}
+		onChanged()
+	}
+
+	fun clearQueue(onChanged: () -> Unit) {
+		synchronized(queueLock) {
+			queue.removeAll { it.state != NearbyQueueState.RUNNING }
+		}
+		if (busy) {
+			cancelMode = CancelMode.CLEAR
+			cancelled.set(true)
+			wasCancelled = true
+			try {
+				activeConn.get()?.disconnect()
+			} catch (_: Exception) {
+			}
+		} else {
+			synchronized(queueLock) { queue.clear() }
+		}
+		queuePaused = false
+		TorrentMapsLog.append("nearby queue cleared")
+		onChanged()
+	}
+
+	private fun ensurePump(onChanged: () -> Unit) {
+		if (!pumpScheduled.compareAndSet(false, true)) {
+			return
+		}
+		executor.execute {
+			try {
+				while (true) {
+					if (queuePaused) break
+					val item = synchronized(queueLock) {
+						queue.firstOrNull { it.state == NearbyQueueState.QUEUED }?.also {
+							it.state = NearbyQueueState.RUNNING
+						}
+					} ?: break
+					runQueuedItem(item, onChanged)
 				}
 			} finally {
-				activeConn.set(null)
-				NearbyTransferLocks.release("download")
-				busy = false
-				progressPath = null
-				progressBytes = 0L
-				progressTotal = 0L
-				progressBytesPerSec = 0L
+				pumpScheduled.set(false)
+				val more = synchronized(queueLock) {
+					!queuePaused && queue.any { it.state == NearbyQueueState.QUEUED }
+				}
+				if (more) {
+					ensurePump(onChanged)
+				}
 			}
+		}
+	}
+
+	private fun runQueuedItem(item: NearbyQueueItem, onChanged: () -> Unit) {
+		busy = true
+		cancelled.set(false)
+		wasCancelled = false
+		cancelMode = CancelMode.NONE
+		progressPath = item.entry.path
+		progressBytes = 0L
+		progressTotal = item.entry.sizeBytes
+		progressBytesPerSec = 0L
+		NearbyTransferLocks.acquire(app, "download")
+		var ok = false
+		try {
+			ok = downloadLocked(item.peer, item.entry) { _, _, _ -> ui.post(onChanged) }
+			val msg = when {
+				cancelMode == CancelMode.PAUSE ->
+					app.getString(net.osmand.plus.R.string.torrent_maps_nearby_queue_paused)
+				wasCancelled || cancelled.get() ->
+					app.getString(
+						net.osmand.plus.R.string.torrent_maps_nearby_download_cancelled,
+						item.entry.fileName
+					)
+				ok ->
+					app.getString(
+						net.osmand.plus.R.string.torrent_maps_nearby_download_ok,
+						item.entry.fileName
+					)
+				else ->
+					app.getString(
+						net.osmand.plus.R.string.torrent_maps_nearby_download_failed,
+						item.entry.fileName
+					)
+			}
+			if (ok && !wasCancelled && cancelMode == CancelMode.NONE) {
+				ui.post { app.showToastMessage(msg) }
+			}
+		} catch (e: Exception) {
+			if (cancelMode == CancelMode.NONE && !cancelled.get()) {
+				Log.e(TAG, "download", e)
+				TorrentMapsLog.append("nearby download error: ${e.message}")
+				ui.post { app.showToastMessage(e.message ?: "error") }
+			}
+		} finally {
+			activeConn.set(null)
+			NearbyTransferLocks.release("download")
+			busy = false
+			progressPath = null
+			progressBytes = 0L
+			progressTotal = 0L
+			progressBytesPerSec = 0L
+			synchronized(queueLock) {
+				when (cancelMode) {
+					CancelMode.PAUSE -> {
+						queue.find { it.id == item.id }?.state = NearbyQueueState.PAUSED
+					}
+					CancelMode.REMOVE, CancelMode.CLEAR -> {
+						queue.removeAll { it.id == item.id }
+						if (cancelMode == CancelMode.CLEAR) {
+							queue.clear()
+						}
+					}
+					CancelMode.NONE -> {
+						if (ok && !wasCancelled) {
+							queue.removeAll { it.id == item.id }
+						} else {
+							queue.find { it.id == item.id }?.state = NearbyQueueState.FAILED
+						}
+					}
+				}
+			}
+			cancelMode = CancelMode.NONE
+			ui.post(onChanged)
 		}
 	}
 
