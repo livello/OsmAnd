@@ -36,9 +36,16 @@ class TorrentMapsSettingsFragment : BaseSettingsFragment() {
 	}
 
 	override fun onPreferenceClick(preference: Preference): Boolean {
-		if (preference.key == "torrent_maps_open_client") {
-			plugin.openClientUi(requireActivity())
-			return true
+		when (preference.key) {
+			"torrent_maps_open_client" -> {
+				plugin.openClientUi(requireActivity())
+				return true
+			}
+			"torrent_maps_verify_hashes" -> {
+				plugin.verifyDownloadedMaps()
+				plugin.openClientUi(requireActivity())
+				return true
+			}
 		}
 		return super.onPreferenceClick(preference)
 	}

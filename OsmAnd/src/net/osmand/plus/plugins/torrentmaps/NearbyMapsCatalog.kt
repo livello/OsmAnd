@@ -155,12 +155,7 @@ class NearbyMapsCatalog(private val app: OsmandApplication) {
 	}
 
 	fun destinationFor(peerEntry: NearbyMapEntry): File {
-		val relative = TorrentBrowser.normalizePath(peerEntry.path)
-		val dest = if (relative.contains('/')) {
-			File(mapsRoot(), relative)
-		} else {
-			File(mapsRoot(), peerEntry.fileName)
-		}
+		val dest = MapTorrentEngine.osmandDestFile(app, peerEntry.fileName.ifBlank { peerEntry.path })
 		dest.parentFile?.mkdirs()
 		return dest
 	}

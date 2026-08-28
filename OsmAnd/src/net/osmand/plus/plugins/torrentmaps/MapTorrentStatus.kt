@@ -31,7 +31,9 @@ enum class TorrentFileState {
 	UPDATING,
 	SEEDING,
 	COMPLETE,
-	SKIPPED
+	SKIPPED,
+	VERIFYING,
+	CORRUPT
 }
 
 data class TorrentFileRow(

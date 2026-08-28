@@ -1,6 +1,7 @@
 package net.osmand.plus.download;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import net.osmand.IndexConstants;
 import net.osmand.PlatformUtil;
@@ -179,8 +180,9 @@ public class OutdatedIndexesCollector {
 		item.setOutdated(false);
 
 		String sfName = item.getTargetFileName();
-		String indexActivatedDate = indexActivatedFileNames.get(sfName);
-		String indexFilesDate = indexFileNames.get(sfName);
+		String indexedName = indexedNameAlias(sfName);
+		String indexActivatedDate = indexedName != null ? indexActivatedFileNames.get(indexedName) : null;
+		String indexFilesDate = indexedName != null ? indexFileNames.get(indexedName) : null;
 		if (indexActivatedDate == null && indexFilesDate == null) {
 			return false;
 		}
@@ -247,7 +249,24 @@ public class OutdatedIndexesCollector {
 	}
 
 	private boolean checkIfItemActivated(@NonNull IndexItem item) {
-		return indexActivatedFileNames.containsKey(item.getTargetFileName());
+		String target = item.getTargetFileName();
+		if (indexActivatedFileNames.containsKey(target)) {
+			return true;
+		}
+		String alias = net.osmand.plus.plugins.torrentmaps.MapTorrentEngine.indexedNameAlias(
+				target, indexActivatedFileNames);
+		return alias != null;
+	}
+
+	@Nullable
+	private String indexedNameAlias(@NonNull String targetName) {
+		String fromFiles = net.osmand.plus.plugins.torrentmaps.MapTorrentEngine.indexedNameAlias(
+				targetName, indexFileNames);
+		if (fromFiles != null) {
+			return fromFiles;
+		}
+		return net.osmand.plus.plugins.torrentmaps.MapTorrentEngine.indexedNameAlias(
+				targetName, indexActivatedFileNames);
 	}
 
 	private void logItemUpdateInfo(@NonNull IndexItem item, @NonNull DateFormat format,

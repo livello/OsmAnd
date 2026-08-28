@@ -116,7 +116,8 @@ sealed class TorrentBrowserRow {
 		val sizeBytes: Long,
 		val doneBytes: Long,
 		val progressPercent: Int,
-		val state: TorrentFileState
+		val state: TorrentFileState,
+		val downloadableCount: Int = 0
 	) : TorrentBrowserRow()
 
 	data class File(val row: TorrentFileRow) : TorrentBrowserRow()
@@ -182,7 +183,8 @@ object TorrentBrowser {
 				sizeBytes = size,
 				doneBytes = done,
 				progressPercent = pct,
-				state = aggregateState(children)
+				state = aggregateState(children),
+				downloadableCount = children.count { isDownloadable(it.state) }
 			)
 		}
 		val fileRows = direct.map { TorrentBrowserRow.File(it) }
@@ -190,6 +192,12 @@ object TorrentBrowser {
 		out.addAll(sortFileRows(fileRows, sortKey, ascending))
 		return out
 	}
+
+	fun isDownloadable(state: TorrentFileState): Boolean =
+		state == TorrentFileState.IDLE ||
+			state == TorrentFileState.SKIPPED ||
+			state == TorrentFileState.QUEUED ||
+			state == TorrentFileState.CORRUPT
 
 	private fun aggregateState(children: List<TorrentFileRow>): TorrentFileState {
 		if (children.isEmpty()) {
@@ -199,6 +207,8 @@ object TorrentBrowser {
 		return when {
 			TorrentFileState.DOWNLOADING in states -> TorrentFileState.DOWNLOADING
 			TorrentFileState.UPDATING in states -> TorrentFileState.UPDATING
+			TorrentFileState.VERIFYING in states -> TorrentFileState.VERIFYING
+			TorrentFileState.CORRUPT in states -> TorrentFileState.CORRUPT
 			TorrentFileState.QUEUED in states -> TorrentFileState.QUEUED
 			states.all { it == TorrentFileState.SEEDING || it == TorrentFileState.COMPLETE } ->
 				TorrentFileState.SEEDING

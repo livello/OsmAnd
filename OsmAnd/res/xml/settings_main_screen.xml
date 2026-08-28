@@ -5,6 +5,19 @@
 	android:title="@string/shared_string_settings">
 
 	<Preference
+		android:key="torrent_maps_nearby"
+		android:layout="@layout/preference_with_descr"
+		android:persistent="false"
+		android:summary="@string/torrent_maps_nearby_open"
+		android:title="@string/torrent_maps_nearby_title"
+		tools:icon="@drawable/ic_world_globe_dark" />
+
+	<Preference
+		android:key="torrent_maps_nearby_divider"
+		android:layout="@layout/divider_half_item_with_background"
+		android:selectable="false" />
+
+	<Preference
 		android:key="global_settings"
 		android:layout="@layout/preference_with_descr"
 		android:persistent="false"

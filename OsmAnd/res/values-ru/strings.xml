@@ -1,5 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="torrent_maps_verify_hashes">Проверить скачанные карты</string>
+    <string name="torrent_maps_verify_hashes_desc">Сверить локальные карты с SHA-1 кусков торрента. Раньше незавершённая загрузка писала прямо в рабочие .obf — из‑за этого пропадали большие области на карте.</string>
+    <string name="torrent_maps_verify_running">Проверка карт… %1$d / %2$d</string>
+    <string name="torrent_maps_verify_progress">%1$d / %2$d · %3$s</string>
+    <string name="torrent_maps_verify_ok">Все %1$d локальных карт совпадают с хэшами торрента</string>
+    <string name="torrent_maps_verify_bad">%1$d из %2$d карт не прошли проверку хэшей</string>
+    <string name="torrent_maps_verify_none">Нет локальных карт из этого торрента</string>
+    <string name="torrent_maps_verify_redownload">Скачать повреждённые карты заново</string>
+    <string name="torrent_maps_verify_cancelled">Проверка хэшей отменена</string>
+    <string name="torrent_maps_confirm_verify">Проверить скачанные карты по хэшам кусков торрента? Большие файлы могут проверяться несколько минут.</string>
+    <string name="torrent_maps_file_corrupt">повреждена</string>
+    <string name="torrent_maps_file_verifying">проверка хэшей</string>
     <string name="ev_bms_voice_alerts_on">голосовые оповещения включены</string>
     <string name="ev_bms_ride_modes">Режимы поездки</string>
     <string name="ev_bms_history_group">История</string>

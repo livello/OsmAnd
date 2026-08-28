@@ -106,6 +106,20 @@ public class IndexItem extends DownloadItem implements Comparable<IndexItem> {
 		if (targetFile.exists()) {
 			return Collections.singletonList(targetFile);
 		}
+		File parent = targetFile.getParentFile();
+		if (parent != null && parent.isDirectory()) {
+			File[] files = parent.listFiles();
+			if (files != null) {
+				String want = net.osmand.plus.plugins.torrentmaps.MapTorrentEngine.mapKey(targetFile.getName());
+				for (File file : files) {
+					if (file.isFile()
+							&& net.osmand.plus.plugins.torrentmaps.MapTorrentEngine.isMapFile(file.getName())
+							&& want.equals(net.osmand.plus.plugins.torrentmaps.MapTorrentEngine.mapKey(file.getName()))) {
+						return Collections.singletonList(file);
+					}
+				}
+			}
+		}
 		return Collections.emptyList();
 	}
 

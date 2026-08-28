@@ -44,6 +44,8 @@ public class MainSettingsFragment extends BaseSettingsFragment implements OnSele
 
 	public static final String TAG = MainSettingsFragment.class.getName();
 
+	private static final String TORRENT_MAPS_NEARBY = "torrent_maps_nearby";
+	private static final String TORRENT_MAPS_NEARBY_DIVIDER = "torrent_maps_nearby_divider";
 	private static final String BACKUP_AND_RESTORE = "backup_and_restore";
 	private static final String CONFIGURE_PROFILE = "configure_profile";
 	private static final String APP_PROFILES = "app_profiles";
@@ -68,6 +70,7 @@ public class MainSettingsFragment extends BaseSettingsFragment implements OnSele
 	protected void setupPreferences() {
 		allAppModes = new ArrayList<>(ApplicationMode.allPossibleValues());
 		availableAppModes = new LinkedHashSet<>(ApplicationMode.values(app));
+		setupNearbyMapsPref();
 		Preference globalSettings = requirePreference("global_settings");
 		globalSettings.setIcon(getContentIcon(R.drawable.ic_action_settings));
 		setupBackupAndRestorePref();
@@ -125,6 +128,16 @@ public class MainSettingsFragment extends BaseSettingsFragment implements OnSele
 				BaseSettingsFragment.showInstance(activity, SettingsScreenType.CONFIGURE_PROFILE, appMode);
 			});
 			return true;
+		} else if (TORRENT_MAPS_NEARBY.equals(prefId)) {
+			net.osmand.plus.plugins.torrentmaps.TorrentMapsPlugin plugin =
+					net.osmand.plus.plugins.PluginsHelper.getActivePlugin(
+							net.osmand.plus.plugins.torrentmaps.TorrentMapsPlugin.class);
+			if (plugin != null) {
+				plugin.openNearbyMapsUi(requireActivity());
+			} else {
+				app.showToastMessage(R.string.torrent_maps_enable_first);
+			}
+			return true;
 		} else if (CREATE_PROFILE.equals(prefId)) {
 			callActivity(activity -> SelectBaseProfileBottomSheet.showInstance(activity,
 					this, getSelectedAppMode(), null, false));
@@ -160,6 +173,24 @@ public class MainSettingsFragment extends BaseSettingsFragment implements OnSele
 		}
 
 		return super.onPreferenceClick(preference);
+	}
+
+	private void setupNearbyMapsPref() {
+		Preference nearby = findPreference(TORRENT_MAPS_NEARBY);
+		Preference divider = findPreference(TORRENT_MAPS_NEARBY_DIVIDER);
+		net.osmand.plus.plugins.torrentmaps.TorrentMapsPlugin plugin =
+				net.osmand.plus.plugins.PluginsHelper.getActivePlugin(
+						net.osmand.plus.plugins.torrentmaps.TorrentMapsPlugin.class);
+		boolean visible = plugin != null;
+		if (nearby != null) {
+			nearby.setVisible(visible);
+			if (visible) {
+				nearby.setIcon(getContentIcon(R.drawable.ic_world_globe_dark));
+			}
+		}
+		if (divider != null) {
+			divider.setVisible(visible);
+		}
 	}
 
 	private void setupLocalBackup() {

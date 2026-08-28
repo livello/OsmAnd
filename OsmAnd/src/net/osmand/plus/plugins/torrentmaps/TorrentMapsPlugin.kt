@@ -127,6 +127,9 @@ class TorrentMapsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 				nearby.startSharing()
 			}
 		}, 2000)
+		handler.postDelayed({
+			mapTorrent.scheduleBackgroundHashCheck()
+		}, 12_000)
 		return true
 	}
 
@@ -200,9 +203,27 @@ class TorrentMapsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 			return
 		}
 		TorrentMapsLog.append("Maps & Resources → torrent download (${rawNames.size})")
-		mapTorrent.downloadMapKeys(rawNames)
-		app.showToastMessage(R.string.torrent_maps_download_started)
+		val added = mapTorrent.downloadMapKeys(rawNames)
+		if (added > 0) {
+			app.showToastMessage(app.getString(R.string.torrent_maps_nearby_queued, added))
+		} else {
+			app.showToastMessage(R.string.torrent_maps_download_started)
+		}
 	}
+
+	fun torrentQueuedCount(): Int = mapTorrent.queuedCount()
+
+	fun torrentQueuedKeys(): Set<String> = mapTorrent.queuedMapKeys()
+
+	fun pauseTorrentQueue() = mapTorrent.pauseDownloadQueue()
+
+	fun resumeTorrentQueue() = mapTorrent.resumeDownloadQueue()
+
+	fun removeTorrentQueueKey(mapKey: String) = mapTorrent.removeQueuedKey(mapKey)
+
+	fun clearTorrentQueue() = mapTorrent.clearDownloadQueue()
+
+	fun isTorrentPaused(): Boolean = mapTorrent.status().paused
 
 	fun getSortKey(): TorrentSortKey {
 		return try {
@@ -316,6 +337,14 @@ class TorrentMapsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 	fun syncMapTorrent() {
 		mapTorrent.sync()
 	}
+
+	fun verifyDownloadedMaps() = mapTorrent.startVerifyAll()
+
+	fun cancelMapVerify() = mapTorrent.cancelVerify()
+
+	fun mapVerifyStatus(): TorrentVerifyStatus = mapTorrent.verifyStatus()
+
+	fun redownloadCorruptMaps() = mapTorrent.redownloadCorruptMaps()
 
 	fun isTorrentRunning(): Boolean = mapTorrent.isStarted()
 

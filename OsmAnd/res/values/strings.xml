@@ -11,6 +11,18 @@
 	Strings for OsmAnd core
 	Thx - Hardy
 -->
+	<string name="torrent_maps_verify_hashes">Verify downloaded maps</string>
+	<string name="torrent_maps_verify_hashes_desc">Check local torrent maps against piece SHA-1 hashes. Incomplete writes used to land in the live maps folder and wipe large regions.</string>
+	<string name="torrent_maps_verify_running">Checking maps… %1$d / %2$d</string>
+	<string name="torrent_maps_verify_progress">%1$d / %2$d · %3$s</string>
+	<string name="torrent_maps_verify_ok">All %1$d local maps match torrent hashes</string>
+	<string name="torrent_maps_verify_bad">%1$d of %2$d maps failed hash check</string>
+	<string name="torrent_maps_verify_none">No local maps overlap this torrent</string>
+	<string name="torrent_maps_verify_redownload">Re-download damaged maps</string>
+	<string name="torrent_maps_verify_cancelled">Hash check cancelled</string>
+	<string name="torrent_maps_confirm_verify">Check downloaded maps against torrent piece hashes? Large files can take several minutes.</string>
+	<string name="torrent_maps_file_corrupt">damaged</string>
+	<string name="torrent_maps_file_verifying">checking hashes</string>
 	<string name="ev_bms_voice_alerts_on">Voice alerts enabled</string>
 	<string name="ev_bms_ride_modes">Ride modes</string>
 	<string name="ev_bms_history_group">History</string>

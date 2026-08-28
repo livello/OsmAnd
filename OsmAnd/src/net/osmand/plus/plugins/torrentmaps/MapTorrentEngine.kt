@@ -20,11 +20,14 @@ import org.libtorrent4j.TorrentInfo
 import org.libtorrent4j.alerts.AddTorrentAlert
 import org.libtorrent4j.alerts.Alert
 import org.libtorrent4j.alerts.FileCompletedAlert
+import org.libtorrent4j.alerts.HashFailedAlert
 import org.libtorrent4j.alerts.SaveResumeDataAlert
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -38,7 +41,9 @@ class MapTorrentEngine(
 		private const val DIR = "torrent_maps"
 		private const val LEGACY_DIR = "ev_torrent"
 		private const val TORRENT_FILE = "maps.torrent"
-		private const val RESUME_FILE = "maps.resume"
+		private const val RESUME_FILE = "maps.resume.v3"
+		private const val HASH_CACHE_FILE = "piece_sha1_ok.tsv"
+		private const val STAGING_DIR = "incoming"
 		private const val LISTING_FILE = "torrent_maps_files.txt"
 		private val MAP_EXTS = arrayOf(
 			IndexConstants.BINARY_MAP_INDEX_EXT_ZIP,
@@ -70,6 +75,7 @@ class MapTorrentEngine(
 			RegexOption.IGNORE_CASE
 		)
 
+		@JvmStatic
 		fun mapKey(rawName: String): String {
 			var n = rawName.substringAfterLast('/').substringAfterLast('\\').lowercase(Locale.US)
 			if (n.endsWith(".obf.zip")) {
@@ -84,12 +90,53 @@ class MapTorrentEngine(
 			return VERSION_SUFFIX.containsMatchIn(n)
 		}
 
+		@JvmStatic
 		fun isMapFile(rawName: String): Boolean {
 			val lower = rawName.substringAfterLast('/').substringAfterLast('\\').lowercase(Locale.US)
 			if (lower.endsWith(IndexConstants.DOWNLOAD_EXT) || lower.endsWith(".new") || lower.endsWith(".bak")) {
 				return false
 			}
 			return MAP_EXTS.any { lower.endsWith(it) }
+		}
+
+		/** OsmAnd Maps & Resources name: strip `_N` version (Foo_2.obf → Foo.obf). */
+		fun osmandFileName(rawName: String): String {
+			var n = rawName.substringAfterLast('/').substringAfterLast('\\')
+			if (n.endsWith(".zip", ignoreCase = true) && n.contains(".obf", ignoreCase = true)) {
+				n = n.substring(0, n.length - 4)
+			}
+			return VERSION_SUFFIX.replace(n, "")
+		}
+
+		fun osmandDestFile(app: OsmandApplication, rawName: String): File {
+			val name = osmandFileName(rawName)
+			val lower = name.lowercase(Locale.US)
+			val dir = when {
+				lower.endsWith(IndexConstants.BINARY_ROAD_MAP_INDEX_EXT) -> IndexConstants.ROADS_INDEX_DIR
+				lower.endsWith(IndexConstants.BINARY_WIKI_MAP_INDEX_EXT) -> IndexConstants.WIKI_INDEX_DIR
+				lower.endsWith(IndexConstants.BINARY_TRAVEL_GUIDE_MAP_INDEX_EXT) ->
+					IndexConstants.WIKIVOYAGE_INDEX_DIR
+				lower.endsWith(IndexConstants.BINARY_DEPTH_MAP_INDEX_EXT) -> IndexConstants.NAUTICAL_INDEX_DIR
+				lower.endsWith(IndexConstants.BINARY_SRTM_MAP_INDEX_EXT) ||
+					lower.endsWith(IndexConstants.BINARY_SRTM_FEET_MAP_INDEX_EXT) -> IndexConstants.SRTM_INDEX_DIR
+				else -> ""
+			}
+			return app.getAppPath(dir + name)
+		}
+
+		/** Match Maps & Resources target name to an indexed file that still has `_2`. */
+		@JvmStatic
+		fun indexedNameAlias(targetName: String, indexedNames: Map<String, *>): String? {
+			if (indexedNames.containsKey(targetName)) {
+				return targetName
+			}
+			val want = mapKey(targetName)
+			for (existing in indexedNames.keys) {
+				if (mapKey(existing) == want) {
+					return existing
+				}
+			}
+			return null
 		}
 	}
 
@@ -112,6 +159,9 @@ class MapTorrentEngine(
 
 	private val torrentThread = HandlerThread("map-torrent").apply { start() }
 	private val torrentHandler = Handler(torrentThread.looper)
+	private val hashExecutor = Executors.newSingleThreadExecutor { r ->
+		Thread(r, "map-torrent-hash").apply { isDaemon = true }
+	}
 	private val uiHandler = android.os.Handler(android.os.Looper.getMainLooper())
 	private val persistLock = Any()
 
@@ -134,7 +184,7 @@ class MapTorrentEngine(
 	private var lastPersistUp = 0L
 	private var baseDown = 0L
 	private var baseUp = 0L
-	private var selected = emptyList<SelectedFile>()
+	private var selected = ArrayList<SelectedFile>()
 	@Volatile
 	private var catalog = emptyList<TorrentCatalogEntry>()
 	private val forceDownloadKeys = HashSet<String>()
@@ -146,6 +196,18 @@ class MapTorrentEngine(
 	private val started = AtomicBoolean(false)
 	private var attachAttempts = 0
 	private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
+	private val hashCache = ConcurrentHashMap<String, Boolean>()
+	private val corruptKeys = ConcurrentHashMap.newKeySet<String>()
+	private val completedFiles = HashSet<Int>()
+	private val finalizedFiles = HashSet<Int>()
+	private val verifyCancel = AtomicBoolean(false)
+	private val verifyRunning = AtomicBoolean(false)
+	@Volatile
+	private var verifyStatus = TorrentVerifyStatus()
+	@Volatile
+	private var hashCacheLoaded = false
+	@Volatile
+	private var torrentInfoHex: String = ""
 
 	private val poll = object : Runnable {
 		override fun run() {
@@ -199,7 +261,11 @@ class MapTorrentEngine(
 				}
 				is FileCompletedAlert -> {
 					val index = alert.index()
-					uiHandler.post { onFileDone(index) }
+					torrentHandler.post { onFileDone(index, fromAlert = true) }
+				}
+				is HashFailedAlert -> {
+					val piece = alert.pieceIndex()
+					torrentHandler.post { onHashFailed(piece) }
 				}
 				is SaveResumeDataAlert -> {
 					// Copy buffer on the alert thread only; never retain alert/params.
@@ -244,6 +310,8 @@ class MapTorrentEngine(
 	fun isStarted(): Boolean = started.get()
 
 	fun torrentDir(): File = app.getAppInternalPath(DIR).also { it.mkdirs() }
+
+	fun stagingDir(): File = File(torrentDir(), STAGING_DIR).also { it.mkdirs() }
 
 	fun torrentFile(): File {
 		val preferred = File(torrentDir(), TORRENT_FILE)
@@ -370,24 +438,76 @@ class MapTorrentEngine(
 	fun hasCatalogEntry(rawName: String): Boolean = findCatalogEntry(rawName) != null
 
 	/**
-	 * Force-download specific maps from the torrent (Maps & Resources bridge).
-	 * Ignores freshness for these keys; starts a manual session.
+	 * Enqueue maps for download from the torrent (Maps & Resources + client).
+	 * Keys accumulate; an already-running session is updated in place.
 	 */
-	fun downloadMapKeys(rawNames: Collection<String>) {
+	fun downloadMapKeys(rawNames: Collection<String>): Int {
 		val keys = rawNames.map { mapKey(it) }.filter { it.isNotBlank() }.toSet()
 		if (keys.isEmpty()) {
-			return
+			return 0
 		}
-		TorrentMapsLog.append("force download ${keys.size} map(s): ${keys.take(5).joinToString()}")
-		torrentHandler.post {
-			forceDownloadKeys.clear()
-			forceDownloadKeys.addAll(keys)
-			if (started.get()) {
-				stopLocked()
+		var added = 0
+		synchronized(forceDownloadKeys) {
+			for (key in keys) {
+				if (forceDownloadKeys.add(key)) {
+					added++
+				}
 			}
+		}
+		TorrentMapsLog.append("queue download +$added (total ${queuedCount()}): ${keys.take(5).joinToString()}")
+		torrentHandler.post {
 			manualRun = true
-			startLocked()
+			if (started.get() && prepared.get()) {
+				enableForcedFilesLocked()
+				if (snapshot.paused) {
+					resumeLocked()
+				}
+			} else if (!started.get()) {
+				startLocked()
+			}
 			MapTorrentService.sync(app, started.get())
+		}
+		return added
+	}
+
+	fun queuedCount(): Int = synchronized(forceDownloadKeys) { forceDownloadKeys.size }
+
+	fun queuedMapKeys(): Set<String> = synchronized(forceDownloadKeys) { forceDownloadKeys.toSet() }
+
+	fun pauseDownloadQueue() {
+		torrentHandler.post {
+			pauseLocked(app.getString(R.string.torrent_maps_nearby_queue_paused))
+			MapTorrentService.sync(app, started.get())
+		}
+	}
+
+	fun resumeDownloadQueue() {
+		torrentHandler.post {
+			manualRun = true
+			if (started.get()) {
+				resumeLocked()
+			} else {
+				startLocked()
+			}
+			MapTorrentService.sync(app, started.get())
+		}
+	}
+
+	fun removeQueuedKey(mapKey: String) {
+		synchronized(forceDownloadKeys) { forceDownloadKeys.remove(mapKey) }
+		torrentHandler.post { ignoreQueuedFileLocked(mapKey) }
+	}
+
+	fun clearDownloadQueue() {
+		val keys = synchronized(forceDownloadKeys) {
+			val copy = forceDownloadKeys.toList()
+			forceDownloadKeys.clear()
+			copy
+		}
+		torrentHandler.post {
+			for (key in keys) {
+				ignoreQueuedFileLocked(key)
+			}
 		}
 	}
 
@@ -436,9 +556,55 @@ class MapTorrentEngine(
 	fun cleanupDuplicateMaps() {
 		torrentHandler.post {
 			val n = dedupeLocalMaps(app.getAppPath(IndexConstants.MAPS_PATH))
+			purgeMapSidecars(app.getAppPath(IndexConstants.MAPS_PATH))
 			if (n > 0) {
 				pendingReload.set(true)
 				reloadMapsSoon()
+			}
+		}
+	}
+
+	fun verifyStatus(): TorrentVerifyStatus = verifyStatus
+
+	fun corruptMapKeys(): Set<String> = HashSet(corruptKeys)
+
+	fun startVerifyAll() {
+		if (!verifyRunning.compareAndSet(false, true)) {
+			return
+		}
+		verifyCancel.set(false)
+		verifyStatus = TorrentVerifyStatus(running = true)
+		hashExecutor.execute {
+			try {
+				verifyAllLocked(autoRedownload = false)
+			} finally {
+				verifyRunning.set(false)
+			}
+		}
+	}
+
+	fun cancelVerify() {
+		verifyCancel.set(true)
+	}
+
+	fun redownloadCorruptMaps() {
+		val keys = HashSet(corruptKeys)
+		if (keys.isEmpty()) {
+			return
+		}
+		downloadMapKeys(keys)
+	}
+
+	fun scheduleBackgroundHashCheck() {
+		if (!verifyRunning.compareAndSet(false, true)) {
+			return
+		}
+		verifyCancel.set(false)
+		hashExecutor.execute {
+			try {
+				verifyAllLocked(autoRedownload = true)
+			} finally {
+				verifyRunning.set(false)
 			}
 		}
 	}
@@ -497,9 +663,12 @@ class MapTorrentEngine(
 			}
 			writeListing(ti)
 			catalog = buildCatalog(ti)
+			ensureHashCacheLoaded()
+			torrentInfoHex = ti.infoHash().toHex()
 			val mapsDir = app.getAppPath(IndexConstants.MAPS_PATH)
 			mapsDir.mkdirs()
 			val dropped = dedupeLocalMaps(mapsDir)
+			purgeMapSidecars(mapsDir)
 			if (dropped > 0) {
 				pendingReload.set(true)
 				reloadMapsSoon()
@@ -510,14 +679,15 @@ class MapTorrentEngine(
 			val priorities = Array(n) { Priority.IGNORE }
 			val chosen = ArrayList<SelectedFile>()
 			pendingSwaps.clear()
+			completedFiles.clear()
+			finalizedFiles.clear()
 			renamed.set(false)
 			prepared.set(false)
 			pendingReload.set(false)
 			attachAttempts = 0
 			infoHash = ti.infoHash()
 			val downloadNew = plugin.TORRENT_DOWNLOAD_NEW.get() && manualRun
-			val forced = HashSet(forceDownloadKeys)
-			forceDownloadKeys.clear()
+			val forced = synchronized(forceDownloadKeys) { HashSet(forceDownloadKeys) }
 			var mapFilesInTorrent = 0
 			var skippedCurrent = 0
 			for (i in 0 until n) {
@@ -530,15 +700,13 @@ class MapTorrentEngine(
 				}
 				mapFilesInTorrent++
 				val key = mapKey(torrentName)
-				val destName = torrentName.substringAfterLast('/').substringAfterLast('\\')
-				val dest = File(mapsDir, destName)
+				val dest = osmandDestFile(app, torrentName)
+				dest.parentFile?.mkdirs()
 				val torrentSize = files.fileSize(i)
-				// Prefer the torrent's expected filename when present; otherwise mapKey match.
 				val local = resolveLocalFile(dest, localByKey[key], torrentSize)
 				val kind = decideSelectKind(
 					key = key,
 					local = local,
-					destName = destName,
 					torrentSize = torrentSize,
 					torrentMtimeMs = torrentMtimeMs(files, i),
 					downloadNew = downloadNew,
@@ -564,14 +732,10 @@ class MapTorrentEngine(
 				)
 				priorities[i] = Priority.DEFAULT
 				if (replaceExisting || kind == SelectKind.DOWNLOAD_NEW) {
-					if (replaceExisting && local != null && local.name.equals(destName, ignoreCase = true)) {
-						pendingSwaps[i] = local
-					} else {
-						pendingSwaps[i] = dest
-					}
+					pendingSwaps[i] = dest
 				}
 			}
-			selected = chosen
+			selected = ArrayList(chosen)
 			if (chosen.isEmpty()) {
 				val samples = sampleTorrentNames(ti, 8)
 				val hint = if (skippedCurrent > 0) {
@@ -594,8 +758,10 @@ class MapTorrentEngine(
 				infoHash = null
 				return
 			}
-			// Seed/update the existing OsmAnd filename. Never create a second name.
+			// Never use the live maps folder as libtorrent save path: incomplete/sparse
+			// .obf files there are indexed by OsmAnd and show up as missing regions.
 			prepareStorage(chosen)
+			val staging = stagingDir()
 			val sp = SettingsPack()
 			sp.setEnableDht(true)
 			sp.setEnableLsd(true)
@@ -613,11 +779,11 @@ class MapTorrentEngine(
 			baseDown = plugin.TORRENT_DOWNLOADED.get()
 			baseUp = plugin.TORRENT_UPLOADED.get()
 			val resume = resumeFile().takeIf { it.isFile }
-			sm.download(ti, mapsDir, resume, priorities, null, TorrentFlags.PAUSED)
+			sm.download(ti, staging, resume, priorities, null, TorrentFlags.PAUSED)
 			started.set(true)
 			val seeding = chosen.count { it.seedOnly }
 			val updating = chosen.count { it.replaceExisting }
-			val downloading = chosen.count { it.local == null }
+			val downloading = chosen.count { !it.seedOnly && it.local == null }
 			snapshot = MapTorrentStatus(
 				running = true,
 				paused = true,
@@ -642,10 +808,10 @@ class MapTorrentEngine(
 			)
 			Log.i(
 				TAG,
-				"start selected=${chosen.size} update=$updating download=$downloading seed=$seeding skip=$skippedCurrent of maps=$mapFilesInTorrent"
+				"start staging=${staging.name} selected=${chosen.size} update=$updating download=$downloading seed=$seeding skip=$skippedCurrent of maps=$mapFilesInTorrent"
 			)
 			TorrentMapsLog.append(
-				"start selected=${chosen.size} update=$updating download=$downloading seed=$seeding skip=$skippedCurrent"
+				"start staging selected=${chosen.size} update=$updating download=$downloading seed=$seeding skip=$skippedCurrent"
 			)
 			android.util.Log.i(
 				"EvBms",
@@ -689,17 +855,106 @@ class MapTorrentEngine(
 		}
 	}
 
+	private fun enableForcedFilesLocked() {
+		val ti = pinnedTorrentInfo ?: return
+		val th = currentHandle() ?: return
+		if (!th.isValid) {
+			return
+		}
+		val files = ti.files()
+		val localByKey = scanLocalMaps()
+		val forced = synchronized(forceDownloadKeys) { HashSet(forceDownloadKeys) }
+		var added = 0
+		for (i in 0 until ti.numFiles()) {
+			if (files.padFileAt(i)) {
+				continue
+			}
+			val torrentName = files.fileName(i)
+			if (!isMapFile(torrentName)) {
+				continue
+			}
+			val key = mapKey(torrentName)
+			if (key !in forced) {
+				continue
+			}
+			val existingIdx = selected.indexOfFirst { it.key == key }
+			if (existingIdx >= 0 && !selected[existingIdx].seedOnly) {
+				continue
+			}
+			val dest = osmandDestFile(app, torrentName)
+			dest.parentFile?.mkdirs()
+			val torrentSize = files.fileSize(i)
+			val local = resolveLocalFile(dest, localByKey[key], torrentSize)
+			val kind = decideSelectKind(
+				key = key,
+				local = local,
+				torrentSize = torrentSize,
+				torrentMtimeMs = torrentMtimeMs(files, i),
+				downloadNew = true,
+				force = true
+			) ?: continue
+			if (kind == SelectKind.SEED) {
+				synchronized(forceDownloadKeys) { forceDownloadKeys.remove(key) }
+				continue
+			}
+			val item = SelectedFile(
+				index = i,
+				torrentName = torrentName,
+				key = key,
+				size = torrentSize,
+				local = local,
+				dest = dest,
+				replaceExisting = kind == SelectKind.UPDATE,
+				seedOnly = false
+			)
+			if (existingIdx >= 0) {
+				selected[existingIdx] = item
+			} else {
+				selected.add(item)
+			}
+			pendingSwaps[i] = dest
+			try {
+				th.filePriority(i, Priority.DEFAULT)
+				th.renameFile(i, stagingPart(item.dest).absolutePath)
+			} catch (e: Exception) {
+				Log.w(TAG, "enable $key", e)
+			} catch (e: Error) {
+				Log.e(TAG, "enable native $key", e)
+			}
+			added++
+		}
+		if (added > 0) {
+			TorrentMapsLog.append("session +$added queued file(s), selected=${selected.size}")
+			refreshFileRows()
+		}
+	}
+
+	private fun ignoreQueuedFileLocked(mapKey: String) {
+		val item = selected.firstOrNull { it.key == mapKey } ?: return
+		if (item.seedOnly) {
+			return
+		}
+		try {
+			currentHandle()?.filePriority(item.index, Priority.IGNORE)
+		} catch (_: Exception) {
+		} catch (_: Error) {
+		}
+		selected.removeAll { it.key == mapKey && !it.seedOnly }
+		pendingSwaps.remove(item.index)
+		refreshFileRows()
+	}
+
 	/**
 	 * Decide whether to seed, update, download, or skip.
-	 * Freshness / seeding:
-	 * 1) Local file size == torrent file size (exact name or mapKey alias) → seed (complete match).
-	 * 2) Torrent file mtime > local OBF dateCreated → update.
-	 * 3) Otherwise do not re-download unless forced / download-new for missing.
+	 *
+	 * Size match is not enough: libtorrent used to map onto the live .obf and rewrite
+	 * mismatched pieces in place, which wiped map regions. Seed only after piece SHA-1
+	 * cache says the file is intact. Hash-fail → re-download to staging. Unknown → skip
+	 * (do not touch the live file until verify runs).
 	 */
 	private fun decideSelectKind(
 		key: String,
 		local: File?,
-		destName: String,
 		torrentSize: Long,
 		torrentMtimeMs: Long,
 		downloadNew: Boolean,
@@ -709,11 +964,20 @@ class MapTorrentEngine(
 			return if (downloadNew || force) SelectKind.DOWNLOAD_NEW else null
 		}
 		val sizeMatch = local.isFile && local.length() == torrentSize
-		if (sizeMatch && !force) {
+		val hashOk = cachedHashOk(key, local)
+		if (sizeMatch && hashOk == true && !force) {
 			return SelectKind.SEED
 		}
 		if (force) {
-			return if (sizeMatch) SelectKind.SEED else SelectKind.UPDATE
+			return if (sizeMatch && hashOk == true) SelectKind.SEED else SelectKind.UPDATE
+		}
+		if (hashOk == false) {
+			Log.w(TAG, "hash fail $key — re-download to staging")
+			return SelectKind.UPDATE
+		}
+		if (sizeMatch && hashOk == null) {
+			Log.i(TAG, "skip $key (size match, hash not verified yet)")
+			return null
 		}
 		val localDate = localMapDateMs(local)
 		if (torrentMtimeMs > 0L && localDate > 0L) {
@@ -906,7 +1170,9 @@ class MapTorrentEngine(
 		infoHash = null
 		// Release only after session.stop() so native torrent_info is unused.
 		pinnedTorrentInfo = null
-		selected = emptyList()
+		selected.clear()
+		completedFiles.clear()
+		finalizedFiles.clear()
 		attachAttempts = 0
 		if (wasStarted) {
 			TorrentMapsLog.append("stop")
@@ -924,16 +1190,30 @@ class MapTorrentEngine(
 	}
 
 	/**
-	 * Point libtorrent at the existing local filename. Delete leftover torrent-dest
-	 * aliases so OsmAnd never sees Foo.obf and Foo_2.obf at the same time.
+	 * Point libtorrent at a staging path for downloads. Hash-verified seeds are renamed
+	 * to the live OsmAnd file; unverified files never share a path with the map reader.
 	 */
 	private fun prepareStorage(chosen: List<SelectedFile>) {
+		stagingDir()
 		for (item in chosen) {
-			val canonical = item.local ?: item.dest
-			deleteSidecar(canonical)
-			if (item.dest.absolutePath != canonical.absolutePath && item.dest.exists()) {
-				closeAndDelete(item.dest)
+			if (item.seedOnly) {
+				deleteSidecar(item.local ?: item.dest)
+			} else {
+				val part = stagingPart(item.dest)
+				if (part.exists()) {
+					part.delete()
+				}
 			}
+		}
+	}
+
+	private fun stagingPart(dest: File): File = File(stagingDir(), dest.name + ".part")
+
+	private fun storageTarget(item: SelectedFile): File {
+		return if (item.seedOnly) {
+			item.local ?: item.dest
+		} else {
+			stagingPart(item.dest)
 		}
 	}
 
@@ -946,14 +1226,8 @@ class MapTorrentEngine(
 			return
 		}
 		for (item in selected) {
-			val canonical = item.local ?: item.dest
-			val target = if (item.seedOnly) {
-				canonical
-			} else if (canonical.exists()) {
-				File(canonical.absolutePath + ".new")
-			} else {
-				canonical
-			}
+			val target = storageTarget(item)
+			target.parentFile?.mkdirs()
 			try {
 				th.renameFile(item.index, target.absolutePath)
 			} catch (e: Exception) {
@@ -1071,11 +1345,21 @@ class MapTorrentEngine(
 			} else {
 				0
 			}
+			val queued = synchronized(forceDownloadKeys) { HashSet(forceDownloadKeys) }
+			val verifyingNow = verifyStatus.running &&
+				verifyStatus.currentName.equals(
+					TorrentBrowser.normalizePath(entry.torrentName).substringAfterLast('/'),
+					ignoreCase = true
+				)
 			val state = when {
+				verifyingNow -> TorrentFileState.VERIFYING
+				item != null && !item.seedOnly && item.replaceExisting -> TorrentFileState.UPDATING
+				item != null && !item.seedOnly && item.local == null -> TorrentFileState.DOWNLOADING
+				item != null && !item.seedOnly -> TorrentFileState.QUEUED
+				queued.contains(entry.mapKey) -> TorrentFileState.QUEUED
+				entry.mapKey in corruptKeys -> TorrentFileState.CORRUPT
 				item == null -> TorrentFileState.SKIPPED
 				item.seedOnly || (done >= entry.sizeBytes && entry.sizeBytes > 0L) -> TorrentFileState.SEEDING
-				item.replaceExisting -> TorrentFileState.UPDATING
-				item.local == null -> TorrentFileState.DOWNLOADING
 				else -> TorrentFileState.QUEUED
 			}
 			val path = TorrentBrowser.normalizePath(entry.torrentName)
@@ -1125,7 +1409,7 @@ class MapTorrentEngine(
 	private fun maybeSwapCompleted() {
 		val th = currentHandle() ?: return
 		val progress = try {
-			th.fileProgress()
+			th.fileProgress(TorrentHandle.PIECE_GRANULARITY)
 		} catch (_: Exception) {
 			return
 		} catch (_: Error) {
@@ -1137,33 +1421,84 @@ class MapTorrentEngine(
 				continue
 			}
 			if (progress[idx] >= item.size && item.size > 0L) {
-				uiHandler.post { onFileDone(idx) }
+				onFileDone(idx, fromAlert = false)
 			}
 		}
 	}
 
-	private fun onFileDone(index: Int) {
+	private fun onFileDone(index: Int, fromAlert: Boolean) {
 		val item = selected.firstOrNull { it.index == index } ?: return
-		if (item.seedOnly) {
+		if (item.seedOnly || index in finalizedFiles) {
 			return
 		}
-		val canonical = item.local ?: item.dest
-		val staged = File(canonical.absolutePath + ".new")
-		val src = when {
-			staged.isFile && staged.length() == item.size -> staged
-			canonical.isFile && canonical.length() == item.size -> canonical
-			item.dest.isFile && item.dest.length() == item.size -> item.dest
-			else -> return
+		if (fromAlert) {
+			completedFiles.add(index)
 		}
+		val staged = stagingPart(item.dest)
+		if (!staged.isFile || staged.length() != item.size) {
+			return
+		}
+		val ti = pinnedTorrentInfo ?: return
+		val result = TorrentPieceVerifier.verify(ti, item.index, staged)
+		when {
+			result.ok -> finalizeStaged(item, staged, index)
+			fromAlert && result.verdict == TorrentPieceVerifier.Verdict.INCONCLUSIVE ->
+				finalizeStaged(item, staged, index)
+			fromAlert && result.definitelyBad -> {
+				Log.e(
+					TAG,
+					"hash fail after complete ${item.dest.name}: ${result.verdict} failed=${result.piecesFailed}"
+				)
+				TorrentMapsLog.append(
+					"hash fail ${item.dest.name}: ${result.verdict} checked=${result.piecesChecked} failed=${result.piecesFailed}"
+				)
+				corruptKeys.add(item.key)
+				rememberHash(item.key, staged, ok = false)
+				staged.delete()
+			}
+		}
+	}
+
+	private fun onHashFailed(piece: Int) {
+		val ti = pinnedTorrentInfo ?: return
+		val files = ti.files()
+		val first = files.fileIndexAtPiece(piece)
+		val last = files.lastFileIndexAtPiece(piece)
+		for (i in first..last) {
+			val item = selected.firstOrNull { it.index == i } ?: continue
+			if (item.seedOnly || i in finalizedFiles) {
+				continue
+			}
+			TorrentMapsLog.append("piece hash failed p=$piece file=${item.dest.name}")
+		}
+	}
+
+	private fun finalizeStaged(item: SelectedFile, staged: File, index: Int) {
 		try {
-			replaceInPlace(src, canonical)
-			deleteMapKeyAliases(canonical)
+			replaceInPlace(staged, item.dest)
+			deleteMapKeyAliases(item.dest)
+			rememberHash(item.key, item.dest, ok = true)
+			corruptKeys.remove(item.key)
 			pendingSwaps.remove(index)
+			synchronized(forceDownloadKeys) { forceDownloadKeys.remove(item.key) }
+			finalizedFiles.add(index)
+			val selIdx = selected.indexOfFirst { it.index == index }
+			if (selIdx >= 0) {
+				selected[selIdx] = item.copy(seedOnly = true, replaceExisting = false, local = item.dest)
+			}
+			try {
+				currentHandle()?.renameFile(index, item.dest.absolutePath)
+			} catch (e: Exception) {
+				Log.w(TAG, "retarget ${item.dest.name}", e)
+			} catch (e: Error) {
+				Log.e(TAG, "retarget native ${item.dest.name}", e)
+			}
 			pendingReload.set(true)
 			reloadMapsSoon()
-			Log.i(TAG, "ready ${canonical.name}")
-			TorrentMapsLog.append("file ready: ${canonical.name}")
+			Log.i(TAG, "ready ${item.dest.name} (hash ok)")
+			TorrentMapsLog.append("file ready: ${item.dest.name} (hash ok)")
 		} catch (e: Exception) {
+			finalizedFiles.remove(index)
 			Log.e(TAG, "finalize ${item.torrentName}", e)
 			TorrentMapsLog.append("finalize failed ${item.torrentName}: ${e.message}")
 		}
@@ -1179,7 +1514,16 @@ class MapTorrentEngine(
 			return@Runnable
 		}
 		try {
-			app.resourceManager.reloadIndexesAsync(null, null)
+			app.resourceManager.reloadIndexesAsync(null, object :
+				net.osmand.plus.resources.ReloadIndexesTask.ReloadIndexesListener {
+				override fun reloadIndexesFinished(warnings: MutableList<String>) {
+					try {
+						app.downloadThread.updateLoadedFiles()
+					} catch (e: Exception) {
+						Log.w(TAG, "updateLoadedFiles", e)
+					}
+				}
+			})
 		} catch (e: Exception) {
 			Log.w(TAG, "reload indexes", e)
 		}
@@ -1209,12 +1553,12 @@ class MapTorrentEngine(
 		}
 	}
 
-	/** Keep the newest map; on a size tie prefer OsmAnd's `_2` name. */
+	/** Keep the newest map; on a size tie prefer OsmAnd's canonical name (no `_2`). */
 	private fun betterLocal(a: File, b: File): File {
 		return when {
 			b.length() != a.length() -> if (b.length() > a.length()) b else a
 			hasVersionSuffix(b.name) != hasVersionSuffix(a.name) ->
-				if (hasVersionSuffix(b.name)) b else a
+				if (hasVersionSuffix(a.name)) b else a
 			else -> if (b.lastModified() >= a.lastModified()) b else a
 		}
 	}
@@ -1230,28 +1574,37 @@ class MapTorrentEngine(
 	private fun dedupeLocalMaps(mapsDir: File): Int {
 		val groups = LinkedHashMap<String, ArrayList<File>>()
 		collectMapFiles(mapsDir, groups)
-		var deleted = 0
+		var changed = 0
 		for (group in groups.values) {
-			if (group.size < 2) {
-				continue
-			}
 			val keep = pickCanonical(group)
 			for (file in group) {
 				if (file.absolutePath == keep.absolutePath) {
 					continue
 				}
 				if (closeAndDelete(file)) {
-					deleted++
+					changed++
 					TorrentMapsLog.append("dedupe drop ${file.name} keep ${keep.name}")
 				}
 			}
 			deleteSidecar(keep)
+			val dest = osmandDestFile(app, keep.name)
+			if (keep.absolutePath != dest.absolutePath) {
+				dest.parentFile?.mkdirs()
+				try {
+					replaceInPlace(keep, dest)
+					deleteMapKeyAliases(dest)
+					changed++
+					TorrentMapsLog.append("canonicalize ${keep.name} → ${dest.name}")
+				} catch (e: Exception) {
+					Log.w(TAG, "canonicalize ${keep.name}", e)
+				}
+			}
 		}
-		if (deleted > 0) {
-			Log.i(TAG, "dedupe removed $deleted alias map(s)")
-			TorrentMapsLog.append("dedupe removed $deleted alias map(s)")
+		if (changed > 0) {
+			Log.i(TAG, "dedupe/canonicalize changed $changed map file(s)")
+			TorrentMapsLog.append("dedupe/canonicalize changed $changed map file(s)")
 		}
-		return deleted
+		return changed
 	}
 
 	private fun collectMapFiles(dir: File, groups: LinkedHashMap<String, ArrayList<File>>) {
@@ -1369,6 +1722,222 @@ class MapTorrentEngine(
 			}
 		}
 		return out
+	}
+
+	private fun hashCacheFile(): File = File(torrentDir(), HASH_CACHE_FILE)
+
+	private fun hashCacheKey(mapKey: String, file: File): String =
+		"$torrentInfoHex|$mapKey|${file.length()}|${file.lastModified()}"
+
+	private fun ensureHashCacheLoaded() {
+		if (hashCacheLoaded) {
+			return
+		}
+		synchronized(hashCache) {
+			if (hashCacheLoaded) {
+				return
+			}
+			try {
+				val file = hashCacheFile()
+				if (file.isFile) {
+					file.forEachLine { line ->
+						val parts = line.split('\t')
+						if (parts.size >= 2) {
+							hashCache[parts[0]] = parts[1] == "1"
+						}
+					}
+				}
+			} catch (e: Exception) {
+				Log.w(TAG, "load hash cache", e)
+			}
+			hashCacheLoaded = true
+		}
+	}
+
+	private fun persistHashCache() {
+		synchronized(hashCache) {
+			try {
+				val file = hashCacheFile()
+				file.parentFile?.mkdirs()
+				val sb = StringBuilder()
+				for ((k, v) in hashCache) {
+					sb.append(k).append('\t').append(if (v) '1' else '0').append('\n')
+				}
+				file.writeText(sb.toString())
+			} catch (e: Exception) {
+				Log.w(TAG, "persist hash cache", e)
+			}
+		}
+	}
+
+	private fun cachedHashOk(mapKey: String, file: File): Boolean? {
+		if (!file.isFile) {
+			return false
+		}
+		ensureHashCacheLoaded()
+		if (torrentInfoHex.isBlank()) {
+			return null
+		}
+		return hashCache[hashCacheKey(mapKey, file)]
+	}
+
+	private fun rememberHash(mapKey: String, file: File, ok: Boolean) {
+		if (!file.isFile) {
+			return
+		}
+		ensureHashCacheLoaded()
+		if (torrentInfoHex.isBlank()) {
+			return
+		}
+		hashCache[hashCacheKey(mapKey, file)] = ok
+		persistHashCache()
+	}
+
+	private fun purgeMapSidecars(dir: File) {
+		val files = dir.listFiles() ?: return
+		for (file in files) {
+			if (file.isDirectory) {
+				if (file.name.lowercase(Locale.US) in SKIP_DIRS) {
+					continue
+				}
+				purgeMapSidecars(file)
+				continue
+			}
+			val lower = file.name.lowercase(Locale.US)
+			if (lower.endsWith(".new") || lower.endsWith(".part") ||
+				lower.endsWith(".bak") || lower.endsWith(".parts")
+			) {
+				closeAndDelete(file)
+			}
+		}
+	}
+
+	private fun verifyAllLocked(autoRedownload: Boolean) {
+		if (!hasTorrentFile()) {
+			verifyStatus = TorrentVerifyStatus(finished = true)
+			return
+		}
+		ensureHashCacheLoaded()
+		verifyCancel.set(false)
+		val file = torrentFile()
+		val ti = try {
+			TorrentInfo(file)
+		} catch (e: Exception) {
+			Log.w(TAG, "verify torrent", e)
+			verifyStatus = TorrentVerifyStatus(finished = true)
+			return
+		}
+		if (!ti.isValid) {
+			verifyStatus = TorrentVerifyStatus(finished = true)
+			return
+		}
+		torrentInfoHex = ti.infoHash().toHex()
+		catalog = buildCatalog(ti)
+		val localByKey = scanLocalMaps()
+		val jobs = ArrayList<Pair<TorrentCatalogEntry, File>>()
+		for (entry in catalog) {
+			val local = localByKey[entry.mapKey] ?: continue
+			if (!local.isFile) {
+				continue
+			}
+			jobs.add(entry to local)
+		}
+		verifyStatus = TorrentVerifyStatus(running = true, total = jobs.size)
+		TorrentMapsLog.append("verify start ${jobs.size} local map(s) vs torrent pieces")
+		val badNames = ArrayList<String>()
+		var okCount = 0
+		var badCount = 0
+		var done = 0
+		val failedKeys = ArrayList<String>()
+		for ((entry, local) in jobs) {
+			if (verifyCancel.get()) {
+				verifyStatus = verifyStatus.copy(
+					running = false,
+					finished = true,
+					cancelled = true,
+					done = done,
+					okCount = okCount,
+					badCount = badCount,
+					badNames = badNames.toList()
+				)
+				TorrentMapsLog.append("verify cancelled")
+				return
+			}
+			verifyStatus = verifyStatus.copy(
+				done = done,
+				currentName = local.name,
+				okCount = okCount,
+				badCount = badCount
+			)
+			val cached = cachedHashOk(entry.mapKey, local)
+			val result = if (cached != null) {
+				if (cached) {
+					TorrentPieceVerifier.Result(TorrentPieceVerifier.Verdict.OK, piecesChecked = 1)
+				} else {
+					TorrentPieceVerifier.Result(TorrentPieceVerifier.Verdict.FAIL)
+				}
+			} else {
+				TorrentPieceVerifier.verify(ti, entry.index, local) { verifyCancel.get() }
+			}
+			when {
+				result.verdict == TorrentPieceVerifier.Verdict.CANCELLED -> {
+					verifyStatus = verifyStatus.copy(
+						running = false,
+						finished = true,
+						cancelled = true,
+						done = done,
+						okCount = okCount,
+						badCount = badCount,
+						badNames = badNames.toList()
+					)
+					return
+				}
+				result.ok -> {
+					okCount++
+					corruptKeys.remove(entry.mapKey)
+					if (cached == null) {
+						rememberHash(entry.mapKey, local, ok = true)
+					}
+				}
+				result.definitelyBad -> {
+					badCount++
+					badNames.add(local.name)
+					failedKeys.add(entry.mapKey)
+					corruptKeys.add(entry.mapKey)
+					if (cached == null) {
+						rememberHash(entry.mapKey, local, ok = false)
+					}
+					TorrentMapsLog.append(
+						"verify FAIL ${local.name}: ${result.verdict} checked=${result.piecesChecked} failed=${result.piecesFailed}"
+					)
+				}
+				else -> {
+					okCount++
+				}
+			}
+			done++
+			verifyStatus = verifyStatus.copy(
+				done = done,
+				okCount = okCount,
+				badCount = badCount,
+				badNames = badNames.toList(),
+				currentName = local.name
+			)
+		}
+		verifyStatus = TorrentVerifyStatus(
+			running = false,
+			done = done,
+			total = jobs.size,
+			okCount = okCount,
+			badCount = badCount,
+			badNames = badNames.toList(),
+			finished = true
+		)
+		TorrentMapsLog.append("verify done ok=$okCount bad=$badCount of ${jobs.size}")
+		if (autoRedownload && failedKeys.isNotEmpty() && plugin.TORRENT_ENABLED.get()) {
+			TorrentMapsLog.append("auto re-download ${failedKeys.size} corrupt map(s)")
+			downloadMapKeys(failedKeys)
+		}
 	}
 
 	private fun resumeFile(): File = File(torrentDir(), RESUME_FILE)

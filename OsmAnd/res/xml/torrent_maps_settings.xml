@@ -36,4 +36,11 @@
 		android:summaryOn="@string/shared_string_enabled"
 		android:title="@string/torrent_maps_download_new" />
 
+	<Preference
+		android:key="torrent_maps_verify_hashes"
+		android:layout="@layout/preference_with_descr"
+		android:persistent="false"
+		android:summary="@string/torrent_maps_verify_hashes_desc"
+		android:title="@string/torrent_maps_verify_hashes" />
+
 </PreferenceScreen>

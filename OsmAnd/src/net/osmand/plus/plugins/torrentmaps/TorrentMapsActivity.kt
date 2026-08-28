@@ -60,11 +60,19 @@ class TorrentMapsActivity : AppCompatActivity() {
 	private lateinit var sortProgressBtn: AppCompatImageButton
 	private lateinit var sortSizeBtn: AppCompatImageButton
 	private lateinit var sortNameBtn: AppCompatImageButton
+	private lateinit var queueBar: View
+	private lateinit var queueSummary: TextView
+	private lateinit var queuePause: View
+	private lateinit var queueResume: View
+	private lateinit var queueClear: View
+	private lateinit var verifyHashes: TextView
+	private lateinit var verifyStatusView: TextView
 	private var bindingSettings = false
 	private var currentFolderPath: String = ""
 	private var sortKey: TorrentSortKey = TorrentSortKey.NAME
 	private var sortAscending: Boolean = true
 	private var allFileRows: List<TorrentFileRow> = emptyList()
+	private var userStartedVerify = false
 
 	private val torrentFileLauncher = registerForActivityResult(
 		ActivityResultContracts.OpenDocument()
@@ -92,6 +100,7 @@ class TorrentMapsActivity : AppCompatActivity() {
 				return
 			}
 			refreshStatus()
+			refreshVerifyUi()
 			when (tabs.selectedTabPosition) {
 				0 -> refreshBrowserList(keepFolder = true)
 				1 -> refreshLogs()
@@ -130,6 +139,13 @@ class TorrentMapsActivity : AppCompatActivity() {
 		sortProgressBtn = findViewById(R.id.torrent_sort_progress)
 		sortSizeBtn = findViewById(R.id.torrent_sort_size)
 		sortNameBtn = findViewById(R.id.torrent_sort_name)
+		queueBar = findViewById(R.id.torrent_queue_bar)
+		queueSummary = findViewById(R.id.torrent_queue_summary)
+		queuePause = findViewById(R.id.torrent_queue_pause)
+		queueResume = findViewById(R.id.torrent_queue_resume)
+		queueClear = findViewById(R.id.torrent_queue_clear)
+		verifyHashes = findViewById(R.id.torrent_verify_hashes)
+		verifyStatusView = findViewById(R.id.torrent_verify_status)
 
 		findViewById<View>(R.id.torrent_close).setOnClickListener { finish() }
 		findViewById<View>(R.id.torrent_nearby).setOnClickListener {
@@ -154,6 +170,18 @@ class TorrentMapsActivity : AppCompatActivity() {
 				}
 			}
 		}
+		verifyHashes.setOnClickListener {
+			if (plugin.mapVerifyStatus().running) {
+				plugin.cancelMapVerify()
+				refreshVerifyUi()
+				return@setOnClickListener
+			}
+			confirmAction(R.string.torrent_maps_confirm_verify) {
+				userStartedVerify = true
+				plugin.verifyDownloadedMaps()
+				refreshVerifyUi()
+			}
+		}
 		findViewById<View>(R.id.torrent_login_rutracker).setOnClickListener { openRutrackerAuth() }
 		findViewById<View>(R.id.torrent_topic_row).setOnClickListener { editTopicUrl() }
 		findViewById<View>(R.id.torrent_cookie_row).setOnClickListener { editCookie() }
@@ -174,7 +202,26 @@ class TorrentMapsActivity : AppCompatActivity() {
 			}
 		}
 
-		adapter = BrowserAdapter { row -> onBrowserClick(row) }
+		queuePause.setOnClickListener {
+			plugin.pauseTorrentQueue()
+			refreshQueueUi()
+		}
+		queueResume.setOnClickListener {
+			plugin.resumeTorrentQueue()
+			refreshQueueUi()
+		}
+		queueClear.setOnClickListener {
+			confirmAction(getString(R.string.torrent_maps_nearby_confirm_clear_queue)) {
+				plugin.clearTorrentQueue()
+				refreshQueueUi()
+			}
+		}
+
+		adapter = BrowserAdapter(
+			onClick = { row -> onBrowserClick(row) },
+			onLongClick = { row -> onBrowserLongClick(row) },
+			onFolderDownload = { folder -> confirmFolderDownload(folder) }
+		)
 		list.layoutManager = LinearLayoutManager(this)
 		list.adapter = adapter
 
@@ -276,15 +323,102 @@ class TorrentMapsActivity : AppCompatActivity() {
 				currentFolderPath = row.path
 				refreshBrowserList(keepFolder = true)
 			}
-			is TorrentBrowserRow.File -> {
-				val statusText = statusLabel(this, row.row.state)
-				android.widget.Toast.makeText(
-					this,
-					"$statusText · ${row.row.progressPercent}%",
-					android.widget.Toast.LENGTH_SHORT
-				).show()
-			}
+			is TorrentBrowserRow.File -> confirmFileDownload(row.row)
 		}
+	}
+
+	private fun onBrowserLongClick(row: TorrentBrowserRow): Boolean {
+		when (row) {
+			is TorrentBrowserRow.File -> {
+				val queued = plugin.torrentQueuedKeys()
+				if (row.row.mapKey in queued) {
+					confirmAction(
+						getString(R.string.torrent_maps_nearby_confirm_remove, row.row.displayName)
+					) {
+						plugin.removeTorrentQueueKey(row.row.mapKey)
+						refreshQueueUi()
+					}
+					return true
+				}
+			}
+			is TorrentBrowserRow.Folder -> {
+				confirmFolderDownload(row)
+				return true
+			}
+			else -> {}
+		}
+		return false
+	}
+
+	private fun confirmFileDownload(row: TorrentFileRow) {
+		if (!TorrentBrowser.isDownloadable(row.state) &&
+			row.state != TorrentFileState.DOWNLOADING &&
+			row.state != TorrentFileState.UPDATING
+		) {
+			val statusText = statusLabel(this, row.state)
+			android.widget.Toast.makeText(
+				this,
+				"$statusText · ${row.progressPercent}%",
+				android.widget.Toast.LENGTH_SHORT
+			).show()
+			return
+		}
+		confirmAction(
+			getString(
+				R.string.torrent_maps_nearby_confirm_download,
+				row.displayName,
+				AndroidUtils.formatSize(this, row.sizeBytes),
+				statusLabel(this, row.state)
+			)
+		) {
+			enqueueTorrent(listOf(row.mapKey))
+		}
+	}
+
+	private fun confirmFolderDownload(folder: TorrentBrowserRow.Folder) {
+		val prefix = "${folder.path}/"
+		val files = allFileRows.filter {
+			val path = TorrentBrowser.normalizePath(it.browsePath.ifBlank { it.torrentPath })
+			(path == folder.path || path.startsWith(prefix)) && TorrentBrowser.isDownloadable(it.state)
+		}
+		if (files.isEmpty()) {
+			app.showToastMessage(R.string.torrent_maps_nearby_folder_empty)
+			return
+		}
+		val size = files.sumOf { it.sizeBytes }
+		confirmAction(
+			getString(
+				R.string.torrent_maps_nearby_confirm_folder,
+				folder.name,
+				files.size,
+				AndroidUtils.formatSize(this, size)
+			)
+		) {
+			enqueueTorrent(files.map { it.mapKey })
+		}
+	}
+
+	private fun enqueueTorrent(keys: List<String>) {
+		plugin.downloadMapsFromTorrent(keys)
+		refreshQueueUi()
+	}
+
+	private fun refreshQueueUi() {
+		val n = plugin.torrentQueuedCount()
+		val paused = plugin.isTorrentPaused()
+		queueBar.isVisible = n > 0
+		val state = when {
+			paused -> getString(R.string.torrent_maps_nearby_queue_paused)
+			n > 0 -> getString(R.string.torrent_maps_file_queued)
+			else -> ""
+		}
+		queueSummary.text = if (n > 0) {
+			getString(R.string.torrent_maps_nearby_queue_summary, n, state)
+		} else {
+			""
+		}
+		queuePause.isVisible = n > 0 && !paused
+		queueResume.isVisible = n > 0 && paused
 	}
 
 	private fun bindSettingsSwitches() {
@@ -353,9 +487,13 @@ class TorrentMapsActivity : AppCompatActivity() {
 	}
 
 	private fun confirmAction(messageRes: Int, onConfirm: () -> Unit) {
+		confirmAction(getString(messageRes), onConfirm)
+	}
+
+	private fun confirmAction(message: String, onConfirm: () -> Unit) {
 		val themed = UiUtilities.getThemedContext(this, app.daynightHelper.isNightMode(ThemeUsageContext.APP))
 		AlertDialog.Builder(themed)
-			.setMessage(messageRes)
+			.setMessage(message)
 			.setPositiveButton(R.string.shared_string_yes) { _, _ -> onConfirm() }
 			.setNegativeButton(R.string.shared_string_no, null)
 			.show()
@@ -378,6 +516,7 @@ class TorrentMapsActivity : AppCompatActivity() {
 			getString(R.string.torrent_maps_rutracker_cookie_set)
 		}
 		refreshStatus()
+		refreshVerifyUi()
 		refreshBrowserList(keepFolder = false)
 		refreshLogs()
 	}
@@ -469,6 +608,55 @@ class TorrentMapsActivity : AppCompatActivity() {
 		fab.contentDescription = getString(
 			if (running) R.string.shared_string_control_stop else R.string.shared_string_control_start
 		)
+		refreshQueueUi()
+	}
+
+	private fun refreshVerifyUi() {
+		val st = plugin.mapVerifyStatus()
+		verifyStatusView.text = when {
+			st.running -> {
+				val base = getString(R.string.torrent_maps_verify_running, st.done, st.total)
+				if (st.currentName.isBlank()) base else "$base · ${st.currentName}"
+			}
+			st.cancelled -> getString(R.string.torrent_maps_verify_cancelled)
+			st.finished && st.total == 0 -> getString(R.string.torrent_maps_verify_none)
+			st.finished && st.badCount == 0 -> getString(R.string.torrent_maps_verify_ok, st.okCount)
+			st.finished && st.badCount > 0 -> {
+				val head = getString(R.string.torrent_maps_verify_bad, st.badCount, st.total)
+				val names = st.badNames.take(8).joinToString("\n")
+				if (names.isBlank()) head else "$head\n$names"
+			}
+			else -> getString(R.string.torrent_maps_verify_hashes_desc)
+		}
+		if (userStartedVerify && st.finished && !st.running) {
+			userStartedVerify = false
+			showVerifyResult(st)
+		}
+	}
+
+	private fun showVerifyResult(st: TorrentVerifyStatus) {
+		val message = when {
+			st.cancelled -> getString(R.string.torrent_maps_verify_cancelled)
+			st.total == 0 -> getString(R.string.torrent_maps_verify_none)
+			st.badCount == 0 -> getString(R.string.torrent_maps_verify_ok, st.okCount)
+			else -> {
+				val head = getString(R.string.torrent_maps_verify_bad, st.badCount, st.total)
+				val names = st.badNames.take(12).joinToString("\n")
+				if (names.isBlank()) head else "$head\n$names"
+			}
+		}
+		val themed = UiUtilities.getThemedContext(this, app.daynightHelper.isNightMode(ThemeUsageContext.APP))
+		val builder = AlertDialog.Builder(themed).setMessage(message)
+		if (st.badCount > 0 && !st.cancelled) {
+			builder.setPositiveButton(R.string.torrent_maps_verify_redownload) { _, _ ->
+				plugin.redownloadCorruptMaps()
+				refreshQueueUi()
+			}
+			builder.setNegativeButton(R.string.shared_string_close, null)
+		} else {
+			builder.setPositiveButton(R.string.shared_string_ok, null)
+		}
+		builder.show()
 	}
 
 	private fun editTopicUrl() {
@@ -506,7 +694,9 @@ class TorrentMapsActivity : AppCompatActivity() {
 	}
 
 	private class BrowserAdapter(
-		private val onClick: (TorrentBrowserRow) -> Unit
+		private val onClick: (TorrentBrowserRow) -> Unit,
+		private val onLongClick: (TorrentBrowserRow) -> Boolean,
+		private val onFolderDownload: (TorrentBrowserRow.Folder) -> Unit
 	) : RecyclerView.Adapter<BrowserAdapter.Holder>() {
 		private var rows: List<TorrentBrowserRow> = emptyList()
 
@@ -518,7 +708,7 @@ class TorrentMapsActivity : AppCompatActivity() {
 		override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
 			val view = LayoutInflater.from(parent.context)
 				.inflate(R.layout.torrent_maps_file_row, parent, false)
-			return Holder(view, onClick)
+			return Holder(view, onClick, onLongClick, onFolderDownload)
 		}
 
 		override fun onBindViewHolder(holder: Holder, position: Int) {
@@ -529,7 +719,9 @@ class TorrentMapsActivity : AppCompatActivity() {
 
 		class Holder(
 			view: View,
-			private val onClick: (TorrentBrowserRow) -> Unit
+			private val onClick: (TorrentBrowserRow) -> Unit,
+			private val onLongClick: (TorrentBrowserRow) -> Boolean,
+			private val onFolderDownload: (TorrentBrowserRow.Folder) -> Unit
 		) : RecyclerView.ViewHolder(view) {
 			private val icon: ImageView = view.findViewById(R.id.file_icon)
 			private val nameFrame: ProgressNameFrame = view.findViewById(R.id.file_name_frame)
@@ -540,6 +732,7 @@ class TorrentMapsActivity : AppCompatActivity() {
 			fun bind(row: TorrentBrowserRow) {
 				val ctx = itemView.context
 				itemView.setOnClickListener { onClick(row) }
+				itemView.setOnLongClickListener { onLongClick(row) }
 				when (row) {
 					is TorrentBrowserRow.Up -> {
 						icon.isVisible = true
@@ -562,14 +755,14 @@ class TorrentMapsActivity : AppCompatActivity() {
 						)
 						nameFrame.setProgressPercent(row.progressPercent)
 						val statusText = statusLabel(ctx, row.state)
-						chip.text = statusEmoji(row.state)
+						chip.text = if (row.downloadableCount > 0) "⬇️" else statusEmoji(row.state)
 						chip.contentDescription = statusText
 						chip.setOnClickListener {
-							android.widget.Toast.makeText(
-								ctx,
-								"$statusText · ${row.progressPercent}%",
-								android.widget.Toast.LENGTH_SHORT
-							).show()
+							if (row.downloadableCount > 0) {
+								onFolderDownload(row)
+							} else {
+								onClick(row)
+							}
 						}
 					}
 					is TorrentBrowserRow.File -> {
@@ -581,13 +774,7 @@ class TorrentMapsActivity : AppCompatActivity() {
 						val statusText = statusLabel(ctx, row.row.state)
 						chip.text = statusEmoji(row.row.state)
 						chip.contentDescription = statusText
-						chip.setOnClickListener {
-							android.widget.Toast.makeText(
-								ctx,
-								"$statusText · ${row.row.progressPercent}%",
-								android.widget.Toast.LENGTH_SHORT
-							).show()
-						}
+						chip.setOnClickListener { onClick(row) }
 					}
 				}
 			}
@@ -630,6 +817,8 @@ class TorrentMapsActivity : AppCompatActivity() {
 			TorrentFileState.COMPLETE -> "✅"
 			TorrentFileState.SKIPPED -> "⏭"
 			TorrentFileState.IDLE -> "⏸"
+			TorrentFileState.VERIFYING -> "🔍"
+			TorrentFileState.CORRUPT -> "⚠️"
 		}
 
 		fun statusLabel(ctx: android.content.Context, state: TorrentFileState): String =
@@ -641,6 +830,8 @@ class TorrentMapsActivity : AppCompatActivity() {
 				TorrentFileState.COMPLETE -> ctx.getString(R.string.torrent_maps_file_complete)
 				TorrentFileState.SKIPPED -> ctx.getString(R.string.torrent_maps_file_skipped)
 				TorrentFileState.IDLE -> ctx.getString(R.string.torrent_maps_file_idle)
+				TorrentFileState.VERIFYING -> ctx.getString(R.string.torrent_maps_file_verifying)
+				TorrentFileState.CORRUPT -> ctx.getString(R.string.torrent_maps_file_corrupt)
 			}
 	}
 }

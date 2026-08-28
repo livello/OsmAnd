@@ -424,6 +424,16 @@ class NearbyMapsDownloader(
 				tmp.delete()
 				return false
 			}
+			if (entry.sha256.isNotBlank()) {
+				val got = TorrentPieceVerifier.sha256Hex(tmp)
+				if (!got.equals(entry.sha256, ignoreCase = true)) {
+					TorrentMapsLog.append(
+						"nearby sha256 mismatch ${entry.fileName} got=$got expect=${entry.sha256}"
+					)
+					tmp.delete()
+					return false
+				}
+			}
 			try {
 				app.resourceManager.closeFile(dest.name)
 			} catch (_: Exception) {
@@ -443,7 +453,15 @@ class NearbyMapsDownloader(
 					"(${formatRate(avgBps)})"
 			)
 			try {
-				app.resourceManager.reloadIndexesAsync(null, null)
+				app.resourceManager.reloadIndexesAsync(null, object :
+					net.osmand.plus.resources.ReloadIndexesTask.ReloadIndexesListener {
+					override fun reloadIndexesFinished(warnings: MutableList<String>) {
+						try {
+							app.downloadThread.updateLoadedFiles()
+						} catch (_: Exception) {
+						}
+					}
+				})
 			} catch (_: Exception) {
 			}
 			return true
