@@ -8,7 +8,8 @@ enum class Gpx3DWallColorType(val typeName: String, val displayNameResId: String
 	UPWARD_GRADIENT("upward_gradient", "upward_gradient"),
 	ALTITUDE("altitude", "altitude"),
 	SLOPE("slope", "shared_string_slope"),
-	SPEED("speed", "shared_string_speed");
+	SPEED("speed", "shared_string_speed"),
+	CONSUMPTION("ev_wh_km", "ev_bms_3d_consumption_100m");
 
 
 	companion object {
@@ -23,7 +24,7 @@ enum class Gpx3DWallColorType(val typeName: String, val displayNameResId: String
 	}
 
 	open fun isGradient(): Boolean {
-		return this == ALTITUDE || this == SLOPE || this == SPEED
+		return this == ALTITUDE || this == SLOPE || this == SPEED || this == CONSUMPTION
 	}
 
 	open fun isVerticalGradient(): Boolean {

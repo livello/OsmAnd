@@ -20,6 +20,7 @@ import android.widget.RadioButton
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.SwitchCompat
+import androidx.appcompat.widget.TooltipCompat
 import androidx.cardview.widget.CardView
 import androidx.core.graphics.Insets
 import androidx.core.text.HtmlCompat
@@ -790,6 +791,7 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		val list = view?.findViewById<LinearLayout>(R.id.ev_bms_history_list) ?: return
 		list.removeAllViews()
 		val inflater = layoutInflater
+		plugin.repairChargeHistory()
 		val charges = plugin.chargeHistory()
 		val trips = plugin.tripHistory()
 		if (charges.isEmpty() && trips.isEmpty()) {
@@ -800,7 +802,10 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		charges.forEach { merged.add(HistoryRow.Charge(it)) }
 		trips.forEach { merged.add(HistoryRow.Trip(it)) }
 		merged.sortByDescending { it.sortMs }
-		for (row in merged) {
+		for ((index, row) in merged.withIndex()) {
+			if (index > 0) {
+				list.addView(historyItemDivider(list))
+			}
 			when (row) {
 				is HistoryRow.Charge -> list.addView(bindChargeHistoryRow(inflater, list, row.record))
 				is HistoryRow.Trip -> list.addView(bindTripHistoryRow(inflater, list, row.record))
@@ -819,42 +824,29 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		row: EvHistoryStore.ChargeRecord
 	): View {
 		val item = inflater.inflate(R.layout.ev_bms_history_row, list, false)
-		item.findViewById<TextView>(R.id.title).text = historyHtml(
-			if (row.isOpen()) {
-				"🔌 ${fmtDateTime(row.startMs)} → ${getString(R.string.ev_bms_history_charging_now)}"
-			} else {
-				"🔌 ${fmtDateTime(row.startMs)} → ${fmtTime(row.endMs)}"
-			}
-		)
-		item.findViewById<TextView>(R.id.description).text = historyHtml(
-			buildString {
-				append("⏱️ ").append(getString(R.string.ev_bms_history_duration, bNum(fmtDuration(row.durationMs()))))
-				append(" · 🔋 ").append(getString(R.string.ev_bms_history_charged_ah, bNum(n(row.chargedAh))))
-				if (row.energyWh != null) {
-					append(" · ⚡ ").append(getString(R.string.ev_bms_history_charge_energy_wh, bNum(n0(row.energyWh))))
-				}
-				if (row.avgCurrentA != null) {
-					append(" · 🔌 ").append(getString(R.string.ev_bms_history_avg_charge_a, bNum(n(row.avgCurrentA))))
-				}
-				append('\n')
-				append("🌡️ ").append(getString(R.string.ev_bms_history_temp, bNum(nTemp(row.startTempC)), bNum(nTemp(row.endTempC))))
-				append('\n')
-				append("🔻 ").append(getString(R.string.ev_bms_history_min_cell_range, bNum(nVolt(row.startMinCellV)), bNum(nVolt(row.endMinCellV))))
-				append('\n')
-				append("⏸️ ").append(
-					getString(
-						R.string.ev_bms_history_stop_time,
-						bNum(
-							when {
-								plugin.isChargeStopPending(row.startMs) || row.isOpen() ->
-									getString(R.string.ev_bms_history_stop_pending)
-								row.stopMs != null -> fmtDuration(row.stopMs)
-								else -> getString(R.string.ev_bms_value_none)
-							}
-						)
-					)
-				)
-			}
+		val endLabel = if (row.isOpen()) {
+			getString(R.string.ev_bms_history_charging_now)
+		} else {
+			fmtTime(row.endMs)
+		}
+		item.findViewById<TextView>(R.id.title).text = "🔌 ${fmtDateTime(row.startMs)} → $endLabel"
+		val stopValue = when {
+			plugin.isChargeStopPending(row.startMs) || row.isOpen() ->
+				getString(R.string.ev_bms_history_stop_pending)
+			row.stopMs != null -> fmtDuration(row.stopMs)
+			else -> getString(R.string.ev_bms_value_none)
+		}
+		fillHistoryMetrics(
+			item,
+			listOf(
+				HistoryChip("⏱️", fmtDuration(row.durationMs()), getString(R.string.ev_bms_history_duration, fmtDuration(row.durationMs()))),
+				HistoryChip("🔋", n(row.chargedAh), getString(R.string.ev_bms_history_charged_ah, n(row.chargedAh))),
+				HistoryChip("⚡", n0(row.energyWh), getString(R.string.ev_bms_history_charge_energy_wh, n0(row.energyWh))),
+				HistoryChip("🔌", n(row.avgCurrentA), getString(R.string.ev_bms_history_avg_charge_a, n(row.avgCurrentA))),
+				HistoryChip("🌡️", "${nTemp(row.startTempC)}→${nTemp(row.endTempC)}", getString(R.string.ev_bms_history_temp, nTemp(row.startTempC), nTemp(row.endTempC))),
+				HistoryChip("🔻", "${nVolt(row.startMinCellV)}→${nVolt(row.endMinCellV)}", getString(R.string.ev_bms_history_min_cell_range, nVolt(row.startMinCellV), nVolt(row.endMinCellV))),
+				HistoryChip("⏸️", stopValue, getString(R.string.ev_bms_history_stop_time, stopValue))
+			)
 		)
 		wireHistoryChart(
 			item,
@@ -876,36 +868,22 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		row: EvHistoryStore.ChargeTripRecord
 	): View {
 		val item = inflater.inflate(R.layout.ev_bms_history_row, list, false)
-		item.findViewById<TextView>(R.id.title).text = historyHtml(
-			"🛵 ${fmtDateTime(row.startMs)} → ${fmtTime(row.endMs)}"
-		)
-		item.findViewById<TextView>(R.id.description).text = historyHtml(
-			buildString {
-				append("🛣️ ").append(getString(R.string.ev_bms_history_distance, bNum(n(row.distanceKm))))
-				append(" · 🕒 ").append(
-					getString(R.string.ev_bms_history_ride, bNum(fmtDuration(row.movingMs)), bNum(fmtDuration(row.durationMs())))
-				)
-				append('\n')
-				append("⚡ ").append(
-					getString(R.string.ev_bms_history_voltage, bNum(n(row.startVoltageV)), bNum(n(row.endVoltageV)))
-				)
-				append('\n')
-				append("📊 ").append(getString(R.string.ev_bms_history_energy_wh, bNum(n0(row.energyWh))))
-				append(" · 🔋 ").append(getString(R.string.ev_bms_history_used_ah, bNum(n(row.usedAh))))
-				append(" · 📈 ").append(getString(R.string.ev_bms_history_specific_whkm, bNum(n0(row.specificWhKm))))
-				append('\n')
-				append("🚀 ").append(getString(R.string.ev_bms_history_avg_speed, bNum(n(row.avgMovingKmh))))
-				append(" · ⏸️ ").append(
-					getString(
-						R.string.ev_bms_history_stop_time,
-						bNum(row.stopMs?.let { fmtDuration(it) } ?: getString(R.string.ev_bms_value_none))
-					)
-				)
-				append('\n')
-				append("🌡️ ").append(getString(R.string.ev_bms_history_temp, bNum(nTemp(row.startTempC)), bNum(nTemp(row.endTempC))))
-				append('\n')
-				append("🔥 ").append(getString(R.string.ev_bms_history_motor_temp, bNum(nTemp(row.startMotorTempC)), bNum(nTemp(row.endMotorTempC))))
-			}
+		item.findViewById<TextView>(R.id.title).text = "🛵 ${fmtDateTime(row.startMs)} → ${fmtTime(row.endMs)}"
+		val stopValue = row.stopMs?.let { fmtDuration(it) } ?: getString(R.string.ev_bms_value_none)
+		fillHistoryMetrics(
+			item,
+			listOf(
+				HistoryChip("🛣️", n(row.distanceKm), getString(R.string.ev_bms_history_distance, n(row.distanceKm))),
+				HistoryChip("🕒", "${fmtDuration(row.movingMs)}/${fmtDuration(row.durationMs())}", getString(R.string.ev_bms_history_ride, fmtDuration(row.movingMs), fmtDuration(row.durationMs()))),
+				HistoryChip("⚡", "${n(row.startVoltageV)}→${n(row.endVoltageV)}", getString(R.string.ev_bms_history_voltage, n(row.startVoltageV), n(row.endVoltageV))),
+				HistoryChip("📊", n0(row.energyWh), getString(R.string.ev_bms_history_energy_wh, n0(row.energyWh))),
+				HistoryChip("🔋", n(row.usedAh), getString(R.string.ev_bms_history_used_ah, n(row.usedAh))),
+				HistoryChip("📈", n0(row.specificWhKm), getString(R.string.ev_bms_history_specific_whkm, n0(row.specificWhKm))),
+				HistoryChip("🚀", n(row.avgMovingKmh), getString(R.string.ev_bms_history_avg_speed, n(row.avgMovingKmh))),
+				HistoryChip("⏸️", stopValue, getString(R.string.ev_bms_history_stop_time, stopValue)),
+				HistoryChip("🌡️", "${nTemp(row.startTempC)}→${nTemp(row.endTempC)}", getString(R.string.ev_bms_history_temp, nTemp(row.startTempC), nTemp(row.endTempC))),
+				HistoryChip("🔥", "${nTemp(row.startMotorTempC)}→${nTemp(row.endMotorTempC)}", getString(R.string.ev_bms_history_motor_temp, nTemp(row.startMotorTempC), nTemp(row.endMotorTempC)))
+			)
 		)
 		wireHistoryChart(
 			item,
@@ -921,10 +899,69 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		return item
 	}
 
-	private fun historyHtml(text: String): CharSequence =
-		HtmlCompat.fromHtml(text.replace("\n", "<br>"), HtmlCompat.FROM_HTML_MODE_LEGACY)
+	private data class HistoryChip(val emoji: String, val value: String, val hint: String)
 
-	private fun bNum(value: String): String = "<b>${TextUtils.htmlEncode(value)}</b>"
+	private fun fillHistoryMetrics(item: View, chips: List<HistoryChip>) {
+		val box = item.findViewById<LinearLayout>(R.id.history_metrics) ?: return
+		box.removeAllViews()
+		val ctx = box.context
+		val pad = AndroidUtils.dpToPx(ctx, 6f)
+		val perRow = 4
+		var row: LinearLayout? = null
+		chips.forEachIndexed { index, chip ->
+			if (index % perRow == 0) {
+				row = LinearLayout(ctx).apply {
+					orientation = LinearLayout.HORIZONTAL
+					gravity = Gravity.CENTER_VERTICAL
+					layoutParams = LinearLayout.LayoutParams(
+						LinearLayout.LayoutParams.MATCH_PARENT,
+						LinearLayout.LayoutParams.WRAP_CONTENT
+					)
+				}
+				box.addView(row)
+			}
+			val host = row ?: return@forEachIndexed
+			if (host.childCount > 0) {
+				host.addView(metricSeparator(ctx, pad))
+			}
+			val tv = TextView(ctx)
+			tv.text = "${chip.emoji} ${chip.value}"
+			tv.textSize = 13f
+			tv.maxLines = 1
+			tv.ellipsize = TextUtils.TruncateAt.END
+			tv.setPadding(0, AndroidUtils.dpToPx(ctx, 2f), 0, AndroidUtils.dpToPx(ctx, 2f))
+			TooltipCompat.setTooltipText(tv, chip.hint)
+			tv.contentDescription = chip.hint
+			host.addView(tv)
+		}
+	}
+
+	private fun metricSeparator(ctx: android.content.Context, pad: Int): View {
+		return View(ctx).apply {
+			layoutParams = LinearLayout.LayoutParams(AndroidUtils.dpToPx(ctx, 1f), AndroidUtils.dpToPx(ctx, 12f)).apply {
+				marginStart = pad
+				marginEnd = pad
+				gravity = Gravity.CENTER_VERTICAL
+			}
+			setBackgroundColor(ColorUtilities.getDividerColor(ctx, nightMode))
+		}
+	}
+
+	private fun historyItemDivider(parent: LinearLayout): View {
+		val ctx = parent.context
+		return View(ctx).apply {
+			layoutParams = LinearLayout.LayoutParams(
+				LinearLayout.LayoutParams.MATCH_PARENT,
+				AndroidUtils.dpToPx(ctx, 1f)
+			).apply {
+				topMargin = AndroidUtils.dpToPx(ctx, 4f)
+				bottomMargin = AndroidUtils.dpToPx(ctx, 4f)
+				marginStart = ctx.resources.getDimensionPixelSize(R.dimen.content_padding)
+				marginEnd = ctx.resources.getDimensionPixelSize(R.dimen.content_padding)
+			}
+			setBackgroundColor(ColorUtilities.getDividerColor(ctx, nightMode))
+		}
+	}
 
 	private fun confirmDelete(messageRes: Int, onConfirm: () -> Unit) {
 		val themed = UiUtilities.getThemedContext(requireContext(), nightMode)

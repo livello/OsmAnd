@@ -34,14 +34,12 @@
 				android:maxLines="2"
 				tools:text="15.08.2026 18:40 → 21:12" />
 
-			<net.osmand.plus.widgets.TextViewEx
-				android:id="@+id/description"
-				style="@style/DescStyle"
+			<LinearLayout
+				android:id="@+id/history_metrics"
 				android:layout_width="match_parent"
 				android:layout_height="wrap_content"
-				android:ellipsize="end"
-				android:maxLines="12"
-				tools:text="Charged 12.4 Ah" />
+				android:orientation="vertical"
+				android:paddingTop="2dp" />
 		</LinearLayout>
 
 		<TextView

@@ -12,6 +12,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
+import java.util.concurrent.Executors
 
 class EvDebugJournal(private val app: OsmandApplication) {
 
@@ -41,6 +42,9 @@ class EvDebugJournal(private val app: OsmandApplication) {
 	var enabled: Boolean = false
 
 	private val lock = Any()
+	private val io = Executors.newSingleThreadExecutor { r ->
+		Thread(r, "ev-debug-journal").apply { isDaemon = true }
+	}
 	private val timeFmt = SimpleDateFormat("HH:mm:ss.SSS", Locale.US).apply {
 		timeZone = TimeZone.getDefault()
 	}
@@ -67,17 +71,20 @@ class EvDebugJournal(private val app: OsmandApplication) {
 		if (!enabled && !force) {
 			return
 		}
-		val line = "${timeFmt.format(Date())} $level [$src] $msg\n"
-		synchronized(lock) {
-			try {
-				val f = file()
-				if (f.exists() && f.length() > MAX_BYTES) {
-					rotate(f)
+		val at = Date()
+		io.execute {
+			synchronized(lock) {
+				try {
+					val line = "${timeFmt.format(at)} $level [$src] $msg\n"
+					val f = file()
+					if (f.exists() && f.length() > MAX_BYTES) {
+						rotate(f)
+					}
+					FileOutputStream(f, true).use { out ->
+						out.write(line.toByteArray(StandardCharsets.UTF_8))
+					}
+				} catch (_: Exception) {
 				}
-				FileOutputStream(f, true).use { out ->
-					out.write(line.toByteArray(StandardCharsets.UTF_8))
-				}
-			} catch (_: Exception) {
 			}
 		}
 	}

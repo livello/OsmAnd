@@ -33,6 +33,7 @@ data class EvTelemetry(
 	val energyWh: Double? = null,
 	val usedAh: Double? = null,
 	val consumptionWhPerKm: Double? = null,
+	val consumptionWhPerKm100m: Double? = null,
 	val coverageWhPerKm: Double? = null,
 	val weakCellFactor: Double? = null,
 	val farOdometerKm: Double? = null,

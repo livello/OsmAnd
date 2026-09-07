@@ -1235,6 +1235,7 @@ Layouts: <i>res/layout/ev_bms_*.xml</i>. Preferences: <i>res/xml/ev_bms_settings
     <string name="ev_bms_deselect_emoji">⬜</string>
     <string name="ev_bms_reset_emoji">↩️</string>
     <string name="ev_bms_coloring_consumption">Specific consumption</string>
+    <string name="ev_bms_3d_consumption_100m">Wh/km last 100 m</string>
     <string name="ev_bms_telemetry_fields_summary">%1$d of %2$d selected</string>
     <string name="ev_bms_telemetry_fields_empty">Select at least one field</string>
     <string name="ev_bms_field_write_gpx">Write this field to the plugin GPX</string>

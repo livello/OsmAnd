@@ -8,6 +8,7 @@ import net.osmand.plus.OsmandApplication
 import net.osmand.plus.R
 import net.osmand.plus.voice.JsTtsCommandPlayer
 import java.util.Locale
+import kotlin.jvm.Volatile
 
 class EvVoiceAnnouncer(private val app: OsmandApplication) {
 
@@ -18,6 +19,7 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 		const val RANGE_SHORT_REPEAT_MS = 180_000L
 		const val RANGE_HYSTERESIS_KM = 0.5
 		const val LINK_LOSS_HOLD_MS = 4000L
+		const val VOLTAGE_MIN_INTERVAL_MS = 8_000L
 	}
 
 	data class StopReport(
@@ -32,7 +34,11 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 
 	private var tts: TextToSpeech? = null
 	private var ready = false
+	@Volatile
 	private var lastSpokenVoltageV: Double? = null
+	@Volatile
+	private var lastSpokenVoltageText: String? = null
+	private var lastVoltageSpeakMs = 0L
 	private var stoppedSinceMs: Long? = null
 	private var stopAnnounceCount = 0
 	private var lastRangeAnnounceMs = 0L
@@ -87,6 +93,8 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 		tts?.shutdown()
 		tts = null
 		lastSpokenVoltageV = null
+		lastSpokenVoltageText = null
+		lastVoltageSpeakMs = 0L
 		lastChargeSoc = null
 		lastSpokenChargeTempC = null
 		stoppedSinceMs = null
@@ -210,15 +218,31 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 	}
 
 	fun onChargeVoltage(voltageV: Double?, stepV: Double, enabled: Boolean) {
-		if (!enabled || voltageV == null || stepV <= 0) {
+		if (!enabled || voltageV == null || !voltageV.isFinite() || stepV <= 0) {
+			if (!enabled) {
+				lastSpokenVoltageV = null
+				lastSpokenVoltageText = null
+			}
 			return
 		}
+		val rounded = kotlin.math.round(voltageV * 10.0) / 10.0
 		val last = lastSpokenVoltageV
-		if (last == null || kotlin.math.abs(voltageV - last) >= stepV) {
-			lastSpokenVoltageV = voltageV
-			val volts = String.format(Locale.US, "%.1f", voltageV)
-			speak(app.getString(R.string.ev_bms_voice_soc, volts))
+		if (last != null && kotlin.math.abs(rounded - last) < stepV) {
+			return
 		}
+		val volts = String.format(Locale.US, "%.1f", rounded)
+		val text = app.getString(R.string.ev_bms_voice_soc, volts)
+		if (text == lastSpokenVoltageText) {
+			return
+		}
+		val now = System.currentTimeMillis()
+		if (lastVoltageSpeakMs > 0L && now - lastVoltageSpeakMs < VOLTAGE_MIN_INTERVAL_MS) {
+			return
+		}
+		lastSpokenVoltageV = rounded
+		lastSpokenVoltageText = text
+		lastVoltageSpeakMs = now
+		speak(text)
 	}
 
 	fun onRangeVsRoute(rangeKm: Double?, routeLeftKm: Double?, enabled: Boolean) {
@@ -532,12 +556,18 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 	}
 
 	private fun speak(text: String) {
+		if (text.isBlank()) {
+			return
+		}
 		val player = app.routingHelper.voiceRouter.player
 		if (player is JsTtsCommandPlayer && player.speakAdditional(text)) {
 			return
 		}
 		val engine = tts ?: return
 		if (!ready) {
+			return
+		}
+		if (engine.isSpeaking && text == lastSpokenVoltageText) {
 			return
 		}
 		engine.speak(text, TextToSpeech.QUEUE_ADD, Bundle(), "ev-bms-${System.currentTimeMillis()}")

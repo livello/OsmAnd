@@ -313,7 +313,19 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 					body[tag] = value
 				}
 			}
-			addEv(TelemetryField.COVERAGE, PointAttributes.EV_TAG_CONSUMPTION, TelemetryField.COVERAGE.csvValue(sample))
+			fun addEvAlways(tag: String, value: String) {
+				if (value.isNotEmpty()) {
+					body[tag] = value
+				}
+			}
+			val whKm100m = sample.consumptionWhPerKm100m?.takeIf { it.isFinite() }
+				?.let { String.format(Locale.US, "%.1f", it) }
+			addEvAlways(PointAttributes.EV_TAG_CONSUMPTION_100M, whKm100m.orEmpty())
+			addEvAlways(PointAttributes.EV_TAG_POWER, TelemetryField.POWER.csvValue(sample))
+			addEvAlways(
+				PointAttributes.EV_TAG_CONSUMPTION,
+				whKm100m ?: TelemetryField.COVERAGE.csvValue(sample)
+			)
 			addEv(TelemetryField.CONSUMPTION, PointAttributes.EV_TAG_ENERGY, TelemetryField.CONSUMPTION.csvValue(sample))
 			addEv(TelemetryField.VOLTAGE, PointAttributes.EV_TAG_VOLTAGE, TelemetryField.VOLTAGE.csvValue(sample))
 			addEv(TelemetryField.CURRENT, PointAttributes.EV_TAG_CURRENT, TelemetryField.CURRENT.csvValue(sample))

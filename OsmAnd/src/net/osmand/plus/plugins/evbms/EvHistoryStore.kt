@@ -24,6 +24,9 @@ class EvHistoryStore(private val app: OsmandApplication) {
 		private const val REAL_TRIP_KM = 0.2
 		private const val REAL_TRIP_MOVING_MS = 60_000L
 		private const val MERGE_GAP_MS = 30 * 60_000L
+		private const val MIN_CHARGE_PIECE_MS = 5 * 60_000L
+		private const val KEEP_TAIL_MIN_MS = 4 * 60 * 60_000L
+		private const val FOLLOW_TRIP_MAX_GAP_MS = 4 * 60 * 60_000L
 	}
 
 	data class ChargeRecord(
@@ -48,6 +51,11 @@ class EvHistoryStore(private val app: OsmandApplication) {
 		}
 
 		fun isOpen(): Boolean = endMs <= 0L
+
+		fun overlapsRide(ride: ChargeTripRecord, nowMs: Long = System.currentTimeMillis()): Boolean {
+			val end = if (endMs > 0L) endMs else nowMs
+			return ride.startMs < end && ride.endMs > startMs
+		}
 
 		fun toJson(): JSONObject {
 			return JSONObject()
@@ -198,8 +206,12 @@ class EvHistoryStore(private val app: OsmandApplication) {
 		for (i in 1 until sorted.size) {
 			val next = sorted[i]
 			val accEnd = if (acc.endMs > 0L) acc.endMs else acc.startMs
+			val mergedEnd = maxOf(
+				if (acc.endMs > 0L) acc.endMs else acc.startMs,
+				if (next.endMs > 0L) next.endMs else next.startMs
+			)
 			val hasRide = rides.any { ride ->
-				ride.startMs > acc.startMs && ride.startMs < next.startMs
+				ride.startMs < next.startMs && ride.endMs > acc.startMs && ride.startMs < mergedEnd
 			}
 			val gap = next.startMs - accEnd
 			val close = gap <= MERGE_GAP_MS || acc.isOpen() || next.isOpen()
@@ -212,6 +224,87 @@ class EvHistoryStore(private val app: OsmandApplication) {
 		}
 		out.add(acc)
 		return out
+	}
+
+	fun splitChargesAroundTrips(
+		charges: List<ChargeRecord>,
+		trips: List<ChargeTripRecord>,
+		nowMs: Long = System.currentTimeMillis()
+	): List<ChargeRecord> {
+		val rides = trips.filter { it.isRealRide() }.sortedBy { it.startMs }
+		if (rides.isEmpty() || charges.isEmpty()) {
+			return charges
+		}
+		val out = ArrayList<ChargeRecord>(charges.size)
+		for (charge in charges) {
+			if (charge.isOpen()) {
+				val superseded = charges.any { later ->
+					later.startMs > charge.startMs && !later.isOpen()
+				} || rides.any { it.startMs > charge.startMs }
+				if (!superseded) {
+					out.add(charge)
+				}
+				continue
+			}
+			val chargeEnd = charge.endMs
+			val overlapping = rides.filter { charge.overlapsRide(it, nowMs) }
+			if (overlapping.isEmpty()) {
+				out.add(charge)
+				continue
+			}
+			val pieces = ArrayList<Pair<Long, Long>>()
+			var cursor = charge.startMs
+			for (ride in overlapping) {
+				val cut = minOf(ride.startMs, chargeEnd)
+				if (cut - cursor >= MIN_CHARGE_PIECE_MS) {
+					pieces.add(cursor to cut)
+				}
+				cursor = maxOf(cursor, ride.endMs)
+			}
+			if (chargeEnd - cursor >= MIN_CHARGE_PIECE_MS) {
+				val tailDur = chargeEnd - cursor
+				val followedSoon = rides.any { ride ->
+					ride.startMs >= cursor - 5_000L &&
+						ride.startMs <= chargeEnd + FOLLOW_TRIP_MAX_GAP_MS &&
+						ride.startMs != charge.endMs
+				}
+				if (charge.isOpen() || tailDur >= KEEP_TAIL_MIN_MS || followedSoon) {
+					pieces.add(cursor to if (charge.isOpen()) 0L else chargeEnd)
+				}
+			}
+			if (pieces.isEmpty()) {
+				continue
+			}
+			val keptMs = pieces.sumOf { (start, end) ->
+				(if (end > 0L) end else chargeEnd) - start
+			}.coerceAtLeast(1L).toDouble()
+			for ((index, piece) in pieces.withIndex()) {
+				val start = piece.first
+				val end = piece.second
+				val dur = (if (end > 0L) end else chargeEnd) - start
+				val ratio = dur / keptMs
+				val first = index == 0
+				val last = index == pieces.lastIndex
+				out.add(
+					charge.copy(
+						startMs = start,
+						endMs = end,
+						startTempC = if (first) charge.startTempC else charge.endTempC,
+						endTempC = if (last) charge.endTempC else charge.startTempC,
+						chargedAh = charge.chargedAh?.times(ratio),
+						energyWh = charge.energyWh?.times(ratio),
+						avgCurrentA = charge.avgCurrentA,
+						startMinCellV = if (first) charge.startMinCellV else charge.endMinCellV,
+						endMinCellV = if (last) charge.endMinCellV else charge.startMinCellV,
+						startLat = if (first) charge.startLat else charge.endLat,
+						startLon = if (first) charge.startLon else charge.endLon,
+						endLat = if (last) charge.endLat else charge.startLat,
+						endLon = if (last) charge.endLon else charge.startLon
+					)
+				)
+			}
+		}
+		return out.sortedBy { it.startMs }
 	}
 
 	fun mergeChargePair(a: ChargeRecord, b: ChargeRecord): ChargeRecord {

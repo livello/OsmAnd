@@ -156,8 +156,9 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 		VOLTAGE -> listOf(PointAttributes.EV_TAG_VOLTAGE)
 		CURRENT -> listOf(PointAttributes.EV_TAG_CURRENT)
 		CHARGE_TRIP -> listOf(PointAttributes.EV_TAG_CHARGE_TRIP)
-		COVERAGE -> listOf(PointAttributes.EV_TAG_CONSUMPTION)
+		COVERAGE -> emptyList()
 		CONSUMPTION -> listOf(PointAttributes.EV_TAG_ENERGY)
+		POWER -> listOf(PointAttributes.EV_TAG_POWER)
 		else -> emptyList()
 	}
 

@@ -44,7 +44,10 @@ object EvGpx {
 				json.put(GpxUtilities.OSMAND_EXTENSIONS_PREFIX + field.id, value)
 			}
 		}
-		put(json, PointAttributes.EV_TAG_CONSUMPTION, sample.consumptionWhPerKm ?: sample.coverageWhPerKm, "%.1f")
+		put(json, PointAttributes.EV_TAG_CONSUMPTION_100M, sample.consumptionWhPerKm100m, "%.1f")
+		put(json, PointAttributes.EV_TAG_CONSUMPTION,
+			sample.consumptionWhPerKm100m ?: sample.consumptionWhPerKm ?: sample.coverageWhPerKm, "%.1f")
+		put(json, PointAttributes.EV_TAG_POWER, sample.controllerPowerW, "%.0f")
 		put(json, PointAttributes.EV_TAG_ENERGY, sample.energyWh, "%.1f")
 		put(json, PointAttributes.EV_TAG_VOLTAGE, sample.voltageV, "%.2f")
 		put(json, PointAttributes.EV_TAG_CURRENT, sample.currentA, "%.2f")
@@ -178,6 +181,20 @@ class EvTrackPointsAnalyser : GpxTrackAnalysis.TrackPointsAnalyser {
 				if (!analysis.hasData(alias) && attribute.hasValidValue(alias)) {
 					analysis.setHasData(alias, true)
 				}
+			}
+		}
+		for (tag in arrayOf(
+			PointAttributes.EV_TAG_CONSUMPTION_100M,
+			PointAttributes.EV_TAG_CONSUMPTION,
+			PointAttributes.EV_TAG_POWER
+		)) {
+			val extra = EvGpx.read(point, tag)
+			if (extra.isNaN()) {
+				continue
+			}
+			attribute.setAttributeValue(tag, extra)
+			if (!analysis.hasData(tag) && attribute.hasValidValue(tag)) {
+				analysis.setHasData(tag, true)
 			}
 		}
 	}

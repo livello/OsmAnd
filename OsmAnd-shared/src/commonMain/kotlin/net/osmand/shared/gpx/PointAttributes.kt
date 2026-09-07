@@ -39,6 +39,8 @@ class PointAttributes(
 		const val POINT_ELEVATION = "point_elevation"
 
 		const val EV_TAG_CONSUMPTION = "ev_wh_km"
+		const val EV_TAG_CONSUMPTION_100M = "ev_wh_km_100m"
+		const val EV_TAG_POWER = "power_w"
 		const val EV_TAG_ENERGY = "ev_energy_wh"
 		const val EV_TAG_VOLTAGE = "ev_voltage"
 		const val EV_TAG_CURRENT = "ev_current"
@@ -255,6 +257,8 @@ class PointAttributes(
 			SENSOR_TAG_TEMPERATURE_A,
 			POINT_ELEVATION,
 			EV_TAG_CONSUMPTION,
+			EV_TAG_CONSUMPTION_100M,
+			EV_TAG_POWER,
 			EV_TAG_ENERGY,
 			EV_TAG_VOLTAGE,
 			EV_TAG_CURRENT,

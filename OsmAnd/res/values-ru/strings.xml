@@ -4734,6 +4734,7 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
     <string name="ev_bms_deselect_emoji">⬜</string>
     <string name="ev_bms_reset_emoji">↩️</string>
     <string name="ev_bms_coloring_consumption">Удельный расход</string>
+    <string name="ev_bms_3d_consumption_100m">Вт·ч/км за 100 м</string>
     <string name="ev_bms_telemetry_fields_summary">Выбрано %1$d из %2$d</string>
     <string name="ev_bms_telemetry_fields_empty">Выберите хотя бы одно поле</string>
     <string name="ev_bms_field_write_gpx">Писать это поле в GPX плагина</string>

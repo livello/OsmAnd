@@ -47,6 +47,9 @@ class RangeEstimator(
 	private val kmWindow = ArrayDeque<KmSeg>()
 	private var kmWindowKm = 0.0
 	private var kmWindowWh = 0.0
+	private val m100Window = ArrayDeque<KmSeg>()
+	private var m100Km = 0.0
+	private var m100Wh = 0.0
 
 	private var tripDistanceKm = 0.0
 	private var tripWh = 0.0
@@ -71,6 +74,10 @@ class RangeEstimator(
 
 	@Volatile
 	var consumptionWhPerKm: Double? = null
+		private set
+
+	@Volatile
+	var consumptionWhPerKm100m: Double? = null
 		private set
 
 	@Volatile
@@ -217,6 +224,9 @@ class RangeEstimator(
 		kmWindow.clear()
 		kmWindowKm = 0.0
 		kmWindowWh = 0.0
+		m100Window.clear()
+		m100Km = 0.0
+		m100Wh = 0.0
 		tripDistanceKm = 0.0
 		tripWh = 0.0
 		tripAh = 0.0
@@ -226,6 +236,7 @@ class RangeEstimator(
 		pnzRangeKm = null
 		consumptionAhPerKm = null
 		consumptionWhPerKm = null
+		consumptionWhPerKm100m = null
 		coverageWhPerKm = null
 		weakCellFactor = 1.0
 		gpsUnreliable = false
@@ -257,6 +268,17 @@ class RangeEstimator(
 			val first = kmWindow.removeFirst()
 			kmWindowKm -= first.dKm
 			kmWindowWh -= first.dWh
+		}
+		m100Window.addLast(KmSeg(dKm, dWh))
+		m100Km += dKm
+		m100Wh += dWh
+		while (m100Window.size > 1 && m100Km > WINDOW_100M_KM) {
+			val first = m100Window.removeFirst()
+			m100Km -= first.dKm
+			m100Wh -= first.dWh
+		}
+		if (m100Km >= WINDOW_100M_MIN_KM && kotlin.math.abs(m100Wh) >= 0.2) {
+			consumptionWhPerKm100m = m100Wh / m100Km
 		}
 	}
 
@@ -380,6 +402,8 @@ class RangeEstimator(
 		private const val MIN_JUMP_KM = 0.05
 		private const val TRIP_RANGE_MIN_KM = 2.0
 		private const val ROLLING_KM = 10.0
+		private const val WINDOW_100M_KM = 0.1
+		private const val WINDOW_100M_MIN_KM = 0.05
 		private const val CHARGE_DISCONTINUITY_AH = 0.25
 		const val REGEN_EFFICIENCY = 0.55
 		const val DRIVE_EFFICIENCY = 0.80

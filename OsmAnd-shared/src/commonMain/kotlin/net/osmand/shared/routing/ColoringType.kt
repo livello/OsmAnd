@@ -75,6 +75,7 @@ enum class ColoringType(val id: String, val titleId: String, val iconId: String)
 				Gpx3DWallColorType.SPEED -> SPEED
 				Gpx3DWallColorType.ALTITUDE -> return ALTITUDE
 				Gpx3DWallColorType.SLOPE -> return SLOPE
+				Gpx3DWallColorType.CONSUMPTION -> return CONSUMPTION
 				Gpx3DWallColorType.SOLID -> return TRACK_SOLID
 				else -> return null
 			}
