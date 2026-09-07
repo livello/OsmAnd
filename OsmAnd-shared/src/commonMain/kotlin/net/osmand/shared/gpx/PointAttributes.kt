@@ -143,6 +143,17 @@ class PointAttributes(
 
 	private var extra: MutableMap<String, Float>? = null
 
+	internal fun copy(): PointAttributes {
+		return PointAttributes(distance, timeDiff, firstPoint, lastPoint).also { copy ->
+			copy.speed = speed
+			copy.elevation = elevation
+			copy.sensorData = sensorData?.copy()
+			copy.devData = devData?.copy()
+			copy.vehicleData = vehicleData?.copy()
+			copy.extra = extra?.toMutableMap()
+		}
+	}
+
 	fun hasAnyValueSet(): Boolean = !speed.isNaN() || !elevation.isNaN() ||
 			hasAnySensorValueSet() || hasAnyDevValueSet() || hasAnyVehicleValueSet() ||
 			extra?.isNotEmpty() == true
@@ -300,6 +311,15 @@ class PointAttributes(
 					!bikePower.isNaN() ||
 					!waterTemperature.isNaN() ||
 					!airTemperature.isNaN()
+
+		fun copy() = SensorData().also { copy ->
+			copy.heartRate = heartRate
+			copy.sensorSpeed = sensorSpeed
+			copy.bikeCadence = bikeCadence
+			copy.bikePower = bikePower
+			copy.waterTemperature = waterTemperature
+			copy.airTemperature = airTemperature
+		}
 	}
 
 	private class DevData {
@@ -308,6 +328,12 @@ class PointAttributes(
 		var interpolationOffsetN: Float = Float.NaN
 
 		fun hasAnyValueSet(): Boolean = !rawZoom.isNaN() || !animatedZoom.isNaN() || !interpolationOffsetN.isNaN()
+
+		fun copy() = DevData().also { copy ->
+			copy.rawZoom = rawZoom
+			copy.animatedZoom = animatedZoom
+			copy.interpolationOffsetN = interpolationOffsetN
+		}
 	}
 
 	private class VehicleData {
@@ -339,5 +365,21 @@ class PointAttributes(
 					!batteryVoltage.isNaN() ||
 					!vehicleSpeed.isNaN() ||
 					!throttlePosition.isNaN()
+
+		fun copy() = VehicleData().also { copy ->
+			copy.intakeTemp = intakeTemp
+			copy.ambientTemp = ambientTemp
+			copy.coolantTemp = coolantTemp
+			copy.engineOilTemp = engineOilTemp
+			copy.rpmSpeed = rpmSpeed
+			copy.runtimeEngine = runtimeEngine
+			copy.engineLoad = engineLoad
+			copy.fuelPressure = fuelPressure
+			copy.fuelConsumption = fuelConsumption
+			copy.fuelRemaining = fuelRemaining
+			copy.batteryVoltage = batteryVoltage
+			copy.vehicleSpeed = vehicleSpeed
+			copy.throttlePosition = throttlePosition
+		}
 	}
 }
