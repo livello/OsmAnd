@@ -284,6 +284,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		findPreference<SwitchPreferenceEx>(plugin.RECORD_GPX.id)?.setDescription(R.string.ev_bms_record_gpx_desc)
 		setupTelemetryFields()
 		setupCsvFolder()
+		setupSyncPref()
 		setupChargeStillSec()
 		setupChargeStillKmh()
 		setupChargeCurrent()
@@ -394,6 +395,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		decorate(plugin.RECORD_GPX.id, "🗺️", R.drawable.ic_action_polygom_dark)
 		decorate(plugin.TELEMETRY_FIELDS.id, "☑️", R.drawable.ic_action_list_flat)
 		decorate("ev_bms_csv_folder", "📁", R.drawable.ic_action_folder)
+		decorate("ev_bms_sync", "📡", R.drawable.ic_action_gshare_dark)
 		decorate("ev_bms_export_csv", "📤", R.drawable.ic_action_gshare_dark)
 		decorate(plugin.ANNOUNCE_SOC.id, "🔋", R.drawable.ic_action_battery)
 		decorate(plugin.CHARGE_VOLT_STEP_MV.id, "⚡", R.drawable.ic_action_obd_battery_voltage)
@@ -1030,6 +1032,15 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		pref.summary = plugin.csvFolderSummary()
 	}
 
+	private fun setupSyncPref() {
+		val pref = findPreference<Preference>("ev_bms_sync") ?: return
+		pref.summary = if (plugin.sync.serving) {
+			getString(R.string.ev_bms_sync_status_on, plugin.syncPort())
+		} else {
+			getString(R.string.ev_bms_sync_desc)
+		}
+	}
+
 	private fun setupHistoryPrefs() {
 		val charges = plugin.chargeHistory().size
 		val trips = plugin.tripHistory().size
@@ -1166,6 +1177,10 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			}
 			"ev_bms_csv_folder" -> {
 				csvFolderLauncher.launch(null)
+				return true
+			}
+			"ev_bms_sync" -> {
+				EvBmsSyncDialog(activity, plugin, isNightMode()).show()
 				return true
 			}
 			"ev_bms_export_csv" -> {
@@ -1582,7 +1597,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 	}
 
 	private fun showTripHistoryDialog(activity: Activity) {
-		val rows = plugin.tripHistory().asReversed()
+		val rows = plugin.tripHistory().filter { it.isRealRide() }.asReversed()
 		if (rows.isEmpty()) {
 			app.showToastMessage(R.string.ev_bms_history_empty)
 			return

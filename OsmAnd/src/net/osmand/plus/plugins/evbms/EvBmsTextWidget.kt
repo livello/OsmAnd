@@ -111,18 +111,14 @@ class EvBmsTextWidget(
 			}
 			Field.CHARGE_TIME -> {
 				val ms = plugin.chargeElapsedMs()
-				if (!plugin.isCharging() || ms == null) {
+				if (ms == null) {
 					NO_VALUE
 				} else {
 					OsmAndFormatter.getFormattedDurationShort((ms / 1000L).toInt().coerceAtLeast(0))
 				}
 			}
 			Field.CHARGE_ENERGY -> {
-				if (!plugin.isCharging()) {
-					NO_VALUE
-				} else {
-					plugin.chargeEnergyWh()?.let { String.format(Locale.US, "%.0f", it) } ?: NO_VALUE
-				}
+				plugin.chargeEnergyWh()?.let { String.format(Locale.US, "%.0f", it) } ?: NO_VALUE
 			}
 			Field.VOLTAGE -> sample?.voltageV?.let { String.format(Locale.US, "%.1f", it) } ?: NO_VALUE
 			Field.MIN_CELL -> sample?.minCellVoltageV?.let { String.format(Locale.US, "%.3f", it) } ?: NO_VALUE

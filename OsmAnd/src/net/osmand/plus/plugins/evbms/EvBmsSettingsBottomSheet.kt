@@ -85,6 +85,7 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	private var aboutBound = false
 	private var journalBound = false
 	private var sheetTitleView: TextView? = null
+	private val expandedHistoryDays = HashSet<String>()
 
 	private data class ChartRow(
 		val field: TelemetryField,
@@ -792,8 +793,7 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		list.removeAllViews()
 		val inflater = layoutInflater
 		plugin.repairChargeHistory()
-		val charges = plugin.chargeHistory()
-		val trips = plugin.tripHistory()
+		val (charges, trips) = plugin.displayHistory()
 		if (charges.isEmpty() && trips.isEmpty()) {
 			list.addView(emptyHint(getString(R.string.ev_bms_history_empty)))
 			return
@@ -801,15 +801,20 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		val merged = ArrayList<HistoryRow>(charges.size + trips.size)
 		charges.forEach { merged.add(HistoryRow.Charge(it)) }
 		trips.forEach { merged.add(HistoryRow.Trip(it)) }
-		merged.sortByDescending { it.sortMs }
-		for ((index, row) in merged.withIndex()) {
+		val days = merged.groupBy { historyDayKey(it.sortMs) }
+			.map { (dayKey, rows) ->
+				DayHistory(
+					dayKey = dayKey,
+					startMs = rows.minOf { it.sortMs },
+					rows = rows.sortedBy { it.sortMs }
+				)
+			}
+			.sortedByDescending { it.startMs }
+		for ((index, day) in days.withIndex()) {
 			if (index > 0) {
 				list.addView(historyItemDivider(list))
 			}
-			when (row) {
-				is HistoryRow.Charge -> list.addView(bindChargeHistoryRow(inflater, list, row.record))
-				is HistoryRow.Trip -> list.addView(bindTripHistoryRow(inflater, list, row.record))
-			}
+			list.addView(bindDayHistoryRow(inflater, list, day))
 		}
 	}
 
@@ -818,10 +823,124 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		class Trip(val record: EvHistoryStore.ChargeTripRecord) : HistoryRow(record.startMs)
 	}
 
+	private data class DayHistory(
+		val dayKey: String,
+		val startMs: Long,
+		val rows: List<HistoryRow>
+	)
+
+	private fun historyDayKey(ms: Long): String =
+		SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(ms))
+
+	private fun historyDayLabel(day: DayHistory): String {
+		val today = historyDayKey(System.currentTimeMillis())
+		return if (day.dayKey == today) {
+			getString(R.string.ev_bms_history_today)
+		} else {
+			SimpleDateFormat("d MMMM", Locale.getDefault()).format(Date(day.startMs))
+		}
+	}
+
+	private fun bindDayHistoryRow(
+		inflater: android.view.LayoutInflater,
+		list: LinearLayout,
+		day: DayHistory
+	): View {
+		val group = inflater.inflate(R.layout.ev_bms_history_day, list, false)
+		val children = group.findViewById<LinearLayout>(R.id.history_day_children)
+		val expand = group.findViewById<TextView>(R.id.expand_btn)
+		group.findViewById<View>(R.id.delete_btn).visibility = View.GONE
+		group.findViewById<View>(R.id.history_chart).visibility = View.GONE
+		group.findViewById<View>(R.id.history_chart_legend).visibility = View.GONE
+		group.findViewById<TextView>(R.id.title).text =
+			"🛵 ${getString(R.string.ev_bms_history_day_trip, historyDayLabel(day))}"
+		fillHistoryMetrics(group, daySummaryChips(day))
+		for ((index, row) in day.rows.withIndex()) {
+			if (index > 0) {
+				children.addView(historyItemDivider(children))
+			}
+			when (row) {
+				is HistoryRow.Charge -> children.addView(bindChargeHistoryRow(inflater, children, row.record, true))
+				is HistoryRow.Trip -> children.addView(bindTripHistoryRow(inflater, children, row.record, true))
+			}
+		}
+		applyDayExpanded(group, day.dayKey)
+		val toggle = View.OnClickListener { toggleDayExpanded(group, day.dayKey) }
+		group.findViewById<View>(R.id.history_text).setOnClickListener(toggle)
+		expand.setOnClickListener(toggle)
+		return group
+	}
+
+	private fun daySummaryChips(day: DayHistory): List<HistoryChip> {
+		var energyWh = 0.0
+		var hasEnergy = false
+		var chargeMs = 0L
+		var movingMs = 0L
+		var stopMs = 0L
+		var distanceKm = 0.0
+		for (row in day.rows) {
+			when (row) {
+				is HistoryRow.Charge -> chargeMs += row.record.durationMs()
+				is HistoryRow.Trip -> {
+					movingMs += row.record.movingMs
+					stopMs += row.record.stopMs
+						?: (row.record.durationMs() - row.record.movingMs).coerceAtLeast(0L)
+					distanceKm += row.record.distanceKm ?: 0.0
+					row.record.energyWh?.let {
+						energyWh += it
+						hasEnergy = true
+					}
+				}
+			}
+		}
+		val avgMovingKmh = if (movingMs > 0L && distanceKm > 0.02) {
+			distanceKm / (movingMs / 3_600_000.0)
+		} else {
+			null
+		}
+		val specificWhKm = if (hasEnergy && distanceKm > 0.05) energyWh / distanceKm else null
+		val energyValue = if (hasEnergy) energyWh else null
+		val distanceValue = if (distanceKm > 0.0) distanceKm else null
+		val chargeValue = fmtDuration(chargeMs)
+		val movingValue = fmtDuration(movingMs)
+		val stopValue = fmtDuration(stopMs)
+		return listOf(
+			HistoryChip("📊", n0(energyValue), getString(R.string.ev_bms_history_energy_wh, n0(energyValue))),
+			HistoryChip("🔌", chargeValue, getString(R.string.ev_bms_history_charge_time, chargeValue)),
+			HistoryChip("🕒", movingValue, getString(R.string.ev_bms_history_moving_time, movingValue)),
+			HistoryChip("⏸️", stopValue, getString(R.string.ev_bms_history_stop_time, stopValue)),
+			HistoryChip("🛣️", n(distanceValue), getString(R.string.ev_bms_history_distance, n(distanceValue))),
+			HistoryChip("🚀", n(avgMovingKmh), getString(R.string.ev_bms_history_avg_speed, n(avgMovingKmh))),
+			HistoryChip("📈", n0(specificWhKm), getString(R.string.ev_bms_history_specific_whkm, n0(specificWhKm)))
+		)
+	}
+
+	private fun toggleDayExpanded(group: View, dayKey: String) {
+		if (!expandedHistoryDays.add(dayKey)) {
+			expandedHistoryDays.remove(dayKey)
+		}
+		applyDayExpanded(group, dayKey)
+	}
+
+	private fun applyDayExpanded(group: View, dayKey: String) {
+		val expanded = expandedHistoryDays.contains(dayKey)
+		val children = group.findViewById<View>(R.id.history_day_children)
+		val expand = group.findViewById<TextView>(R.id.expand_btn)
+		children.visibility = if (expanded) View.VISIBLE else View.GONE
+		expand.text = if (expanded) "▾" else "▸"
+		expand.alpha = 1f
+		val hint = getString(
+			if (expanded) R.string.ev_bms_history_collapse_day else R.string.ev_bms_history_expand_day
+		)
+		expand.contentDescription = hint
+		TooltipCompat.setTooltipText(expand, hint)
+	}
+
 	private fun bindChargeHistoryRow(
 		inflater: android.view.LayoutInflater,
 		list: LinearLayout,
-		row: EvHistoryStore.ChargeRecord
+		row: EvHistoryStore.ChargeRecord,
+		compact: Boolean = false
 	): View {
 		val item = inflater.inflate(R.layout.ev_bms_history_row, list, false)
 		val endLabel = if (row.isOpen()) {
@@ -829,7 +948,8 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		} else {
 			fmtTime(row.endMs)
 		}
-		item.findViewById<TextView>(R.id.title).text = "🔌 ${fmtDateTime(row.startMs)} → $endLabel"
+		val startLabel = if (compact) fmtTime(row.startMs) else fmtDateTime(row.startMs)
+		item.findViewById<TextView>(R.id.title).text = "🔌 $startLabel → $endLabel"
 		val stopValue = when {
 			plugin.isChargeStopPending(row.startMs) || row.isOpen() ->
 				getString(R.string.ev_bms_history_stop_pending)
@@ -865,10 +985,12 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	private fun bindTripHistoryRow(
 		inflater: android.view.LayoutInflater,
 		list: LinearLayout,
-		row: EvHistoryStore.ChargeTripRecord
+		row: EvHistoryStore.ChargeTripRecord,
+		compact: Boolean = false
 	): View {
 		val item = inflater.inflate(R.layout.ev_bms_history_row, list, false)
-		item.findViewById<TextView>(R.id.title).text = "🛵 ${fmtDateTime(row.startMs)} → ${fmtTime(row.endMs)}"
+		val startLabel = if (compact) fmtTime(row.startMs) else fmtDateTime(row.startMs)
+		item.findViewById<TextView>(R.id.title).text = "🛵 $startLabel → ${fmtTime(row.endMs)}"
 		val stopValue = row.stopMs?.let { fmtDuration(it) } ?: getString(R.string.ev_bms_value_none)
 		fillHistoryMetrics(
 			item,

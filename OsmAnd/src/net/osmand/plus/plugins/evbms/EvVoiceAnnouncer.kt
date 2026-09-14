@@ -39,6 +39,8 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 	@Volatile
 	private var lastSpokenVoltageText: String? = null
 	private var lastVoltageSpeakMs = 0L
+	private var voltageStopCount = 0
+	private var voltageStoppedSinceMs: Long? = null
 	private var stoppedSinceMs: Long? = null
 	private var stopAnnounceCount = 0
 	private var lastRangeAnnounceMs = 0L
@@ -95,6 +97,8 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 		lastSpokenVoltageV = null
 		lastSpokenVoltageText = null
 		lastVoltageSpeakMs = 0L
+		voltageStopCount = 0
+		voltageStoppedSinceMs = null
 		lastChargeSoc = null
 		lastSpokenChargeTempC = null
 		stoppedSinceMs = null
@@ -205,7 +209,7 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 					speak(app.getString(R.string.ev_bms_voice_charge_soc, soc))
 				}
 			} else {
-				onChargeVoltage(voltageV, 0.5, true)
+				speakPackVoltage(voltageV, 0.5)
 			}
 		}
 		if (announceTemp && tempC != null) {
@@ -217,12 +221,53 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 		}
 	}
 
-	fun onChargeVoltage(voltageV: Double?, stepV: Double, enabled: Boolean) {
+	fun onChargeVoltage(
+		voltageV: Double?,
+		stepV: Double,
+		speedKmh: Double?,
+		stopSpeedKmh: Double,
+		maxRepeats: Int,
+		enabled: Boolean
+	) {
 		if (!enabled || voltageV == null || !voltageV.isFinite() || stepV <= 0) {
 			if (!enabled) {
 				lastSpokenVoltageV = null
 				lastSpokenVoltageText = null
+				voltageStopCount = 0
+				voltageStoppedSinceMs = null
 			}
+			return
+		}
+		val speed = speedKmh ?: return
+		val now = System.currentTimeMillis()
+		if (speed >= stopSpeedKmh) {
+			voltageStoppedSinceMs = null
+			voltageStopCount = 0
+			return
+		}
+		if (voltageStoppedSinceMs == null) {
+			voltageStoppedSinceMs = now
+		}
+		if (now - (voltageStoppedSinceMs ?: now) < STOP_HOLD_MS) {
+			return
+		}
+		val cap = maxRepeats.coerceAtLeast(1)
+		if (voltageStopCount >= cap) {
+			return
+		}
+		if (voltageStopCount == 0) {
+			lastSpokenVoltageV = null
+			lastSpokenVoltageText = null
+		}
+		val before = lastVoltageSpeakMs
+		speakPackVoltage(voltageV, stepV)
+		if (lastVoltageSpeakMs != before) {
+			voltageStopCount++
+		}
+	}
+
+	private fun speakPackVoltage(voltageV: Double?, stepV: Double) {
+		if (voltageV == null || !voltageV.isFinite() || stepV <= 0) {
 			return
 		}
 		val rounded = kotlin.math.round(voltageV * 10.0) / 10.0

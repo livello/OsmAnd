@@ -48,6 +48,7 @@ Off the tick:
 | Live charts | **500 ms**, up to 480 points (~4 min) | charts tab |
 | CSV / GPX | **1 s** default; “same as poll”, 0.5 / 2 / 5 s | unchanged fingerprint rows are skipped |
 | Charge / trip history | **2 s** | history tab |
+| LAN sync | on demand | master HTTP `:8742` serves `ev_telemetry` + recent `tracks/rec` GPX; client pull is additive |
 
 Energy and remaining range **do not** use controller current: `RangeEstimator` gets current only when the BMS is fresh (`bmsFresh`). JBD current sign: **positive = charge into the pack**, negative = discharge.
 
@@ -172,7 +173,7 @@ The “in UI” rate is how often the value **can** change. The snapshot is stil
 | `gear` | Gear | FarDriver `0xE2` | same | 1…4; VESC has none |
 | `motor_temp_c` | Motor temperature | FarDriver `0xF4` / VESC | same | °C |
 | `controller_temp_c` | Controller temperature | FarDriver `0xD6` / VESC MOS | same | °C |
-| `odometer_km` | Odometer | controller session, else wheel | poll + notify | \( (odo_{ctrl} - odo_{start}) \times k_{cal} \); no controller → wheel `tripKm`. Resets only when a **new telemetry recording** starts |
+| `odometer_km` | Odometer | controller session | poll + notify | sum of positive controller-odo deltas during the telemetry recording. BLE reconnect / hardware odo reset does not zero it. No wheel fallback |
 | `controller_trip_km` | Controller trip | same | same | controller session only, never substituted by the wheel |
 | `controller_speed_kmh` | Controller speed | wheel, else controller | notify / poll | `wheelSpeedKmh() ?: controllerSpeedKmh()`. Controller calibration if there is no wheel. At rest with a live wheel GATT → **0** |
 
@@ -251,7 +252,18 @@ Cadence (`cadence_rpm`) is on by default in the field list and charts.
 
 ---
 
-## 7. File map
+## 7. LAN sync (Z1 master → S200X client)
+
+Settings → EV-Telemetry → **Синхронизация телеметрии**.
+
+- **Master** (motorcycle Z1): toggle «Раздавать телеметрию». Binds `0.0.0.0:8742` (port is editable). No password. Serves `ev_telemetry` CSV/GPX, charge/trip history CSV, recent `tracks/rec` GPX, and `cache/share/route.gpx` if present. Recording keeps running.
+- **Client** (S200X): enter master IP, tap «Синхронизировать». Pull is **additive**: existing local files with size &gt; 0 are skipped. History JSON is UNION by `startMs`; slave rows win; master-only rows are appended. Empty trips (&lt; 0.2 km) are not stored.
+
+HTTP: `GET /health`, `GET /files`, `GET /file/<path>`.
+
+---
+
+## 8. File map
 
 | File | Role |
 |---|---|
@@ -265,5 +277,6 @@ Cadence (`cadence_rpm`) is on by default in the field list and charts.
 | `protocol/CscWheelTracker.kt`, `CscCadenceTracker.kt` | CSC |
 | `ble/EvBleUartClient.kt` | four GATT roles |
 | `TelemetryRecorder.kt` | CSV / GPX |
+| `EvBmsSyncController.kt` | LAN master/client file sync (no auth) |
 | `doc/CalculationInfo.md` | odometers, energy, remaining range |
 | `doc/BMS_DATA_ABOUT.md` | JBD/ANT frames and BMS BLE session |

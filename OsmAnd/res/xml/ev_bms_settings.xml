@@ -260,6 +260,13 @@
 		android:title="@string/ev_bms_csv_folder" />
 
 	<Preference
+		android:key="ev_bms_sync"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:persistent="false"
+		android:title="@string/ev_bms_sync"
+		android:summary="@string/ev_bms_sync_desc" />
+
+	<Preference
 		android:key="ev_bms_export_csv"
 		android:layout="@layout/ev_bms_preference_with_descr"
 		android:persistent="false"

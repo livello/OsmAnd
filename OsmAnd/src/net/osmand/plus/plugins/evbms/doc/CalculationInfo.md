@@ -60,10 +60,10 @@ There are **five** distance quantities. Mixing them is the usual source of “th
 | Wheel **lifetime** | `CscWheelTracker.odometerKm` | — (internal) | Persisted `ev_bms_speed_sensor_odo_km` | Never (BLE reconnect / rest / pause keep it) |
 | Wheel **session** | `CscWheelTracker.tripKm` | `wheel_odometer_km` | Prefs `ev_bms_speed_sensor_trip_km` | **New telemetry recording only** |
 | Controller **hardware** | FarDriver `(msb≪16 \| lsb)/10` or VESC `distanceAbsM/1000` | — | On the controller | Never by the plugin |
-| Controller **session** | `(odo_now − odo_start) × k_cal` | `controller_trip_km`; also `odometer_km` when a controller exists | Prefs `ev_bms_ctrl_trip_start_km` | **New telemetry recording only** |
+| Controller **session** | sum of positive hardware-odo deltas (`ctrlSessionKm`) | `controller_trip_km` / `odometer_km` | Prefs `ev_bms_ctrl_session_km` | **New telemetry recording only**. BLE reconnect or a hardware odo reset **does not** zero the session; the next positive delta is added on top |
 | Range **trip** | `RangeEstimator.tripDistanceKm` | `charge_trip_km` (0 while charging) | RAM; reset on new recording **and** on `markTripBoundary` after a charge | New recording / after charge session |
 
-`odometer_km` = controller session if a controller odo exists, else wheel session. It is **not** the wheel lifetime used for remaining range.
+`odometer_km` = controller session mileage for the current telemetry recording. It is **not** the wheel lifetime used for remaining range, and it does not fall back to the wheel session.
 
 ### 2.1. Wheel (CSC BK6LS)
 
@@ -220,6 +220,16 @@ t_{\text{left}} = \frac{Ah_{\text{full}} - \bigl(Ah_{\text{last}} + I \times \De
 \]
 
 (minimum 5 min when \(Ah_{\text{left}} \le 0.05\)).
+
+### 3.5. Trip journal from telemetry CSV
+
+If a ride session stays open all day, charges in the middle are never stored and the journal shows one long trip. On history repair the plugin rebuilds that day from the telemetry CSV:
+
+- charge: pack current \(\ge 2\) A for 20 s, then \(\le 0.4\) A for 45 s, minimum 8 min;
+- ride legs between those windows;
+- distance = max(wheel odo sum, controller odo sum of **positive** steps, GPS \(\ge 8\) km/h, \(v \times \Delta t\)).
+
+Ride pieces and charges are stored separately so they do not overlap. A live trip that covers two or more charges is discarded after the rebuild.
 
 ---
 

@@ -7,7 +7,9 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileWriter
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
+import java.util.LinkedHashMap
 import java.util.Locale
 
 class EvHistoryStore(private val app: OsmandApplication) {
@@ -15,16 +17,17 @@ class EvHistoryStore(private val app: OsmandApplication) {
 	companion object {
 		private val LOG = PlatformUtil.getLog(EvHistoryStore::class.java)
 		const val MAX_ROWS = 80
-		private const val CHARGE_FILE = "charge_history.csv"
-		private const val TRIP_FILE = "charge_trip_history.csv"
+		const val CHARGE_FILE = "charge_history.csv"
+		const val TRIP_FILE = "charge_trip_history.csv"
+		const val REAL_TRIP_KM = 0.2
 		private const val CHARGE_HEADER =
 			"start_time;end_time;duration_min;start_temp_c;end_temp_c;charged_ah;energy_wh;avg_current_a;start_lat;start_lon;end_lat;end_lon"
 		private const val TRIP_HEADER =
 			"start_time;end_time;date;duration_min;moving_min;stop_min;distance_km;energy_wh;used_ah;wh_per_km;avg_moving_kmh;start_voltage_v;end_voltage_v;min_cell_v;start_temp_c;end_temp_c;start_lat;start_lon;end_lat;end_lon"
-		private const val REAL_TRIP_KM = 0.2
-		private const val REAL_TRIP_MOVING_MS = 60_000L
 		private const val MERGE_GAP_MS = 30 * 60_000L
 		private const val MIN_CHARGE_PIECE_MS = 5 * 60_000L
+		private const val MIN_TRIP_PIECE_MS = 60_000L
+		private const val MIN_DAY_PIECE_MS = 60_000L
 		private const val KEEP_TAIL_MIN_MS = 4 * 60 * 60_000L
 		private const val FOLLOW_TRIP_MAX_GAP_MS = 4 * 60 * 60_000L
 	}
@@ -121,8 +124,7 @@ class EvHistoryStore(private val app: OsmandApplication) {
 	) {
 		fun durationMs(): Long = (endMs - startMs).coerceAtLeast(0L)
 
-		fun isRealRide(): Boolean =
-			(distanceKm ?: 0.0) >= REAL_TRIP_KM || movingMs >= REAL_TRIP_MOVING_MS
+		fun isRealRide(): Boolean = (distanceKm ?: 0.0) >= REAL_TRIP_KM
 
 		fun toJson(): JSONObject {
 			return JSONObject()
@@ -184,12 +186,59 @@ class EvHistoryStore(private val app: OsmandApplication) {
 		return parseArray(raw) { ChargeTripRecord.fromJson(it) }
 	}
 
+	fun realTrips(rows: List<ChargeTripRecord>): List<ChargeTripRecord> =
+		rows.filter { it.isRealRide() }
+
+	fun <T> unionByStart(
+		slave: List<T>,
+		incoming: List<T>,
+		windowMs: Long = 120_000L,
+		startMs: (T) -> Long
+	): MutableList<T> {
+		val byStart = LinkedHashMap<Long, T>()
+		fun put(row: T) {
+			val start = startMs(row)
+			val hit = byStart.keys.firstOrNull { kotlin.math.abs(it - start) < windowMs }
+			if (hit != null) {
+				byStart.remove(hit)
+			}
+			byStart[start] = row
+		}
+		for (row in incoming) {
+			put(row)
+		}
+		for (row in slave) {
+			put(row)
+		}
+		return byStart.values.sortedBy(startMs).toMutableList()
+	}
+
+	fun parseChargeCsvText(text: String): List<ChargeRecord> {
+		val lines = text.lineSequence().filter { it.isNotBlank() }.toList()
+		if (lines.size < 2) {
+			return emptyList()
+		}
+		return lines.drop(1).mapNotNull { parseChargeCsvLine(it) }
+	}
+
+	fun parseTripCsvText(text: String): List<ChargeTripRecord> {
+		val lines = text.lineSequence().filter { it.isNotBlank() }.toList()
+		if (lines.size < 2) {
+			return emptyList()
+		}
+		return lines.drop(1).mapNotNull { parseTripCsvLine(it) }
+	}
+
 	fun encodeCharges(rows: List<ChargeRecord>): String {
-		return JSONArray().also { arr -> rows.takeLast(MAX_ROWS).forEach { arr.put(it.toJson()) } }.toString()
+		return JSONArray().also { arr ->
+			rows.sortedBy { it.startMs }.takeLast(MAX_ROWS).forEach { arr.put(it.toJson()) }
+		}.toString()
 	}
 
 	fun encodeTrips(rows: List<ChargeTripRecord>): String {
-		return JSONArray().also { arr -> rows.takeLast(MAX_ROWS).forEach { arr.put(it.toJson()) } }.toString()
+		return JSONArray().also { arr ->
+			rows.sortedBy { it.startMs }.takeLast(MAX_ROWS).forEach { arr.put(it.toJson()) }
+		}.toString()
 	}
 
 	fun mergeChargesWithoutTrip(
@@ -238,10 +287,13 @@ class EvHistoryStore(private val app: OsmandApplication) {
 		val out = ArrayList<ChargeRecord>(charges.size)
 		for (charge in charges) {
 			if (charge.isOpen()) {
-				val superseded = charges.any { later ->
-					later.startMs > charge.startMs && !later.isOpen()
-				} || rides.any { it.startMs > charge.startMs }
-				if (!superseded) {
+				val ride = rides.firstOrNull { it.startMs > charge.startMs }
+				if (ride != null) {
+					val cut = ride.startMs
+					if (cut - charge.startMs >= MIN_CHARGE_PIECE_MS) {
+						out.add(scaleChargePiece(charge, charge.startMs, cut, first = true, last = true))
+					}
+				} else if (!charges.any { later -> later.startMs > charge.startMs && !later.isOpen() }) {
 					out.add(charge)
 				}
 				continue
@@ -307,6 +359,196 @@ class EvHistoryStore(private val app: OsmandApplication) {
 		return out.sortedBy { it.startMs }
 	}
 
+	fun splitTripsAroundCharges(
+		trips: List<ChargeTripRecord>,
+		charges: List<ChargeRecord>,
+		nowMs: Long = System.currentTimeMillis()
+	): List<ChargeTripRecord> {
+		val chargeWindows = charges.map { charge ->
+			val end = if (charge.endMs > 0L) charge.endMs else nowMs
+			charge.startMs to end
+		}.filter { (start, end) -> end > start }.sortedBy { it.first }
+		if (chargeWindows.isEmpty() || trips.isEmpty()) {
+			return trips
+		}
+		val out = ArrayList<ChargeTripRecord>(trips.size)
+		for (trip in trips) {
+			val overlapping = chargeWindows.filter { (start, end) ->
+				trip.startMs < end && trip.endMs > start
+			}
+			if (overlapping.isEmpty()) {
+				out.add(trip)
+				continue
+			}
+			var cursor = trip.startMs
+			for ((chargeStart, chargeEnd) in overlapping) {
+				val cut = minOf(chargeStart, trip.endMs)
+				if (cut - cursor >= MIN_TRIP_PIECE_MS) {
+					scaleTripPiece(trip, cursor, cut)?.let { out.add(it) }
+				}
+				cursor = maxOf(cursor, chargeEnd)
+			}
+			if (trip.endMs - cursor >= MIN_TRIP_PIECE_MS) {
+				scaleTripPiece(trip, cursor, trip.endMs)?.let { out.add(it) }
+			}
+		}
+		return out.sortedBy { it.startMs }
+	}
+
+	fun prepareDisplay(
+		charges: List<ChargeRecord>,
+		trips: List<ChargeTripRecord>,
+		nowMs: Long = System.currentTimeMillis()
+	): Pair<List<ChargeRecord>, List<ChargeTripRecord>> {
+		val splitTrips = splitTripsAroundCharges(trips, charges, nowMs).sortedBy { it.startMs }
+		val clipped = splitChargesAroundTrips(charges, splitTrips, nowMs)
+		val dayCharges = clipped.flatMap { splitChargeAcrossDays(it, nowMs) }
+		val dayTrips = splitTrips.flatMap { splitTripAcrossDays(it) }.filter { it.isRealRide() }
+		return dayCharges to dayTrips
+	}
+
+	fun splitChargeAcrossDays(row: ChargeRecord, nowMs: Long = System.currentTimeMillis()): List<ChargeRecord> {
+		val end = if (row.endMs > 0L) row.endMs else nowMs
+		val pieces = splitIntervalByDays(row.startMs, end)
+		if (pieces.size <= 1) {
+			return listOf(row)
+		}
+		val total = (end - row.startMs).coerceAtLeast(1L).toDouble()
+		return pieces.mapIndexed { index, (start, pieceEnd) ->
+			val last = index == pieces.lastIndex
+			val storedEnd = if (row.isOpen() && last) 0L else pieceEnd
+			val ratio = (pieceEnd - start) / total
+			scaleChargePiece(row, start, storedEnd, index == 0, last, ratio)
+		}
+	}
+
+	fun splitTripAcrossDays(row: ChargeTripRecord): List<ChargeTripRecord> {
+		val pieces = splitIntervalByDays(row.startMs, row.endMs)
+		if (pieces.size <= 1) {
+			return listOf(row)
+		}
+		val total = row.durationMs().coerceAtLeast(1L).toDouble()
+		return pieces.mapIndexed { index, (start, end) ->
+			val ratio = (end - start) / total
+			val first = index == 0
+			val last = index == pieces.lastIndex
+			row.copy(
+				startMs = start,
+				endMs = end,
+				startVoltageV = if (first) row.startVoltageV else row.endVoltageV,
+				endVoltageV = if (last) row.endVoltageV else row.startVoltageV,
+				startTempC = if (first) row.startTempC else row.endTempC,
+				endTempC = if (last) row.endTempC else row.startTempC,
+				startMotorTempC = if (first) row.startMotorTempC else row.endMotorTempC,
+				endMotorTempC = if (last) row.endMotorTempC else row.startMotorTempC,
+				distanceKm = row.distanceKm?.times(ratio),
+				movingMs = (row.movingMs * ratio).toLong(),
+				energyWh = row.energyWh?.times(ratio),
+				usedAh = row.usedAh?.times(ratio),
+				stopMs = row.stopMs?.let { (it * ratio).toLong() },
+				startLat = if (first) row.startLat else row.endLat,
+				startLon = if (first) row.startLon else row.endLon,
+				endLat = if (last) row.endLat else row.startLat,
+				endLon = if (last) row.endLon else row.startLon
+			)
+		}
+	}
+
+	fun splitIntervalByDays(startMs: Long, endMs: Long): List<Pair<Long, Long>> {
+		if (endMs <= startMs) {
+			return listOf(startMs to endMs)
+		}
+		val out = ArrayList<Pair<Long, Long>>()
+		var cursor = startMs
+		while (cursor < endMs) {
+			val nextDay = nextDayStartMs(cursor)
+			val pieceEnd = minOf(nextDay, endMs)
+			if (pieceEnd - cursor >= MIN_DAY_PIECE_MS || out.isEmpty() && pieceEnd == endMs) {
+				out.add(cursor to pieceEnd)
+			} else if (out.isNotEmpty()) {
+				val prev = out.removeAt(out.lastIndex)
+				out.add(prev.first to pieceEnd)
+			} else {
+				out.add(cursor to pieceEnd)
+			}
+			cursor = pieceEnd
+		}
+		return if (out.isEmpty()) listOf(startMs to endMs) else out
+	}
+
+	fun dayStartMs(ms: Long): Long {
+		val cal = Calendar.getInstance()
+		cal.timeInMillis = ms
+		cal.set(Calendar.HOUR_OF_DAY, 0)
+		cal.set(Calendar.MINUTE, 0)
+		cal.set(Calendar.SECOND, 0)
+		cal.set(Calendar.MILLISECOND, 0)
+		return cal.timeInMillis
+	}
+
+	fun nextDayStartMs(ms: Long): Long {
+		val cal = Calendar.getInstance()
+		cal.timeInMillis = dayStartMs(ms)
+		cal.add(Calendar.DAY_OF_MONTH, 1)
+		return cal.timeInMillis
+	}
+
+	private fun scaleTripPiece(trip: ChargeTripRecord, start: Long, end: Long): ChargeTripRecord? {
+		val total = trip.durationMs().coerceAtLeast(1L).toDouble()
+		val ratio = (end - start).coerceAtLeast(1L) / total
+		val first = start <= trip.startMs
+		val last = end >= trip.endMs
+		val piece = trip.copy(
+			startMs = start,
+			endMs = end,
+			startVoltageV = if (first) trip.startVoltageV else trip.endVoltageV,
+			endVoltageV = if (last) trip.endVoltageV else trip.startVoltageV,
+			startTempC = if (first) trip.startTempC else trip.endTempC,
+			endTempC = if (last) trip.endTempC else trip.startTempC,
+			startMotorTempC = if (first) trip.startMotorTempC else trip.endMotorTempC,
+			endMotorTempC = if (last) trip.endMotorTempC else trip.startMotorTempC,
+			distanceKm = trip.distanceKm?.times(ratio),
+			movingMs = (trip.movingMs * ratio).toLong(),
+			energyWh = trip.energyWh?.times(ratio),
+			usedAh = trip.usedAh?.times(ratio),
+			stopMs = trip.stopMs?.let { (it * ratio).toLong() },
+			startLat = if (first) trip.startLat else trip.endLat,
+			startLon = if (first) trip.startLon else trip.endLon,
+			endLat = if (last) trip.endLat else trip.startLat,
+			endLon = if (last) trip.endLon else trip.startLon
+		)
+		return piece.takeIf { it.isRealRide() }
+	}
+
+	private fun scaleChargePiece(
+		charge: ChargeRecord,
+		start: Long,
+		end: Long,
+		first: Boolean,
+		last: Boolean,
+		ratio: Double? = null
+	): ChargeRecord {
+		val chargeEnd = if (charge.endMs > 0L) charge.endMs else maxOf(end, start + 1L)
+		val pieceEnd = if (end > 0L) end else chargeEnd
+		val pieceRatio = ratio ?: ((pieceEnd - start).coerceAtLeast(1L).toDouble() /
+			(chargeEnd - charge.startMs).coerceAtLeast(1L).toDouble())
+		return charge.copy(
+			startMs = start,
+			endMs = end,
+			startTempC = if (first) charge.startTempC else charge.endTempC,
+			endTempC = if (last) charge.endTempC else charge.startTempC,
+			chargedAh = charge.chargedAh?.times(pieceRatio),
+			energyWh = charge.energyWh?.times(pieceRatio),
+			avgCurrentA = charge.avgCurrentA,
+			startMinCellV = if (first) charge.startMinCellV else charge.endMinCellV,
+			endMinCellV = if (last) charge.endMinCellV else charge.startMinCellV,
+			startLat = if (first) charge.startLat else charge.endLat,
+			startLon = if (first) charge.startLon else charge.endLon,
+			endLat = if (last) charge.endLat else charge.startLat,
+			endLon = if (last) charge.endLon else charge.startLon
+		)
+	}
+
 	fun mergeChargePair(a: ChargeRecord, b: ChargeRecord): ChargeRecord {
 		val first = if (a.startMs <= b.startMs) a else b
 		val last = if (a.startMs <= b.startMs) b else a
@@ -355,31 +597,88 @@ class EvHistoryStore(private val app: OsmandApplication) {
 	}
 
 	fun appendTripCsv(row: ChargeTripRecord) {
-		appendCsv(
-			TRIP_FILE,
-			TRIP_HEADER,
-			listOf(
-				fmtTime(row.startMs),
-				fmtTime(row.endMs),
-				fmtDate(row.startMs),
-				n(row.durationMs() / 60000.0, "%.1f"),
-				n(row.movingMs / 60000.0, "%.1f"),
-				n(row.stopMs?.div(60000.0), "%.1f"),
-				n(row.distanceKm, "%.3f"),
-				n(row.energyWh, "%.1f"),
-				n(row.usedAh, "%.3f"),
-				n(row.specificWhKm, "%.1f"),
-				n(row.avgMovingKmh, "%.1f"),
-				n(row.startVoltageV, "%.2f"),
-				n(row.endVoltageV, "%.2f"),
-				n(row.minCellV, "%.3f"),
-				n(row.startTempC, "%.1f"),
-				n(row.endTempC, "%.1f"),
-				n(row.startLat, "%.8f"),
-				n(row.startLon, "%.8f"),
-				n(row.endLat, "%.8f"),
-				n(row.endLon, "%.8f")
+		appendCsv(TRIP_FILE, TRIP_HEADER, tripCells(row))
+	}
+
+	fun rewriteTripCsv(rows: List<ChargeTripRecord>) {
+		writeCsv(TRIP_FILE, TRIP_HEADER, rows.map { tripCells(it) })
+	}
+
+	fun readTripCsv(): List<ChargeTripRecord> {
+		val file = File(app.getAppPath(TelemetryRecorder.DIR_NAME), TRIP_FILE)
+		if (!file.isFile) {
+			return emptyList()
+		}
+		return try {
+			val lines = file.readLines()
+			if (lines.size < 2) {
+				return emptyList()
+			}
+			lines.drop(1).mapNotNull { parseTripCsvLine(it) }
+		} catch (e: Exception) {
+			LOG.error("Cannot read $TRIP_FILE", e)
+			emptyList()
+		}
+	}
+
+	private fun parseTripCsvLine(line: String): ChargeTripRecord? {
+		val p = line.split(';')
+		if (p.size < 7) {
+			return null
+		}
+		val startMs = parseTime(p[0]) ?: return null
+		val endMs = parseTime(p.getOrNull(1) ?: "") ?: return null
+		fun d(i: Int): Double? = p.getOrNull(i)?.toDoubleOrNull()
+		val dateLike = p.getOrNull(2)?.matches(Regex("""\d{4}-\d{2}-\d{2}""")) == true
+		return if (dateLike && p.size >= 16) {
+			val movingMin = d(4) ?: 0.0
+			ChargeTripRecord(
+				startMs = startMs,
+				endMs = endMs,
+				startVoltageV = d(11),
+				endVoltageV = d(12),
+				minCellV = d(13),
+				startTempC = d(14),
+				endTempC = d(15),
+				distanceKm = d(6),
+				movingMs = (movingMin * 60_000.0).toLong(),
+				energyWh = d(7),
+				usedAh = d(8),
+				specificWhKm = d(9),
+				avgMovingKmh = d(10),
+				stopMs = d(5)?.let { (it * 60_000.0).toLong() },
+				startLat = d(16),
+				startLon = d(17),
+				endLat = d(18),
+				endLon = d(19)
 			)
+		} else {
+			null
+		}
+	}
+
+	private fun tripCells(row: ChargeTripRecord): List<String> {
+		return listOf(
+			fmtTime(row.startMs),
+			fmtTime(row.endMs),
+			fmtDate(row.startMs),
+			n(row.durationMs() / 60000.0, "%.1f"),
+			n(row.movingMs / 60000.0, "%.1f"),
+			n(row.stopMs?.div(60000.0), "%.1f"),
+			n(row.distanceKm, "%.3f"),
+			n(row.energyWh, "%.1f"),
+			n(row.usedAh, "%.3f"),
+			n(row.specificWhKm, "%.1f"),
+			n(row.avgMovingKmh, "%.1f"),
+			n(row.startVoltageV, "%.2f"),
+			n(row.endVoltageV, "%.2f"),
+			n(row.minCellV, "%.3f"),
+			n(row.startTempC, "%.1f"),
+			n(row.endTempC, "%.1f"),
+			n(row.startLat, "%.8f"),
+			n(row.startLon, "%.8f"),
+			n(row.endLat, "%.8f"),
+			n(row.endLon, "%.8f")
 		)
 	}
 

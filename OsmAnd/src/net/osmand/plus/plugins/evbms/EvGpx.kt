@@ -11,6 +11,7 @@ import net.osmand.plus.charts.GPXDataSetType
 import net.osmand.plus.charts.OrderedLineDataSet
 import net.osmand.plus.settings.enums.ThemeUsageContext
 import net.osmand.plus.utils.ColorUtilities
+import net.osmand.shared.gpx.GpxFile
 import net.osmand.shared.gpx.GpxTrackAnalysis
 import net.osmand.shared.gpx.GpxUtilities
 import net.osmand.shared.gpx.PointAttributes
@@ -29,6 +30,78 @@ object EvGpx {
 			addAll(field.gpxAliases())
 		}
 	}.distinct().toTypedArray()
+
+	private val ALL_TELEMETRY_TAG_IDS: Set<String> = buildSet {
+		for (field in TelemetryField.entries) {
+			add(field.id)
+			addAll(field.gpxAliases())
+		}
+		add(PointAttributes.EV_TAG_CONSUMPTION)
+		add(PointAttributes.EV_TAG_CONSUMPTION_100M)
+		add(PointAttributes.EV_TAG_POWER)
+		add(PointAttributes.EV_TAG_ENERGY)
+		add(PointAttributes.EV_TAG_VOLTAGE)
+		add(PointAttributes.EV_TAG_CURRENT)
+		add(PointAttributes.EV_TAG_SOC)
+		add(PointAttributes.EV_TAG_CHARGE_TRIP)
+	}
+
+	@JvmStatic
+	fun createMapRestoreFilter(
+		selectedFields: List<TelemetryField>,
+		coloringType: String?,
+		visualizationType: String?,
+		wallColoringType: String?
+	): GpxUtilities.ExtensionTagFilter {
+		val keep = keepTagsForMapRestore(selectedFields, coloringType, visualizationType, wallColoringType)
+		return GpxUtilities.ExtensionTagFilter { tag -> shouldKeepExtension(tag, keep) }
+	}
+
+	fun keepTagsForMapRestore(
+		selectedFields: List<TelemetryField>,
+		coloringType: String?,
+		visualizationType: String?,
+		wallColoringType: String?
+	): Set<String> {
+		val keep = HashSet<String>()
+		for (field in selectedFields) {
+			keep.add(field.id)
+			keep.addAll(field.gpxAliases())
+		}
+		val coloring = coloringType.orEmpty()
+		val visualization = visualizationType.orEmpty()
+		val wall = wallColoringType.orEmpty()
+		if (coloring.contains("ev_wh_km") || wall.contains("ev_wh_km")
+			|| visualization == "ev_wh_km_100m"
+		) {
+			keep.add(PointAttributes.EV_TAG_CONSUMPTION)
+			keep.add(PointAttributes.EV_TAG_CONSUMPTION_100M)
+			keep.add(TelemetryField.CONSUMPTION.id)
+			keep.add(TelemetryField.COVERAGE.id)
+		}
+		if (visualization == "ev_controller_power" || coloring.contains("power_w")) {
+			keep.add(PointAttributes.EV_TAG_POWER)
+			keep.add(TelemetryField.POWER.id)
+		}
+		return keep
+	}
+
+	fun shouldKeepExtension(tag: String, keepIds: Set<String>): Boolean {
+		val id = telemetryTagId(tag)
+		if (id.isEmpty() || id !in ALL_TELEMETRY_TAG_IDS) {
+			return true
+		}
+		return id in keepIds
+	}
+
+	fun telemetryTagId(tag: String): String {
+		var id = tag.lowercase().replace(GpxFile.XML_COLON, ":")
+		val prefix = GpxUtilities.OSMAND_EXTENSIONS_PREFIX
+		if (id.startsWith(prefix)) {
+			id = id.substring(prefix.length)
+		}
+		return id
+	}
 
 	fun put(
 		json: JSONObject,

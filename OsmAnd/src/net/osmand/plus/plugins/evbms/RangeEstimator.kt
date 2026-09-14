@@ -245,17 +245,20 @@ class RangeEstimator(
 	}
 
 	private fun accumulateTrip(prev: Sample, cur: Sample) {
+		if (isChargeSample(prev) || isChargeSample(cur)) {
+			return
+		}
 		val dAh = coulombAh(prev, cur)
 		if (dAh < -CHARGE_DISCONTINUITY_AH) {
 			return
 		}
-		val dWh = segmentEnergyWh(prev, cur)
-		tripWh += dWh
-		tripAh = (tripAh + dAh).coerceAtLeast(0.0)
 		val step = distanceStep(prev, cur) ?: return
 		if (step.km < 0.002) {
 			return
 		}
+		val dWh = segmentEnergyWh(prev, cur).coerceAtLeast(0.0)
+		tripWh += dWh
+		tripAh = (tripAh + dAh.coerceAtLeast(0.0)).coerceAtLeast(0.0)
 		tripDistanceKm += step.km
 		pushKm(step.km, dWh)
 	}
@@ -311,7 +314,7 @@ class RangeEstimator(
 		while (it.hasNext()) {
 			val cur = it.next()
 			val step = distanceStep(prev, cur)
-			if (step != null) {
+			if (step != null && !isChargeSample(prev) && !isChargeSample(cur) && step.km >= 0.002) {
 				distanceKm += step.km
 				if (step.source == DistanceSource.CONTROLLER) {
 					usedController = true
@@ -320,7 +323,9 @@ class RangeEstimator(
 			if (isGpsUnreliable(prev, cur)) {
 				gpsBad = true
 			}
-			windowWh += segmentEnergyWh(prev, cur)
+			if (!isChargeSample(prev) && !isChargeSample(cur) && (step?.km ?: 0.0) >= 0.002) {
+				windowWh += segmentEnergyWh(prev, cur).coerceAtLeast(0.0)
+			}
 			prev = cur
 		}
 		gpsUnreliable = gpsBad
@@ -395,6 +400,11 @@ class RangeEstimator(
 		return blended
 	}
 
+	private fun isChargeSample(sample: Sample): Boolean {
+		val current = sample.currentA ?: return false
+		return current >= 0.15
+	}
+
 	companion object {
 		private const val MAX_PLAUSIBLE_KMH = 160.0
 		private const val MAX_ACCURACY_M = 40f
@@ -411,6 +421,7 @@ class RangeEstimator(
 		private const val G = 9.81
 		private const val CELL_LVC_V = 3.00
 		private const val CELL_HEALTHY_V = 3.50
+		private const val WALK_GPS_KMH = 8.0
 
 		fun haversineKm(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
 			val r = 6371.0
@@ -450,8 +461,11 @@ class RangeEstimator(
 				return null
 			}
 			accept(wheelDeltaKm, DistanceSource.WHEEL)?.let { return it }
-			if (allowGps && !gpsUnreliable) {
-				accept(gpsKm, DistanceSource.GPS)?.let { return it }
+			if (allowGps && !gpsUnreliable && gpsKm != null && dtMs > 0L) {
+				val gpsKmh = gpsKm / (dtMs / 3_600_000.0)
+				if (gpsKmh >= WALK_GPS_KMH) {
+					accept(gpsKm, DistanceSource.GPS)?.let { return it }
+				}
 			}
 			accept(controllerDeltaKm, DistanceSource.CONTROLLER)?.let { return it }
 			accept(speedKm, DistanceSource.SPEED)?.let { return it }

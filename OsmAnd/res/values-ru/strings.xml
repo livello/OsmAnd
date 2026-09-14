@@ -1,5 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="ev_bms_sync">Синхронизация телеметрии</string>
+    <string name="ev_bms_sync_desc">CSV, GPX и треки поездки по Wi‑Fi / точке доступа, без пароля.</string>
+    <string name="ev_bms_sync_master_section">Мастер (раздача)</string>
+    <string name="ev_bms_sync_client_section">Клиент (загрузка)</string>
+    <string name="ev_bms_sync_master">Раздавать телеметрию</string>
+    <string name="ev_bms_sync_port">Порт</string>
+    <string name="ev_bms_sync_port_invalid">Порт должен быть от 1024 до 65535</string>
+    <string name="ev_bms_sync_ip">Адреса: %1$s</string>
+    <string name="ev_bms_sync_ip_none">Нет адреса Wi‑Fi / точки доступа. Включите сеть или hotspot.</string>
+    <string name="ev_bms_sync_status_off">Сервер выключен</string>
+    <string name="ev_bms_sync_status_on">Слушает 0.0.0.0:%1$d</string>
+    <string name="ev_bms_sync_status_clients">Клиентов: %1$d · последняя раздача: %2$s</string>
+    <string name="ev_bms_sync_status_never">никогда</string>
+    <string name="ev_bms_sync_host">Адрес мастера</string>
+    <string name="ev_bms_sync_host_hint">IP или host:port</string>
+    <string name="ev_bms_sync_now">Синхронизировать</string>
+    <string name="ev_bms_sync_progress">%1$d / %2$d · %3$s</string>
+    <string name="ev_bms_sync_result">Скопировано %1$d, пропущено %2$d, ошибок %3$d</string>
+    <string name="ev_bms_sync_result_none">Ещё не синхронизировали</string>
+    <string name="ev_bms_sync_failed">Не удалось подключиться к %1$s</string>
+    <string name="ev_bms_sync_host_empty">Укажите IP мастера</string>
+    <string name="ev_bms_sync_notification">EV телеметрия: раздача</string>
+    <string name="ev_bms_sync_notification_text">%1$s · порт %2$d, без пароля</string>
+    <string name="ev_bms_sync_started">Раздача телеметрии включена</string>
+    <string name="ev_bms_sync_stopped">Раздача телеметрии выключена</string>
+    <string name="ev_bms_sync_busy">Идёт синхронизация…</string>
+    <string name="ev_bms_sync_bind_failed">Не удалось открыть порт телеметрии</string>
     <string name="torrent_maps_verify_hashes">Проверить скачанные карты</string>
     <string name="torrent_maps_verify_hashes_desc">Сверить локальные карты с SHA-1 кусков торрента. Раньше незавершённая загрузка писала прямо в рабочие .obf — из‑за этого пропадали большие области на карте.</string>
     <string name="torrent_maps_verify_running">Проверка карт… %1$d / %2$d</string>
@@ -15,6 +42,12 @@
     <string name="ev_bms_voice_alerts_on">голосовые оповещения включены</string>
     <string name="ev_bms_ride_modes">Режимы поездки</string>
     <string name="ev_bms_history_group">История</string>
+    <string name="ev_bms_history_day_trip">Поездка · %1$s</string>
+    <string name="ev_bms_history_today">сегодня</string>
+    <string name="ev_bms_history_charge_time">Время зарядки %1$s</string>
+    <string name="ev_bms_history_moving_time">Время движения %1$s</string>
+    <string name="ev_bms_history_expand_day">Показать зарядки и пробеги</string>
+    <string name="ev_bms_history_collapse_day">Скрыть зарядки и пробеги</string>
     <string name="ev_bms_voice_pack">Напряжение пакета</string>
     <string name="ev_bms_voice_stop_range">Остановка и запас</string>
     <string name="ev_bms_voice_cells">Ячейки</string>

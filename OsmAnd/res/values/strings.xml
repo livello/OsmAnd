@@ -11,6 +11,33 @@
 	Strings for OsmAnd core
 	Thx - Hardy
 -->
+	<string name="ev_bms_sync">Telemetry sync</string>
+	<string name="ev_bms_sync_desc">Share CSV, GPX, and ride tracks over Wi‑Fi / hotspot. No password.</string>
+	<string name="ev_bms_sync_master_section">Master (share)</string>
+	<string name="ev_bms_sync_client_section">Client (pull)</string>
+	<string name="ev_bms_sync_master">Share telemetry</string>
+	<string name="ev_bms_sync_port">Port</string>
+	<string name="ev_bms_sync_port_invalid">Port must be between 1024 and 65535</string>
+	<string name="ev_bms_sync_ip">Addresses: %1$s</string>
+	<string name="ev_bms_sync_ip_none">No Wi‑Fi / hotspot address. Turn on Wi‑Fi or a hotspot.</string>
+	<string name="ev_bms_sync_status_off">Server is off</string>
+	<string name="ev_bms_sync_status_on">Listening on 0.0.0.0:%1$d</string>
+	<string name="ev_bms_sync_status_clients">Clients: %1$d · last serve: %2$s</string>
+	<string name="ev_bms_sync_status_never">never</string>
+	<string name="ev_bms_sync_host">Master address</string>
+	<string name="ev_bms_sync_host_hint">IP or host:port</string>
+	<string name="ev_bms_sync_now">Synchronize</string>
+	<string name="ev_bms_sync_progress">%1$d / %2$d · %3$s</string>
+	<string name="ev_bms_sync_result">Copied %1$d, skipped %2$d, errors %3$d</string>
+	<string name="ev_bms_sync_result_none">Not synchronized yet</string>
+	<string name="ev_bms_sync_failed">Could not connect to %1$s</string>
+	<string name="ev_bms_sync_host_empty">Enter the master IP</string>
+	<string name="ev_bms_sync_notification">EV telemetry: sharing</string>
+	<string name="ev_bms_sync_notification_text">%1$s · port %2$d, no password</string>
+	<string name="ev_bms_sync_started">Telemetry sharing is on</string>
+	<string name="ev_bms_sync_stopped">Telemetry sharing is off</string>
+	<string name="ev_bms_sync_busy">Synchronization already running…</string>
+	<string name="ev_bms_sync_bind_failed">Could not open the telemetry port</string>
 	<string name="torrent_maps_verify_hashes">Verify downloaded maps</string>
 	<string name="torrent_maps_verify_hashes_desc">Check local torrent maps against piece SHA-1 hashes. Incomplete writes used to land in the live maps folder and wipe large regions.</string>
 	<string name="torrent_maps_verify_running">Checking maps… %1$d / %2$d</string>
@@ -26,6 +53,12 @@
 	<string name="ev_bms_voice_alerts_on">Voice alerts enabled</string>
 	<string name="ev_bms_ride_modes">Ride modes</string>
 	<string name="ev_bms_history_group">History</string>
+	<string name="ev_bms_history_day_trip">Trip · %1$s</string>
+	<string name="ev_bms_history_today">today</string>
+	<string name="ev_bms_history_charge_time">Charging time %1$s</string>
+	<string name="ev_bms_history_moving_time">Moving time %1$s</string>
+	<string name="ev_bms_history_expand_day">Show charges and rides</string>
+	<string name="ev_bms_history_collapse_day">Hide charges and rides</string>
 	<string name="ev_bms_voice_pack">Pack voltage</string>
 	<string name="ev_bms_voice_stop_range">Stop and range</string>
 	<string name="ev_bms_voice_cells">Cell alerts</string>

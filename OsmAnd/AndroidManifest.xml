@@ -1195,6 +1195,12 @@
 			android:foregroundServiceType="dataSync"
 			android:stopWithTask="false" />
 
+		<service
+			android:name="net.osmand.plus.plugins.evbms.EvBmsSyncService"
+			android:exported="false"
+			android:foregroundServiceType="dataSync"
+			android:stopWithTask="false" />
+
 		<activity
 			android:name="net.osmand.plus.plugins.torrentmaps.TorrentMapsActivity"
 			android:exported="false"

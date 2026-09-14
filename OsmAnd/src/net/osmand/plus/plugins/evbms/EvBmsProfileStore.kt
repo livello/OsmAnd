@@ -37,6 +37,7 @@ class EvBmsProfileStore(
 			"ev_bms_telemetry_session_csv",
 			"ev_bms_telemetry_session_gpx",
 			"ev_bms_telemetry_session_fields",
+			"ev_bms_telemetry_history_done",
 			"ev_bms_hike_snapshot",
 			"ev_bms_hud_demo",
 			"ev_bms_ctrl_trip_start_km",

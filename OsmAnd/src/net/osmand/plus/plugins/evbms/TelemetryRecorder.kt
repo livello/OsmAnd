@@ -507,6 +507,8 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 		}
 	}
 
+	fun openLog(spec: String): InputStream? = openInput(spec)
+
 	private fun openInput(spec: String): InputStream? {
 		return try {
 			if (spec.startsWith("content:")) {
@@ -679,5 +681,93 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 
 	private fun xml(value: String): String {
 		return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+	}
+
+	@Synchronized
+	fun flush() {
+		try {
+			csvWriter?.flush()
+		} catch (_: Exception) {
+		}
+		try {
+			gpxWriter?.flush()
+		} catch (_: Exception) {
+		}
+	}
+
+	fun isActiveFileName(name: String): Boolean {
+		val stamp = activeStamp() ?: return false
+		return name.substringBeforeLast('.') == stamp
+	}
+
+	fun appDir(): File = app.getAppPath(DIR_NAME)
+
+	fun existingSize(name: String): Long {
+		val tree = folderTree()
+		if (tree != null) {
+			val found = tree.listFiles().firstOrNull { it.isFile && it.name == name }
+			if (found != null) {
+				return found.length()
+			}
+		}
+		val file = File(app.getAppPath(DIR_NAME), name)
+		return if (file.isFile) file.length() else 0L
+	}
+
+	fun writeNewFile(name: String, input: InputStream): Boolean {
+		if (name.isBlank() || name.contains("..") || name.contains('/') || name.contains('\\')) {
+			return false
+		}
+		if (isActiveFileName(name) || existingSize(name) > 0L) {
+			return false
+		}
+		val tree = folderTree()
+		if (tree != null && !isHistoryName(name)) {
+			return try {
+				val created = tree.findFile(name) ?: tree.createFile(mimeForName(name), name)
+				if (created == null) {
+					writeAppDirFile(name, input)
+				} else {
+					app.contentResolver.openOutputStream(created.uri, "wt")?.use { out ->
+						input.copyTo(out)
+					} != null
+				}
+			} catch (e: Exception) {
+				LOG.error("Cannot write $name to SAF", e)
+				writeAppDirFile(name, input)
+			}
+		}
+		return writeAppDirFile(name, input)
+	}
+
+	private fun writeAppDirFile(name: String, input: InputStream): Boolean {
+		return try {
+			val dir = app.getAppPath(DIR_NAME)
+			if (!dir.exists() && !dir.mkdirs()) {
+				return false
+			}
+			val dest = File(dir, name)
+			if (dest.exists() && dest.length() > 0L) {
+				return false
+			}
+			val part = File(dir, "$name.part")
+			part.outputStream().use { input.copyTo(it) }
+			if (dest.exists()) {
+				dest.delete()
+			}
+			part.renameTo(dest)
+		} catch (e: Exception) {
+			LOG.error("Cannot write $name", e)
+			false
+		}
+	}
+
+	private fun isHistoryName(name: String): Boolean {
+		val n = name.lowercase()
+		return n == EvHistoryStore.CHARGE_FILE || n == EvHistoryStore.TRIP_FILE
+	}
+
+	private fun mimeForName(name: String): String {
+		return if (name.endsWith(".gpx", true)) "application/gpx+xml" else "text/csv"
 	}
 }
