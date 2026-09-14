@@ -48,7 +48,7 @@ Off the tick:
 | Live charts | **500 ms**, up to 480 points (~4 min) | charts tab |
 | CSV / GPX | **1 s** default; “same as poll”, 0.5 / 2 / 5 s | unchanged fingerprint rows are skipped |
 | Charge / trip history | **2 s** | history tab |
-| LAN sync | on demand | master HTTP `:8742` serves `ev_telemetry` + recent `tracks/rec` GPX; client pull is additive |
+| LAN sync | live ~12 s + on peer seen | UDP discover; each sharing phone serves HTTP `:8742` and pulls peers; additive UNION |
 
 Energy and remaining range **do not** use controller current: `RangeEstimator` gets current only when the BMS is fresh (`bmsFresh`). JBD current sign: **positive = charge into the pack**, negative = discharge.
 
@@ -252,14 +252,18 @@ Cadence (`cadence_rpm`) is on by default in the field list and charts.
 
 ---
 
-## 7. LAN sync (Z1 master → S200X client)
+## 7. LAN sync (Z1 ↔ S200X peers)
 
 Settings → EV-Telemetry → **Синхронизация телеметрии**.
 
-- **Master** (motorcycle Z1): toggle «Раздавать телеметрию». Binds `0.0.0.0:8742` (port is editable). No password. Serves `ev_telemetry` CSV/GPX, charge/trip history CSV, recent `tracks/rec` GPX, and `cache/share/route.gpx` if present. Recording keeps running.
-- **Client** (S200X): enter master IP, tap «Синхронизировать». Pull is **additive**: existing local files with size &gt; 0 are skipped. History JSON is UNION by `startMs`; slave rows win; master-only rows are appended. Empty trips (&lt; 0.2 km) are not stored.
+Both phones are peers when «Раздавать телеметрию» is on: each **serves and pulls**. Enable it on the motorcycle Z1 and the pocket S200X so they keep exchanging new files while both are up.
 
-HTTP: `GET /health`, `GET /files`, `GET /file/<path>`.
+- **UDP autodiscover** on port **8743**: beacon `EVBMS1` + JSON (`plugin=osmand.ev.bms`, device name, TCP port, role `sync-peer`). The dialog lists discovered smartphones; tap one to fill the host. Manual IP remains as fallback.
+- **TCP** default **8742** (editable). No password. Foreground notification keeps serving with the screen off.
+- **Live two-way**: periodic pull/push (~12 s) plus a pull when a peer appears. Manual «Синхронизировать» is still there.
+- **Additive UNION only**: never delete the other side’s files. Same filename: skip a smaller/older remote copy; take a larger/newer one (growing CSV/GPX). Do not overwrite a file this phone is currently recording. History JSON/CSV is UNION by `startMs`; on conflict keep the richer/newer local row. Empty trips (&lt; 0.2 km) are not stored. `leftoverTrips` is kept so a merge cannot wipe the old journal.
+
+HTTP: `GET /health`, `GET /files`, `GET /file/<path>`. Serves `ev_telemetry` CSV/GPX, charge/trip history CSV, recent `tracks/rec` GPX, and `cache/share/route.gpx` if present. Recording keeps running.
 
 ---
 
@@ -277,6 +281,7 @@ HTTP: `GET /health`, `GET /files`, `GET /file/<path>`.
 | `protocol/CscWheelTracker.kt`, `CscCadenceTracker.kt` | CSC |
 | `ble/EvBleUartClient.kt` | four GATT roles |
 | `TelemetryRecorder.kt` | CSV / GPX |
-| `EvBmsSyncController.kt` | LAN master/client file sync (no auth) |
+| `EvBmsSyncController.kt` | LAN peer file sync (UDP discover, live two-way, no auth) |
+| `EvBmsSyncDiscovery.kt` | UDP `EVBMS1` beacon / listen |
 | `doc/CalculationInfo.md` | odometers, energy, remaining range |
 | `doc/BMS_DATA_ABOUT.md` | JBD/ANT frames and BMS BLE session |

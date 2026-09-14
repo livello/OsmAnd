@@ -10,14 +10,18 @@ import android.provider.Settings
 import android.util.Log
 import net.osmand.plus.OsmandApplication
 import net.osmand.plus.R
+import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.net.Proxy
 import java.net.URL
 import java.util.LinkedHashSet
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 class EvBmsSyncController(
@@ -29,10 +33,13 @@ class EvBmsSyncController(
 		const val DEFAULT_PORT = 8742
 		const val MIN_PORT = 1024
 		const val MAX_PORT = 65535
+		private const val LIVE_SYNC_MS = 12_000L
+		private const val LIVE_SYNC_INITIAL_MS = 3_000L
 	}
 
 	interface Listener {
 		fun onMasterChanged()
+		fun onPeersChanged()
 		fun onSyncProgress(done: Int, total: Int, name: String)
 		fun onSyncFinished(result: SyncResult)
 	}
@@ -49,9 +56,15 @@ class EvBmsSyncController(
 	private val io = Executors.newSingleThreadExecutor { r ->
 		Thread(r, "ev-bms-sync").apply { isDaemon = true }
 	}
+	private val live = Executors.newSingleThreadScheduledExecutor { r ->
+		Thread(r, "ev-bms-live-sync").apply { isDaemon = true }
+	}
 	private val listeners = CopyOnWriteArrayList<Listener>()
 	private val pulling = AtomicBoolean(false)
+	private val lastPeerRev = ConcurrentHashMap<String, Long>()
 	private var server: EvBmsSyncHttpServer? = null
+	private var discovery: EvBmsSyncDiscovery? = null
+	private var liveTask: ScheduledFuture<*>? = null
 	@Volatile
 	var serving: Boolean = false
 		private set
@@ -70,6 +83,7 @@ class EvBmsSyncController(
 	fun addListener(listener: Listener) {
 		listeners.add(listener)
 		listener.onMasterChanged()
+		listener.onPeersChanged()
 	}
 
 	fun removeListener(listener: Listener) {
@@ -77,6 +91,8 @@ class EvBmsSyncController(
 	}
 
 	fun clientCount(): Int = clientCount
+
+	fun discoveredPeers(): List<EvBmsSyncDiscovery.Peer> = discovery?.snapshot().orEmpty()
 
 	fun files(): EvBmsSyncFiles {
 		val recorder = plugin.telemetryRecorder()
@@ -94,6 +110,8 @@ class EvBmsSyncController(
 			catalog,
 			port,
 			deviceName(),
+			plugin.getId(),
+			plugin.syncPeerId(),
 			onClient = { delta ->
 				clientCount = (clientCount + delta).coerceAtLeast(0)
 				ui.post { listeners.forEach { it.onMasterChanged() } }
@@ -109,6 +127,12 @@ class EvBmsSyncController(
 			server = http
 			serving = true
 			plugin.SYNC_MASTER.set(true)
+			try {
+				startDiscoveryLocked()
+				scheduleLiveSync()
+			} catch (e: Exception) {
+				Log.w(TAG, "discovery", e)
+			}
 			EvBmsSyncService.sync(app, true)
 			ui.post {
 				listeners.forEach { it.onMasterChanged() }
@@ -116,7 +140,7 @@ class EvBmsSyncController(
 			}
 			true
 		} catch (e: Exception) {
-			Log.w(TAG, "start master", e)
+			Log.w(TAG, "start peer", e)
 			http.stop()
 			serving = false
 			ui.post {
@@ -130,11 +154,19 @@ class EvBmsSyncController(
 	fun stopMaster() {
 		serving = false
 		plugin.SYNC_MASTER.set(false)
+		liveTask?.cancel(false)
+		liveTask = null
+		discovery?.stop()
+		discovery = null
 		server?.stop()
 		server = null
 		clientCount = 0
+		lastPeerRev.clear()
 		EvBmsSyncService.sync(app, false)
-		ui.post { listeners.forEach { it.onMasterChanged() } }
+		ui.post {
+			listeners.forEach { it.onMasterChanged() }
+			listeners.forEach { it.onPeersChanged() }
+		}
 		app.showToastMessage(R.string.ev_bms_sync_stopped)
 	}
 
@@ -150,6 +182,10 @@ class EvBmsSyncController(
 
 	fun shutdown() {
 		serving = false
+		liveTask?.cancel(false)
+		liveTask = null
+		discovery?.stop()
+		discovery = null
 		server?.stop()
 		server = null
 		clientCount = 0
@@ -159,36 +195,111 @@ class EvBmsSyncController(
 	fun isPulling(): Boolean = pulling.get()
 
 	fun pullFromMaster(rawHost: String) {
+		syncNow(rawHost, manual = true)
+	}
+
+	fun syncNow(rawHost: String, manual: Boolean = true) {
 		if (!pulling.compareAndSet(false, true)) {
-			app.showToastMessage(R.string.ev_bms_sync_busy)
-			return
-		}
-		val endpoint = parseEndpoint(rawHost, plugin.syncPort())
-		if (endpoint == null) {
-			pulling.set(false)
-			app.showToastMessage(R.string.ev_bms_sync_host_empty)
-			return
-		}
-		plugin.SYNC_HOST.set(rawHost.trim())
-		io.execute {
-			val result = try {
-				pullLocked(endpoint.first, endpoint.second)
-			} catch (e: Exception) {
-				Log.w(TAG, "pull", e)
-				SyncResult(
-					0,
-					0,
-					1,
-					app.getString(R.string.ev_bms_sync_failed, "${endpoint.first}:${endpoint.second}")
-				)
+			if (manual) {
+				app.showToastMessage(R.string.ev_bms_sync_busy)
 			}
+			return
+		}
+		val targets = ArrayList<Pair<String, Int>>()
+		val seen = HashSet<String>()
+		fun addTarget(host: String, port: Int) {
+			val key = "$host:$port"
+			if (host.isBlank() || key in seen || host in localIpv4Addresses()) {
+				return
+			}
+			seen.add(key)
+			targets.add(host to port)
+		}
+		parseEndpoint(rawHost, plugin.syncPort())?.let { addTarget(it.first, it.second) }
+		if (manual || rawHost.isBlank()) {
+			for (peer in discoveredPeers()) {
+				addTarget(peer.host, peer.port)
+			}
+		}
+		if (targets.isEmpty()) {
+			pulling.set(false)
+			if (manual) {
+				app.showToastMessage(R.string.ev_bms_sync_host_empty)
+			}
+			return
+		}
+		if (rawHost.isNotBlank()) {
+			plugin.SYNC_HOST.set(rawHost.trim())
+		}
+		io.execute {
+			var copied = 0
+			var skipped = 0
+			var errors = 0
+			var lastFail: String? = null
+			for (target in targets) {
+				val result = try {
+					pullLocked(target.first, target.second, force = manual)
+				} catch (e: Exception) {
+					Log.w(TAG, "pull ${target.first}", e)
+					SyncResult(
+						0, 0, 1,
+						app.getString(R.string.ev_bms_sync_failed, "${target.first}:${target.second}")
+					)
+				}
+				copied += result.copied
+				skipped += result.skipped
+				errors += result.errors
+				if (result.errors > 0 && result.copied == 0) {
+					lastFail = result.message
+				}
+			}
+			val message = if (copied == 0 && errors > 0 && lastFail != null) {
+				lastFail
+			} else {
+				app.getString(R.string.ev_bms_sync_result, copied, skipped, errors)
+			}
+			val result = SyncResult(copied, skipped, errors, message)
 			lastResult = result
 			pulling.set(false)
 			ui.post { listeners.forEach { it.onSyncFinished(result) } }
 		}
 	}
 
-	private fun pullLocked(host: String, port: Int): SyncResult {
+	private fun startDiscoveryLocked() {
+		discovery?.stop()
+		val disco = EvBmsSyncDiscovery(
+			app,
+			plugin.getId(),
+			{ plugin.syncPeerId() },
+			{ deviceName() },
+			{ plugin.syncPort() },
+			{ localIpv4Addresses() },
+			{ files().catalogRev() },
+			onPeersChanged = {
+				ui.post { listeners.forEach { it.onPeersChanged() } }
+				if (serving) {
+					live.execute { syncNow("", manual = false) }
+				}
+			}
+		)
+		discovery = disco
+		disco.start()
+	}
+
+	private fun scheduleLiveSync() {
+		liveTask?.cancel(false)
+		liveTask = live.scheduleAtFixedRate({
+			try {
+				if (serving) {
+					syncNow("", manual = false)
+				}
+			} catch (e: Exception) {
+				Log.w(TAG, "live", e)
+			}
+		}, LIVE_SYNC_INITIAL_MS, LIVE_SYNC_MS, TimeUnit.MILLISECONDS)
+	}
+
+	private fun pullLocked(host: String, port: Int, force: Boolean): SyncResult {
 		val base = "http://$host:$port"
 		val catalogConn = open(URL("$base/files"), 15_000, 30_000)
 		val catalogText = try {
@@ -201,6 +312,27 @@ class EvBmsSyncController(
 			catalogConn.inputStream.bufferedReader().use { it.readText() }
 		} finally {
 			catalogConn.disconnect()
+		}
+		val json = try {
+			JSONObject(catalogText)
+		} catch (_: Exception) {
+			return SyncResult(
+				0, 0, 1,
+				app.getString(R.string.ev_bms_sync_failed, "$host:$port")
+			)
+		}
+		val remotePlugin = json.optString("plugin")
+		if (remotePlugin.isNotBlank() && remotePlugin != plugin.getId()) {
+			return SyncResult(0, 0, 1, app.getString(R.string.ev_bms_sync_failed, "$host:$port"))
+		}
+		val remoteId = json.optString("id")
+		if (remoteId.isNotBlank() && remoteId == plugin.syncPeerId()) {
+			return SyncResult(0, 0, 0, app.getString(R.string.ev_bms_sync_result, 0, 0, 0))
+		}
+		val remoteRev = json.optLong("rev")
+		val revKey = remoteId.ifBlank { "$host:$port" }
+		if (!force && remoteRev > 0L && lastPeerRev[revKey] == remoteRev) {
+			return SyncResult(0, 0, 0, app.getString(R.string.ev_bms_sync_result, 0, 0, 0))
 		}
 		val catalog = files()
 		val remote = catalog.parseCatalog(catalogText)
@@ -219,9 +351,9 @@ class EvBmsSyncController(
 				try {
 					val text = downloadText(base, entry.path)
 					if (entry.name.equals(EvHistoryStore.CHARGE_FILE, true)) {
-						incomingCharges = 				plugin.historyCsvStore().parseChargeCsvText(text)
-			} else {
-				incomingTrips = plugin.historyCsvStore().parseTripCsvText(text)
+						incomingCharges = plugin.historyCsvStore().parseChargeCsvText(text)
+					} else {
+						incomingTrips = plugin.historyCsvStore().parseTripCsvText(text)
 					}
 					copied++
 				} catch (e: Exception) {
@@ -230,7 +362,7 @@ class EvBmsSyncController(
 				}
 				continue
 			}
-			if (catalog.shouldSkipIncoming(entry.path)) {
+			if (catalog.shouldSkipIncoming(entry.path, entry.size, entry.mtime)) {
 				skipped++
 				continue
 			}
@@ -242,7 +374,7 @@ class EvBmsSyncController(
 						continue
 					}
 					conn.inputStream.use { input ->
-						if (catalog.writeNew(entry.path, input)) {
+						if (catalog.writeIncoming(entry.path, input, entry.size, entry.mtime)) {
 							copied++
 							if (entry.path.startsWith(EvBmsSyncFiles.PREFIX_TELEMETRY) &&
 								entry.name.endsWith(".csv", true)
@@ -264,6 +396,9 @@ class EvBmsSyncController(
 		plugin.mergeIncomingHistory(incomingCharges, incomingTrips)
 		plugin.forgetTelemetryHistoryDone(downloadedCsv)
 		plugin.repairChargeHistory()
+		if (errors == 0) {
+			lastPeerRev[revKey] = remoteRev
+		}
 		ui.post {
 			listeners.forEach { it.onSyncProgress(remote.size, total, "") }
 		}

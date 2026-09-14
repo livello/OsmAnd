@@ -195,22 +195,71 @@ class EvHistoryStore(private val app: OsmandApplication) {
 		windowMs: Long = 120_000L,
 		startMs: (T) -> Long
 	): MutableList<T> {
+		return unionByStartRicher(slave, incoming, startMs, windowMs, null)
+	}
+
+	fun <T> unionByStartRicher(
+		slave: List<T>,
+		incoming: List<T>,
+		startMs: (T) -> Long,
+		windowMs: Long = 120_000L,
+		pick: ((local: T, incoming: T) -> T)? = null
+	): MutableList<T> {
 		val byStart = LinkedHashMap<Long, T>()
-		fun put(row: T) {
+		fun put(row: T, isLocal: Boolean) {
 			val start = startMs(row)
 			val hit = byStart.keys.firstOrNull { kotlin.math.abs(it - start) < windowMs }
-			if (hit != null) {
-				byStart.remove(hit)
+			if (hit == null) {
+				byStart[start] = row
+				return
 			}
-			byStart[start] = row
+			val existing = byStart.remove(hit)!!
+			val winner = when {
+				pick != null && isLocal -> pick(row, existing)
+				pick != null -> pick(existing, row)
+				isLocal -> row
+				else -> existing
+			}
+			byStart[startMs(winner)] = winner
 		}
 		for (row in incoming) {
-			put(row)
+			put(row, false)
 		}
 		for (row in slave) {
-			put(row)
+			put(row, true)
 		}
 		return byStart.values.sortedBy(startMs).toMutableList()
+	}
+
+	fun richerCharge(local: ChargeRecord, incoming: ChargeRecord): ChargeRecord {
+		return if (chargeScore(incoming) > chargeScore(local)) incoming else local
+	}
+
+	fun richerTrip(local: ChargeTripRecord, incoming: ChargeTripRecord): ChargeTripRecord {
+		return if (tripScore(incoming) > tripScore(local)) incoming else local
+	}
+
+	private fun chargeScore(row: ChargeRecord): Long {
+		var score = row.durationMs()
+		if (!row.isOpen()) {
+			score += 60_000L
+		}
+		score += ((row.chargedAh ?: 0.0) * 3_600_000.0).toLong()
+		score += ((row.energyWh ?: 0.0) * 1_000.0).toLong()
+		if (row.startLat != null) score += 10_000L
+		if (row.endLat != null) score += 10_000L
+		score += row.endMs.coerceAtLeast(0L) / 1_000L
+		return score
+	}
+
+	private fun tripScore(row: ChargeTripRecord): Long {
+		var score = ((row.distanceKm ?: 0.0) * 1_000_000.0).toLong()
+		score += ((row.energyWh ?: 0.0) * 1_000.0).toLong()
+		score += row.durationMs()
+		score += row.endMs / 1_000L
+		if (row.startLat != null) score += 10_000L
+		if (row.endLat != null) score += 10_000L
+		return score
 	}
 
 	fun parseChargeCsvText(text: String): List<ChargeRecord> {

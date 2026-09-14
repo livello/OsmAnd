@@ -63,7 +63,7 @@ class EvBmsSyncFiles(
 		val spec: String
 	)
 
-	fun catalogJson(deviceName: String, port: Int): String {
+	fun catalogJson(deviceName: String, port: Int, pluginId: String, peerId: String): String {
 		recorder.flush()
 		val files = JSONArray()
 		for (entry in listAll()) {
@@ -76,10 +76,22 @@ class EvBmsSyncFiles(
 			)
 		}
 		return JSONObject()
+			.put("plugin", pluginId)
+			.put("id", peerId)
+			.put("role", "sync-peer")
 			.put("device", deviceName)
 			.put("port", port)
+			.put("rev", catalogRev())
 			.put("files", files)
 			.toString()
+	}
+
+	fun catalogRev(): Long {
+		val files = listAll()
+		if (files.isEmpty()) {
+			return 0L
+		}
+		return files.sumOf { it.size } + files.maxOf { it.mtime }
 	}
 
 	fun parseCatalog(text: String): List<Entry> {
@@ -156,28 +168,74 @@ class EvBmsSyncFiles(
 		}
 	}
 
-	/** Additive slave write: never replace a local file that already has data. */
-	fun shouldSkipIncoming(path: String): Boolean = localSize(path) > 0L
+	fun localMtime(path: String): Long {
+		val clean = sanitizePath(path) ?: return 0L
+		return when {
+			clean.startsWith(PREFIX_TELEMETRY) -> recorder.existingMtime(clean.removePrefix(PREFIX_TELEMETRY))
+			clean.startsWith(PREFIX_TRACKS) -> {
+				val file = File(app.getAppPath(IndexConstants.GPX_RECORDED_INDEX_DIR), clean.removePrefix(PREFIX_TRACKS))
+				if (file.isFile) file.lastModified() else 0L
+			}
+			clean.startsWith(PREFIX_NAV) -> routeFile()?.lastModified() ?: 0L
+			else -> 0L
+		}
+	}
 
-	fun writeNew(path: String, input: InputStream): Boolean {
+	fun isLocallyRecording(path: String): Boolean {
 		val clean = sanitizePath(path) ?: return false
-		if (shouldSkipIncoming(clean) || isHistoryPath(clean)) {
+		if (!clean.startsWith(PREFIX_TELEMETRY)) {
 			return false
 		}
+		return recorder.isActiveFileName(clean.removePrefix(PREFIX_TELEMETRY))
+	}
+
+	/**
+	 * Additive merge: never delete local files; never replace a non-empty local copy
+	 * with a smaller or older remote one. A larger/newer remote of the same name is kept
+	 * (growing CSV/GPX while both phones are up).
+	 */
+	fun shouldSkipIncoming(path: String, remoteSize: Long = Long.MAX_VALUE, remoteMtime: Long = Long.MAX_VALUE): Boolean {
+		val clean = sanitizePath(path) ?: return true
+		if (isHistoryPath(clean)) {
+			return false
+		}
+		if (isLocallyRecording(clean)) {
+			return true
+		}
+		val local = localSize(clean)
+		if (local <= 0L) {
+			return false
+		}
+		if (remoteSize < local) {
+			return true
+		}
+		if (remoteSize == local && remoteMtime <= localMtime(clean)) {
+			return true
+		}
+		return false
+	}
+
+	fun writeIncoming(path: String, input: InputStream, remoteSize: Long, remoteMtime: Long): Boolean {
+		val clean = sanitizePath(path) ?: return false
+		if (isHistoryPath(clean) || shouldSkipIncoming(clean, remoteSize, remoteMtime)) {
+			return false
+		}
+		val replace = localSize(clean) > 0L
 		return when {
 			clean.startsWith(PREFIX_TELEMETRY) ->
-				recorder.writeNewFile(clean.removePrefix(PREFIX_TELEMETRY), input)
+				recorder.writeIncomingFile(clean.removePrefix(PREFIX_TELEMETRY), input, replace)
 			clean.startsWith(PREFIX_TRACKS) ->
 				writePlain(
 					File(app.getAppPath(IndexConstants.GPX_RECORDED_INDEX_DIR), clean.removePrefix(PREFIX_TRACKS)),
-					input
+					input,
+					replace
 				)
 			clean.startsWith(PREFIX_NAV) -> {
 				if (clean.removePrefix(PREFIX_NAV) != ROUTE_NAME) {
 					return false
 				}
 				val dir = File(app.cacheDir, "share")
-				writePlain(File(dir, ROUTE_NAME), input)
+				writePlain(File(dir, ROUTE_NAME), input, replace)
 			}
 			else -> false
 		}
@@ -225,14 +283,18 @@ class EvBmsSyncFiles(
 		return file.takeIf { it.isFile && it.length() > 0L }
 	}
 
-	private fun writePlain(dest: File, input: InputStream): Boolean {
-		if (dest.exists() && dest.length() > 0L) {
+	private fun writePlain(dest: File, input: InputStream, replace: Boolean = false): Boolean {
+		if (!replace && dest.exists() && dest.length() > 0L) {
 			return false
 		}
 		return try {
 			dest.parentFile?.mkdirs()
 			val part = File(dest.parentFile, dest.name + ".part")
 			part.outputStream().use { input.copyTo(it) }
+			if (dest.exists() && part.length() < dest.length()) {
+				part.delete()
+				return false
+			}
 			if (dest.exists()) {
 				dest.delete()
 			}

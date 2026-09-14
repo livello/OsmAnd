@@ -714,11 +714,30 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 		return if (file.isFile) file.length() else 0L
 	}
 
+	fun existingMtime(name: String): Long {
+		val tree = folderTree()
+		if (tree != null) {
+			val found = tree.listFiles().firstOrNull { it.isFile && it.name == name }
+			if (found != null) {
+				return found.lastModified()
+			}
+		}
+		val file = File(app.getAppPath(DIR_NAME), name)
+		return if (file.isFile) file.lastModified() else 0L
+	}
+
 	fun writeNewFile(name: String, input: InputStream): Boolean {
+		return writeIncomingFile(name, input, replace = false)
+	}
+
+	fun writeIncomingFile(name: String, input: InputStream, replace: Boolean): Boolean {
 		if (name.isBlank() || name.contains("..") || name.contains('/') || name.contains('\\')) {
 			return false
 		}
-		if (isActiveFileName(name) || existingSize(name) > 0L) {
+		if (isActiveFileName(name)) {
+			return false
+		}
+		if (!replace && existingSize(name) > 0L) {
 			return false
 		}
 		val tree = folderTree()
@@ -726,7 +745,7 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 			return try {
 				val created = tree.findFile(name) ?: tree.createFile(mimeForName(name), name)
 				if (created == null) {
-					writeAppDirFile(name, input)
+					writeAppDirFile(name, input, replace)
 				} else {
 					app.contentResolver.openOutputStream(created.uri, "wt")?.use { out ->
 						input.copyTo(out)
@@ -734,24 +753,28 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 				}
 			} catch (e: Exception) {
 				LOG.error("Cannot write $name to SAF", e)
-				writeAppDirFile(name, input)
+				writeAppDirFile(name, input, replace)
 			}
 		}
-		return writeAppDirFile(name, input)
+		return writeAppDirFile(name, input, replace)
 	}
 
-	private fun writeAppDirFile(name: String, input: InputStream): Boolean {
+	private fun writeAppDirFile(name: String, input: InputStream, replace: Boolean = false): Boolean {
 		return try {
 			val dir = app.getAppPath(DIR_NAME)
 			if (!dir.exists() && !dir.mkdirs()) {
 				return false
 			}
 			val dest = File(dir, name)
-			if (dest.exists() && dest.length() > 0L) {
+			if (!replace && dest.exists() && dest.length() > 0L) {
 				return false
 			}
 			val part = File(dir, "$name.part")
 			part.outputStream().use { input.copyTo(it) }
+			if (replace && dest.exists() && part.length() < dest.length()) {
+				part.delete()
+				return false
+			}
 			if (dest.exists()) {
 				dest.delete()
 			}

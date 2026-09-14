@@ -50,6 +50,7 @@ import java.text.SimpleDateFormat
 import java.util.ArrayDeque
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -196,6 +197,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerIntPreference("ev_bms_sync_port", EvBmsSyncController.DEFAULT_PORT).makeGlobal().makeShared()
 	val SYNC_HOST: CommonPreference<String> =
 		registerStringPreference("ev_bms_sync_host", "").makeGlobal().makeShared()
+	val SYNC_PEER_ID: CommonPreference<String> =
+		registerStringPreference("ev_bms_sync_peer_id", "").makeGlobal().makeShared()
 	val ANNOUNCE_RANGE_VS_ROUTE: CommonPreference<Boolean> =
 		registerBooleanPreference("ev_bms_announce_range_vs_route", true).makeGlobal().makeShared()
 	val ANNOUNCE_RANGE_RESERVE: CommonPreference<Boolean> =
@@ -4398,6 +4401,15 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 
 	fun syncPort(): Int = SYNC_PORT.get().coerceIn(EvBmsSyncController.MIN_PORT, EvBmsSyncController.MAX_PORT)
 
+	fun syncPeerId(): String {
+		var id = SYNC_PEER_ID.get()
+		if (id.isBlank()) {
+			id = UUID.randomUUID().toString()
+			SYNC_PEER_ID.set(id)
+		}
+		return id
+	}
+
 	fun showToast(res: Int) {
 		app.showToastMessage(res)
 	}
@@ -4426,11 +4438,18 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			return
 		}
 		val leftoverTrips = historyStore.realTrips(tripHistory())
-		val charges = historyStore.unionByStart(chargeHistory(), incomingCharges) { it.startMs }
-		val trips = historyStore.unionByStart(
+		val charges = historyStore.unionByStartRicher(
+			chargeHistory(),
+			incomingCharges,
+			{ it.startMs },
+			pick = { local, incoming -> historyStore.richerCharge(local, incoming) }
+		)
+		val trips = historyStore.unionByStartRicher(
 			leftoverTrips,
-			historyStore.realTrips(incomingTrips)
-		) { it.startMs }
+			historyStore.realTrips(incomingTrips),
+			{ it.startMs },
+			pick = { local, incoming -> historyStore.richerTrip(local, incoming) }
+		)
 		CHARGE_HISTORY.set(historyStore.encodeCharges(charges))
 		TRIP_HISTORY.set(historyStore.encodeTrips(trips))
 		historyStore.rewriteChargeCsv(charges)

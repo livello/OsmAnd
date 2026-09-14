@@ -1035,7 +1035,8 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 	private fun setupSyncPref() {
 		val pref = findPreference<Preference>("ev_bms_sync") ?: return
 		pref.summary = if (plugin.sync.serving) {
-			getString(R.string.ev_bms_sync_status_on, plugin.syncPort())
+			getString(R.string.ev_bms_sync_status_on, plugin.syncPort()) +
+				"\n" + getString(R.string.ev_bms_sync_status_found, plugin.sync.discoveredPeers().size)
 		} else {
 			getString(R.string.ev_bms_sync_desc)
 		}

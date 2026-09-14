@@ -1,6 +1,7 @@
 package net.osmand.plus.plugins.evbms
 
 import android.util.Log
+import org.json.JSONObject
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.ByteArrayOutputStream
@@ -26,6 +27,8 @@ class EvBmsSyncHttpServer(
 	private val files: EvBmsSyncFiles,
 	private val listenPort: Int,
 	private val deviceName: String,
+	private val pluginId: String,
+	private val peerId: String,
 	private val onClient: (delta: Int) -> Unit,
 	private val onServed: (name: String, bytes: Long) -> Unit
 ) {
@@ -174,12 +177,25 @@ class EvBmsSyncHttpServer(
 		}
 		val headOnly = req.method == "HEAD"
 		when {
-			req.path == "/health" -> writeText(output, 200, "text/plain", "ok", headOnly)
+			req.path == "/health" -> writeText(
+				output,
+				200,
+				"application/json; charset=utf-8",
+				JSONObject()
+					.put("ok", true)
+					.put("plugin", pluginId)
+					.put("id", peerId)
+					.put("name", deviceName)
+					.put("port", port)
+					.put("role", "sync-peer")
+					.toString(),
+				headOnly
+			)
 			req.path == "/files" -> writeText(
 				output,
 				200,
 				"application/json; charset=utf-8",
-				files.catalogJson(deviceName, port),
+				files.catalogJson(deviceName, port, pluginId, peerId),
 				headOnly
 			)
 			req.path.startsWith("/file/") || req.path == "/file" -> {

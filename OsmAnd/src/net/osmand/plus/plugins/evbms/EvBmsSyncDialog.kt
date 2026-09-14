@@ -7,6 +7,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
@@ -14,6 +15,7 @@ import androidx.appcompat.widget.SwitchCompat
 import net.osmand.plus.R
 import net.osmand.plus.utils.ColorUtilities
 import net.osmand.plus.utils.UiUtilities
+import net.osmand.plus.widgets.TextViewEx
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -33,11 +35,14 @@ class EvBmsSyncDialog(
 	private lateinit var portField: EditText
 	private lateinit var ipsView: TextView
 	private lateinit var masterStatus: TextView
+	private lateinit var peersEmpty: TextView
+	private lateinit var peersList: LinearLayout
 	private lateinit var hostField: EditText
 	private lateinit var syncButton: Button
 	private lateinit var progress: ProgressBar
 	private lateinit var progressText: TextView
 	private lateinit var lastResult: TextView
+	private var selectedPeerId: String? = null
 
 	private val tick = object : Runnable {
 		override fun run() {
@@ -45,6 +50,7 @@ class EvBmsSyncDialog(
 				return
 			}
 			refreshMaster()
+			refreshPeers()
 			uiHandler.postDelayed(this, 1000)
 		}
 	}
@@ -55,6 +61,8 @@ class EvBmsSyncDialog(
 		portField = content.findViewById(R.id.sync_port)
 		ipsView = content.findViewById(R.id.sync_ips)
 		masterStatus = content.findViewById(R.id.sync_master_status)
+		peersEmpty = content.findViewById(R.id.sync_peers_empty)
+		peersList = content.findViewById(R.id.sync_peers)
 		hostField = content.findViewById(R.id.sync_host)
 		syncButton = content.findViewById(R.id.sync_now)
 		progress = content.findViewById(R.id.sync_progress)
@@ -68,30 +76,17 @@ class EvBmsSyncDialog(
 		hostField.setText(plugin.SYNC_HOST.get().orEmpty())
 
 		masterSwitch.setOnCheckedChangeListener { _, checked ->
-			if (checked == sync.serving) {
-				return@setOnCheckedChangeListener
-			}
-			if (!commitPort()) {
-				masterSwitch.isChecked = false
-				return@setOnCheckedChangeListener
-			}
-			if (checked) {
-				if (!sync.startMaster()) {
-					masterSwitch.isChecked = false
-				}
-			} else {
-				sync.stopMaster()
-			}
-			refreshMaster()
+			toggleServing(checked)
 		}
 		syncButton.setOnClickListener {
 			if (!commitPort()) {
 				return@setOnClickListener
 			}
-			plugin.SYNC_HOST.set(hostField.text?.toString().orEmpty().trim())
+			val host = hostField.text?.toString().orEmpty().trim()
+			plugin.SYNC_HOST.set(host)
 			progress.visibility = View.VISIBLE
 			progress.isIndeterminate = true
-			sync.pullFromMaster(hostField.text?.toString().orEmpty())
+			sync.syncNow(host, manual = true)
 			refreshClient()
 		}
 
@@ -108,12 +103,17 @@ class EvBmsSyncDialog(
 			.show()
 		sync.addListener(this)
 		refreshMaster()
+		refreshPeers()
 		refreshClient()
 		uiHandler.post(tick)
 	}
 
 	override fun onMasterChanged() {
 		refreshMaster()
+	}
+
+	override fun onPeersChanged() {
+		refreshPeers()
 	}
 
 	override fun onSyncProgress(done: Int, total: Int, name: String) {
@@ -138,6 +138,25 @@ class EvBmsSyncDialog(
 		refreshClient()
 	}
 
+	private fun toggleServing(checked: Boolean) {
+		if (checked == sync.serving) {
+			return
+		}
+		if (!commitPort()) {
+			masterSwitch.isChecked = false
+			return
+		}
+		if (checked) {
+			if (!sync.startMaster()) {
+				masterSwitch.isChecked = false
+			}
+		} else {
+			sync.stopMaster()
+		}
+		refreshMaster()
+		refreshPeers()
+	}
+
 	private fun refreshMaster() {
 		if (dialog?.isShowing != true) {
 			return
@@ -147,21 +166,7 @@ class EvBmsSyncDialog(
 			masterSwitch.setOnCheckedChangeListener(null)
 			masterSwitch.isChecked = serving
 			masterSwitch.setOnCheckedChangeListener { _, checked ->
-				if (checked == sync.serving) {
-					return@setOnCheckedChangeListener
-				}
-				if (!commitPort()) {
-					masterSwitch.isChecked = false
-					return@setOnCheckedChangeListener
-				}
-				if (checked) {
-					if (!sync.startMaster()) {
-						masterSwitch.isChecked = false
-					}
-				} else {
-					sync.stopMaster()
-				}
-				refreshMaster()
+				toggleServing(checked)
 			}
 		}
 		val ips = sync.localIpv4Addresses()
@@ -172,13 +177,49 @@ class EvBmsSyncDialog(
 		}
 		val last = sync.lastServeMs.takeIf { it > 0L }?.let { clock.format(Date(it)) }
 			?: themed.getString(R.string.ev_bms_sync_status_never)
+		val peers = sync.discoveredPeers().size
 		masterStatus.text = if (serving) {
 			themed.getString(R.string.ev_bms_sync_status_on, plugin.syncPort()) +
-				"\n" + themed.getString(R.string.ev_bms_sync_status_clients, sync.clientCount(), last)
+				"\n" + themed.getString(R.string.ev_bms_sync_status_clients, sync.clientCount(), last) +
+				"\n" + themed.getString(R.string.ev_bms_sync_status_found, peers)
 		} else {
 			themed.getString(R.string.ev_bms_sync_status_off)
 		}
 		portField.isEnabled = !serving
+	}
+
+	private fun refreshPeers() {
+		if (dialog?.isShowing != true) {
+			return
+		}
+		val peers = sync.discoveredPeers()
+		if (selectedPeerId != null && peers.none { it.id == selectedPeerId }) {
+			selectedPeerId = null
+		}
+		peersEmpty.visibility = if (peers.isEmpty()) View.VISIBLE else View.GONE
+		peersList.removeAllViews()
+		val textColor = ColorUtilities.getPrimaryTextColor(themed, nightMode)
+		val secondary = ColorUtilities.getSecondaryTextColor(themed, nightMode)
+		for (peer in peers) {
+			val selected = peer.id == selectedPeerId
+			val row = TextViewEx(themed)
+			row.setPadding(0, 12, 0, 12)
+			row.setTextColor(if (selected) textColor else secondary)
+			row.textSize = 16f
+			row.text = themed.getString(
+				R.string.ev_bms_sync_peer_item,
+				peer.name,
+				peer.host,
+				peer.port
+			)
+			row.setOnClickListener {
+				selectedPeerId = peer.id
+				hostField.setText("${peer.host}:${peer.port}")
+				plugin.SYNC_HOST.set("${peer.host}:${peer.port}")
+				refreshPeers()
+			}
+			peersList.addView(row)
+		}
 	}
 
 	private fun refreshClient() {
