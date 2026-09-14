@@ -72,10 +72,11 @@ object EvGpx {
 		val visualization = visualizationType.orEmpty()
 		val wall = wallColoringType.orEmpty()
 		if (coloring.contains("ev_wh_km") || wall.contains("ev_wh_km")
-			|| visualization == "ev_wh_km_100m"
+			|| visualization.contains("ev_wh_km")
 		) {
 			keep.add(PointAttributes.EV_TAG_CONSUMPTION)
 			keep.add(PointAttributes.EV_TAG_CONSUMPTION_100M)
+			keep.add(PointAttributes.EV_TAG_ENERGY)
 			keep.add(TelemetryField.CONSUMPTION.id)
 			keep.add(TelemetryField.COVERAGE.id)
 		}
@@ -259,6 +260,7 @@ class EvTrackPointsAnalyser : GpxTrackAnalysis.TrackPointsAnalyser {
 		for (tag in arrayOf(
 			PointAttributes.EV_TAG_CONSUMPTION_100M,
 			PointAttributes.EV_TAG_CONSUMPTION,
+			PointAttributes.EV_TAG_ENERGY,
 			PointAttributes.EV_TAG_POWER
 		)) {
 			val extra = EvGpx.read(point, tag)

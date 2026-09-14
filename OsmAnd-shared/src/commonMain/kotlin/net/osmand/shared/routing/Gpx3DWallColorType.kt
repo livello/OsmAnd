@@ -9,7 +9,7 @@ enum class Gpx3DWallColorType(val typeName: String, val displayNameResId: String
 	ALTITUDE("altitude", "altitude"),
 	SLOPE("slope", "shared_string_slope"),
 	SPEED("speed", "shared_string_speed"),
-	CONSUMPTION("ev_wh_km", "ev_bms_3d_consumption_100m");
+	CONSUMPTION("ev_wh_km", "ev_bms_coloring_consumption");
 
 
 	companion object {

@@ -1102,6 +1102,14 @@ Parked accessory load increases DOC Wh without adding km; the 10 km window ignor
 remainingAh × rest pack voltage × weak-cell factor × temperature factor. Weak cell: min cell between 3.00 V (cutoff) and 3.50 V compared with remaining Ah / full Ah. Temperature derate (full above 20 °C, down to about 50%% in frost) applies only until 3 km of measured driving — after that cold is already in Wh/km.<br/><br/>
 <b>Range (km)</b><br/>
 remainingWh / effective Wh/km. Optional route profile adds remaining-route climb as m·g·h / 3600 / 0.80 (drivetrain) and credits 55%% of descent potential energy. Measured regen is not reduced a second time. Primary range is smoothed (70/30 blend, max step 15%%). Range reserve = the selected estimate minus remaining navigation distance. Charge-end GPX waypoints sit at the charger coordinates and show watt-hours into the pack.]]></string>
+    <string name="ev_bms_plugin_consumption_map"><![CDATA[<br/><br/><b>🗺️ Specific consumption on the map</b><br/>
+Needs a GPX recorded by EV-Telemetry with consumption fields (ev_wh_km / energy).<br/>
+1. Open the recorded track on the map.<br/>
+2. Track menu → <b>Appearance</b>.<br/>
+3. Color → <b>Specific consumption</b>. Green ≈ 40 Wh/km, red ≈ 300 Wh/km (fixed scale, not the track min/max).<br/>
+4. Split interval → <b>Specific consumption</b>, pick a kilometre step like Distance. Circles show km and Wh/km of that piece (ΔWh / Δkm).<br/>
+5. 3D track → visualization <b>Specific consumption</b>: wall height and color also follow 40–300 Wh/km. Enable 3D/terrain if OsmAnd requires it.<br/>
+Older GPX files without energy and ev_wh_km tags will not show consumption: circles show —, color and 3D stay unavailable.]]></string>
     <string name="ev_bms_plugin_architecture"><![CDATA[<br/><br/><b>🏗️ Plugin architecture</b><br/>
 OsmAnd plugin class <b>EvBmsPlugin</b> (extends OsmandPlugin). BLE callbacks deliver UART frames; the plugin publishes an <b>EvTelemetry</b> snapshot on the UI thread. Widgets, the HUD, voice, CSV/GPX, history and the settings sheet all read that snapshot. Range uses about 1 s samples even when BLE polls faster, so GPS jitter does not inflate distance.<br/><br/>
 <b>Data flow</b><br/>
@@ -1121,6 +1129,7 @@ BMS UART (JBD / ANT) + controller UART (FarDriver / VESC) + BLE CSC wheel + GPS 
 • <b>protocol/</b> — JbdBmsProtocol, JbdBleModuleProtocol, AntBmsProtocol, FarDriverProtocol, VescProtocol, BmsSnapshot<br/>
 Layouts: <i>res/layout/ev_bms_*.xml</i>. Preferences: <i>res/xml/ev_bms_settings.xml</i>. Strings: <i>res/values/strings.xml</i> and <i>values-ru</i>.]]></string>
 	<string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Changelog</b> · %1$s<br/>
+• 🗺️ Specific consumption on GPX: color and 3D use a fixed 40–300 Wh/km scale; split circles show km + Wh/km<br/>
 • 🧲 Update maps from torrent only when torrent file mtime is newer than local OBF dateCreated; seed exact matches; Maps & Resources shows «Also in EV torrent» and context action to download via torrent<br/>
 • 🧲 Fix launch crash: never keep alert-owned torrent handles (dangling JNI); resolve via session.find(infoHash); download-missing only on manual start<br/>
 • ⚙️ Jump-bar green rectangle outlines emoji buttons for preference groups visible while scrolling settings<br/>

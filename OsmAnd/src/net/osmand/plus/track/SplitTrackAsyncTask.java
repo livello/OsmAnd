@@ -21,6 +21,7 @@ import net.osmand.plus.track.helpers.GpxDisplayItem;
 import net.osmand.plus.track.helpers.GpxUiHelper;
 import net.osmand.plus.track.helpers.TrackDisplayGroup;
 import net.osmand.plus.utils.OsmAndFormatter;
+import net.osmand.shared.gpx.EvConsumptionScale;
 import net.osmand.shared.gpx.GpxTrackAnalysis;
 import net.osmand.shared.gpx.GpxTrackAnalysis.TrackPointsAnalyser;
 import net.osmand.shared.gpx.primitives.TrkSegment;
@@ -151,6 +152,11 @@ public class SplitTrackAsyncTask extends AsyncTask<Void, Void, Void> {
 				item.secondarySplitMetric = analysis.getSecondaryMetricEnd();
 				item.splitName += " (" + formatSecondarySplitName(analysis.getSecondaryMetricEnd(), group, app) + ") ";
 			}
+		} else if (group.isSplitConsumption()) {
+			item.splitMetric = analysis.getMetricEnd();
+			item.secondarySplitMetric = analysis.getSecondaryMetricEnd();
+			item.splitName = formatSplitName(analysis.getMetricEnd(), group, app);
+			item.splitName += " · " + formatConsumptionSplitName(analysis, app);
 		} else if (group.getSplitTime() > 0 || group.getSplitDistance() > 0) {
 			item.splitMetric = analysis.getMetricEnd();
 			item.secondarySplitMetric = analysis.getSecondaryMetricEnd();
@@ -236,6 +242,18 @@ public class SplitTrackAsyncTask extends AsyncTask<Void, Void, Void> {
 					GpxTrackAnalysis.Companion.prepareInformation(0, joinSegments, pointsAnalyser, segment)
 			};
 		}
+	}
+
+	@NonNull
+	private static String formatConsumptionSplitName(@NonNull GpxTrackAnalysis analysis,
+	                                                 @NonNull OsmandApplication app) {
+		float whKm = EvConsumptionScale.segmentWhPerKm(analysis);
+		if (Float.isNaN(whKm)) {
+			return app.getString(R.string.ev_bms_value_none);
+		}
+		return app.getString(R.string.ltr_or_rtl_combine_via_space,
+				String.valueOf(Math.round(whKm)),
+				app.getString(R.string.ev_bms_unit_wh_per_km));
 	}
 
 	private static String formatSecondarySplitName(double metricEnd, @NonNull TrackDisplayGroup group,

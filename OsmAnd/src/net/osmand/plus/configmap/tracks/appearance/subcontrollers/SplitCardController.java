@@ -129,6 +129,9 @@ public class SplitCardController extends BaseMultiStateCardController {
 			} else if (splitType == GpxSplitType.DISTANCE.getType()) {
 				String formattedDistance = OsmAndFormatter.getFormattedDistanceInterval(app, splitInterval, OsmAndFormatterParams.NO_TRAILING_ZEROS);
 				summary = app.getString(R.string.ltr_or_rtl_combine_via_comma, GpxSplitType.DISTANCE.getHumanString(app), formattedDistance);
+			} else if (splitType == GpxSplitType.CONSUMPTION.getType()) {
+				String formattedDistance = OsmAndFormatter.getFormattedDistanceInterval(app, splitInterval, OsmAndFormatterParams.NO_TRAILING_ZEROS);
+				summary = app.getString(R.string.ltr_or_rtl_combine_via_comma, GpxSplitType.CONSUMPTION.getHumanString(app), formattedDistance);
 			} else if (splitType == GpxSplitType.TIME.getType()) {
 				String formattedTime = OsmAndFormatter.getFormattedTimeInterval(app, splitInterval);
 				summary = app.getString(R.string.ltr_or_rtl_combine_via_comma, GpxSplitType.TIME.getHumanString(app), formattedTime);

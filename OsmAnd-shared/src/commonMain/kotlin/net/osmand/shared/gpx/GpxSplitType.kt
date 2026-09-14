@@ -6,7 +6,8 @@ enum class GpxSplitType(val typeName: String, val type: Int, val resId: String) 
 	NO_SPLIT("no_split", -1, "shared_string_none"),
 	DISTANCE("distance", 1, "distance"),
 	TIME("time", 2, "shared_string_time"),
-	UPHILL_DOWNHILL("uphill_downhill", 3, "uphill_downhill_split");
+	UPHILL_DOWNHILL("uphill_downhill", 3, "uphill_downhill_split"),
+	CONSUMPTION("consumption", 4, "ev_bms_coloring_consumption");
 
 	companion object {
 		fun getSplitTypeByName(name: String?): GpxSplitType {

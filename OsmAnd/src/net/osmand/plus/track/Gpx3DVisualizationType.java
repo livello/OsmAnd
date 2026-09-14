@@ -17,6 +17,7 @@ import androidx.annotation.StringRes;
 import net.osmand.plus.R;
 import net.osmand.plus.plugins.evbms.EvGpx;
 import net.osmand.plus.plugins.externalsensors.SensorAttributesUtils;
+import net.osmand.shared.gpx.EvConsumptionScale;
 import net.osmand.shared.gpx.PointAttributes;
 import net.osmand.shared.gpx.primitives.WptPt;
 import net.osmand.util.CollectionUtils;
@@ -32,7 +33,7 @@ public enum Gpx3DVisualizationType {
 	TEMPERATURE("shared_string_temperature", R.string.shared_string_temperature),
 	SPEED_SENSOR("shared_string_speed", R.string.map_widget_ant_bicycle_speed),
 	EV_CONTROLLER_POWER("ev_controller_power", R.string.ev_bms_widget_power),
-	EV_CONSUMPTION_100M("ev_wh_km_100m", R.string.ev_bms_3d_consumption_100m),
+	EV_CONSUMPTION("ev_wh_km", R.string.ev_bms_coloring_consumption),
 	FIXED_HEIGHT("fixed_height", R.string.fixed_height);
 
 	private final String typeName;
@@ -45,6 +46,9 @@ public enum Gpx3DVisualizationType {
 
 	@NonNull
 	public static Gpx3DVisualizationType get3DVisualizationType(@Nullable String typeName) {
+		if ("ev_wh_km_100m".equalsIgnoreCase(typeName)) {
+			return EV_CONSUMPTION;
+		}
 		for (Gpx3DVisualizationType type : values()) {
 			if (type.typeName.equalsIgnoreCase(typeName)) {
 				return type;
@@ -69,7 +73,6 @@ public enum Gpx3DVisualizationType {
 	private static final Float SPEED_TO_HEIGHT_SCALE = 10.0f;
 	private static final Float TEMPERATURE_TO_HEIGHT_OFFSET = 100.0f;
 	private static final Float EV_POWER_TO_HEIGHT_SCALE = 0.05f;
-	private static final Float EV_CONSUMPTION_TO_HEIGHT_SCALE = 5.0f;
 
 	public static double getPointElevation(@NonNull WptPt point, @NonNull Track3DStyle style, boolean heightmapsActive) {
 		PointAttributes attributes = point.getAttributes();
@@ -85,7 +88,7 @@ public enum Gpx3DVisualizationType {
 			case FIXED_HEIGHT -> style.getElevation();
 			case HEART_RATE, BICYCLE_CADENCE, BICYCLE_POWER, TEMPERATURE, SPEED_SENSOR ->
 					getSensorElevation(point, type, attributes);
-			case EV_CONTROLLER_POWER, EV_CONSUMPTION_100M ->
+			case EV_CONTROLLER_POWER, EV_CONSUMPTION ->
 					getEvElevation(point, type, attributes);
 		};
 		boolean addGpxHeight = heightmapsActive && !CollectionUtils.equalsToAny(type, ALTITUDE, NONE);
@@ -132,7 +135,7 @@ public enum Gpx3DVisualizationType {
 		if (Float.isNaN(whKm)) {
 			whKm = evAttribute(point, attributes, EV_TAG_CONSUMPTION);
 		}
-		return Float.isNaN(whKm) ? 0 : Math.max(0f, whKm) * EV_CONSUMPTION_TO_HEIGHT_SCALE;
+		return EvConsumptionScale.toHeightMeters(whKm);
 	}
 
 	private static float evAttribute(@NonNull WptPt point, @Nullable PointAttributes attributes,

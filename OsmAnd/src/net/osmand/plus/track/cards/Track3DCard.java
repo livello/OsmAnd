@@ -31,7 +31,9 @@ import net.osmand.plus.utils.OsmAndFormatter;
 import net.osmand.plus.widgets.popup.PopUpMenu;
 import net.osmand.plus.widgets.popup.PopUpMenuDisplayData;
 import net.osmand.plus.widgets.popup.PopUpMenuItem;
+import net.osmand.plus.card.color.ColoringStyle;
 import net.osmand.shared.gpx.GpxTrackAnalysis;
+import net.osmand.shared.routing.ColoringType;
 import net.osmand.shared.routing.Gpx3DWallColorType;
 import net.osmand.shared.util.Localization;
 
@@ -88,6 +90,10 @@ public class Track3DCard extends BaseCard {
 									|| Gpx3DVisualizationType.NONE == previous)
 							.setOnClickListener(item -> {
 								drawInfo.setTrackVisualizationType(type);
+								if (type == Gpx3DVisualizationType.EV_CONSUMPTION) {
+									drawInfo.setTrackWallColorType(Gpx3DWallColorType.CONSUMPTION);
+									drawInfo.setColoringStyle(new ColoringStyle(ColoringType.CONSUMPTION));
+								}
 								updateContent();
 								notifyCardPressed();
 							})
@@ -110,7 +116,7 @@ public class Track3DCard extends BaseCard {
 			case TEMPERATURE -> analysis.hasData(SENSOR_TAG_TEMPERATURE);
 			case SPEED_SENSOR -> analysis.hasData(SENSOR_TAG_SPEED);
 			case EV_CONTROLLER_POWER -> analysis.hasData(EV_TAG_POWER);
-			case EV_CONSUMPTION_100M -> analysis.hasData(EV_TAG_CONSUMPTION_100M)
+			case EV_CONSUMPTION -> analysis.hasData(EV_TAG_CONSUMPTION_100M)
 					|| analysis.hasData(EV_TAG_CONSUMPTION);
 			default -> true;
 		};

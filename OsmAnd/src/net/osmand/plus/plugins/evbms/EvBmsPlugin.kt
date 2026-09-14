@@ -568,6 +568,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	fun descriptionHtml(): String {
 		return app.getString(R.string.ev_bms_plugin_description) +
 				app.getString(R.string.ev_bms_plugin_range_method) +
+				app.getString(R.string.ev_bms_plugin_consumption_map) +
 				app.getString(R.string.ev_bms_plugin_architecture) +
 				app.getString(R.string.ev_bms_changelog, EvBmsRevision.GIT_HASH)
 	}

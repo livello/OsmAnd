@@ -7,6 +7,7 @@ import android.text.style.ForegroundColorSpan;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import net.osmand.shared.gpx.EvConsumptionScale;
 import net.osmand.shared.gpx.GpxTrackAnalysis;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
@@ -104,8 +105,8 @@ public class ColoringStyleDetailsCardController implements IColoringStyleDetails
 			};
 		} else if (coloringType == ColoringType.CONSUMPTION) {
 			return new CharSequence[] {
-					app.getString(R.string.ev_bms_coloring_consumption),
-					"Wh/km"
+					formatValue(EvConsumptionScale.MIN_WH_KM),
+					formatValue(EvConsumptionScale.MAX_WH_KM)
 			};
 		} else if (coloringType == ColoringType.ALTITUDE) {
 			return new CharSequence[] {
@@ -122,7 +123,8 @@ public class ColoringStyleDetailsCardController implements IColoringStyleDetails
 			boolean useElevationData = coloringType == ColoringType.ALTITUDE && analysis.isElevationSpecified();
 			boolean useSpeedData = coloringType == ColoringType.SPEED && analysis.isSpeedSpecified();
 			boolean useConsumptionData = coloringType == ColoringType.CONSUMPTION
-					&& analysis.hasData(net.osmand.shared.gpx.PointAttributes.EV_TAG_CONSUMPTION);
+					&& (analysis.hasData(net.osmand.shared.gpx.PointAttributes.EV_TAG_CONSUMPTION)
+					|| analysis.hasData(net.osmand.shared.gpx.PointAttributes.EV_TAG_CONSUMPTION_100M));
 			return useElevationData || useSpeedData || useConsumptionData;
 		}
 		return false;
@@ -138,7 +140,7 @@ public class ColoringStyleDetailsCardController implements IColoringStyleDetails
 			return app.getString(R.string.ltr_or_rtl_combine_via_space, String.valueOf((int) value), "%");
 		} else if (coloringType == ColoringType.CONSUMPTION) {
 			return app.getString(R.string.ltr_or_rtl_combine_via_space,
-					String.valueOf((int) (value + 0.5)), "Wh/km");
+					String.valueOf((int) (value + 0.5)), app.getString(R.string.ev_bms_unit_wh_per_km));
 		}
 		String speed = OsmAndFormatter.getFormattedSpeed((float) value, app);
 		String speedUnit = app.getSettings().SPEED_SYSTEM.get().toShortString();

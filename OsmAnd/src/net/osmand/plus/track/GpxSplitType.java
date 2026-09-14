@@ -13,7 +13,8 @@ public enum GpxSplitType {
 	NO_SPLIT("no_split", -1, R.string.shared_string_none),
 	DISTANCE("distance", 1, R.string.distance),
 	TIME("time", 2, R.string.shared_string_time),
-	UPHILL_DOWNHILL("uphill_downhill", 3, R.string.uphill_downhill_split);
+	UPHILL_DOWNHILL("uphill_downhill", 3, R.string.uphill_downhill_split),
+	CONSUMPTION("consumption", 4, R.string.ev_bms_coloring_consumption);
 
 	private final String typeName;
 	private final int type;

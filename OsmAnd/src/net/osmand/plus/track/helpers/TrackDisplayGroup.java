@@ -1,5 +1,6 @@
 package net.osmand.plus.track.helpers;
 
+import static net.osmand.plus.track.GpxSplitType.CONSUMPTION;
 import static net.osmand.plus.track.GpxSplitType.DISTANCE;
 import static net.osmand.plus.track.GpxSplitType.NO_SPLIT;
 import static net.osmand.plus.track.GpxSplitType.TIME;
@@ -24,6 +25,7 @@ public class TrackDisplayGroup extends GpxDisplayGroup {
 	private double splitDistance = -1;
 	private int splitTime = -1;
 	private boolean uphillDownhill = false;
+	private boolean splitConsumption = false;
 
 	public TrackDisplayGroup(@NonNull GpxFile gpxFile, @NonNull Track track, boolean isGeneralTrack) {
 		this(gpxFile, track, isGeneralTrack, -1);
@@ -69,17 +71,22 @@ public class TrackDisplayGroup extends GpxDisplayGroup {
 		return uphillDownhill;
 	}
 
+	public boolean isSplitConsumption() {
+		return splitConsumption;
+	}
+
 	public int getSplitTime() {
 		return splitTime;
 	}
 
 	public void updateSplit(@NonNull GpxSplitParams splitParams) {
 		clearDisplayItems();
+		splitConsumption = splitParams.splitType() == CONSUMPTION;
 		if (splitParams.splitType() == NO_SPLIT) {
 			splitDistance = -1;
 			splitTime = -1;
 			uphillDownhill = false;
-		} else if (splitParams.splitType() == DISTANCE) {
+		} else if (splitParams.splitType() == DISTANCE || splitParams.splitType() == CONSUMPTION) {
 			splitDistance = splitParams.splitInterval();
 			splitTime = -1;
 			uphillDownhill = false;

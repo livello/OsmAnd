@@ -59,6 +59,7 @@ import net.osmand.plus.plugins.monitoring.TripRecordingStartingBottomSheet;
 import net.osmand.plus.routepreparationmenu.cards.BaseCard;
 import net.osmand.plus.routepreparationmenu.cards.BaseCard.CardListener;
 import net.osmand.plus.track.helpers.GpxDisplayHelper.GpxSplitParams;
+import net.osmand.plus.track.Gpx3DVisualizationType;
 import net.osmand.plus.track.GpxSplitType;
 import net.osmand.plus.track.SplitTrackAsyncTask.SplitTrackListener;
 import net.osmand.plus.track.TrackDrawInfo;
@@ -425,6 +426,10 @@ public class TrackAppearanceFragment extends ContextMenuScrollFragment implement
 				refreshMap();
 				updateAppearanceIcon();
 			} else {
+				if (card instanceof Track3DCard
+						&& trackDrawInfo.getTrackVisualizationType() == Gpx3DVisualizationType.EV_CONSUMPTION) {
+					getColorCardController().askSelectColoringStyle(trackDrawInfo.getColoringStyle());
+				}
 				refreshMap();
 			}
 		}
@@ -751,7 +756,7 @@ public class TrackAppearanceFragment extends ContextMenuScrollFragment implement
 		SplitTrackListener listener = getSplitTrackListener();
 
 		double splitInterval = 0;
-		if (GpxSplitType.DISTANCE == splitType) {
+		if (GpxSplitType.DISTANCE == splitType || GpxSplitType.CONSUMPTION == splitType) {
 			splitInterval = distanceSplit;
 		} else if (GpxSplitType.TIME == splitType) {
 			splitInterval = timeSplit;

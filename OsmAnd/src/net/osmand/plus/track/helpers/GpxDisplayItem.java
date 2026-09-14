@@ -81,6 +81,9 @@ public class GpxDisplayItem {
 
 	@Nullable
 	public String getLabelName(@NonNull OsmandApplication app) {
+		if (group instanceof TrackDisplayGroup trackGroup && trackGroup.isSplitConsumption()) {
+			return splitName != null ? splitName.trim() : null;
+		}
 		if (analysis == null) {
 			return getSplitName();
 		}
