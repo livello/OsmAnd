@@ -5,6 +5,7 @@ import net.osmand.shared.extensions.currentTimeMillis
 import net.osmand.shared.gpx.EvConsumptionScale
 import net.osmand.shared.gpx.GpxFile
 import net.osmand.shared.gpx.GpxTrackAnalysis
+import net.osmand.shared.gpx.TrackColorScale
 import net.osmand.shared.util.KAlgorithms
 import net.osmand.shared.util.KMapUtils
 import net.osmand.shared.util.LoggerFactory
@@ -79,6 +80,16 @@ class RouteColorize {
 		palette: ColorPalette?,
 		maxProfileSpeed: Float,
 		fixedValues: Boolean
+	) : this(gpxFile, analysis, type, palette, maxProfileSpeed, fixedValues, TrackColorScale.DEFAULT)
+
+	constructor(
+		gpxFile: GpxFile,
+		analysis: GpxTrackAnalysis?,
+		type: ColorizationType,
+		palette: ColorPalette?,
+		maxProfileSpeed: Float,
+		fixedValues: Boolean,
+		scale: TrackColorScale
 	) {
 		this.fixedValues = fixedValues
 		var analysis: GpxTrackAnalysis? = analysis
@@ -95,6 +106,12 @@ class RouteColorize {
 				if (KAlgorithms.isEmpty(gpxFile.path)) currentTimeMillis() else gpxFile.modifiedTime
 			analysis = gpxFile.getAnalysis(time)
 		}
+		val trackAnalysis = analysis
+		val consumptionByPoint = if (type == ColorizationType.CONSUMPTION) {
+			EvConsumptionScale.stampWindowed(trackAnalysis.pointAttributes, scale.windowMeters)
+		} else {
+			null
+		}
 		for (t in gpxFile.tracks) {
 			for (ts in t.segments) {
 				if (ts.generalSegment || ts.points.size < 2) {
@@ -104,14 +121,15 @@ class RouteColorize {
 					latList.add(p.lat)
 					lonList.add(p.lon)
 					if (type == ColorizationType.SPEED) {
-						valList.add(analysis.pointAttributes.get(wptIdx).speed.toDouble())
+						valList.add(trackAnalysis.pointAttributes.get(wptIdx).speed.toDouble())
 					} else if (type == ColorizationType.CONSUMPTION) {
-						val raw = EvConsumptionScale.pointWhPerKm(
-							analysis.pointAttributes.getOrNull(wptIdx)
-						).toDouble()
-						valList.add(raw)
+						val raw = consumptionByPoint?.getOrNull(wptIdx)?.toDouble()
+							?: EvConsumptionScale.pointWhPerKm(
+								trackAnalysis.pointAttributes.getOrNull(wptIdx)
+							).toDouble()
+						valList.add(if (raw.isNaN()) 0.0 else raw)
 					} else {
-						valList.add(analysis.pointAttributes.get(wptIdx).elevation.toDouble())
+						valList.add(trackAnalysis.pointAttributes.get(wptIdx).elevation.toDouble())
 					}
 					wptIdx++
 				}
@@ -131,16 +149,22 @@ class RouteColorize {
 			listToArray(valList)
 		}
 		if (type == ColorizationType.CONSUMPTION) {
-			minValue = EvConsumptionScale.MIN_WH_KM
-			maxValue = EvConsumptionScale.MAX_WH_KM
+			minValue = scale.consumptionMin
+			maxValue = scale.consumptionMax.coerceAtLeast(minValue + 1.0)
 			val originalPalette = if (isValidPalette(palette)) {
 				palette
 			} else {
 				getDefaultRelativePalette(type)
 			}
-			this.palette = EvConsumptionScale.paletteForFixedRange(originalPalette)
+			this.palette = EvConsumptionScale.paletteForFixedRange(
+				originalPalette, minValue, maxValue
+			)
 		} else {
-			calculateMinMaxValue(analysis, maxProfileSpeed)
+			calculateMinMaxValue(trackAnalysis, maxProfileSpeed)
+			if (type == ColorizationType.SPEED && scale.speedMaxMps > scale.speedMinMps) {
+				minValue = scale.speedMinMps
+				maxValue = scale.speedMaxMps
+			}
 			if (fixedValues) {
 				this.palette = if (isValidPalette(palette)) palette!! else getDefaultPalette(type)
 			} else {

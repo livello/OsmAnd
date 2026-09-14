@@ -19,6 +19,8 @@ import net.osmand.plus.track.Gpx3DLinePositionType;
 import net.osmand.plus.track.Gpx3DVisualizationType;
 import net.osmand.plus.track.Track3DStyle;
 import net.osmand.plus.track.TrackDrawInfo;
+import net.osmand.plus.track.TrackGradientHelper;
+import net.osmand.shared.gpx.TrackColorScale;
 import net.osmand.shared.gpx.ColoringPurpose;
 import net.osmand.shared.gpx.GpxDataItem;
 import net.osmand.shared.gpx.GpxDbHelper;
@@ -311,8 +313,12 @@ public class GpxAppearanceHelper {
 		Gpx3DVisualizationType type = getTrackVisualizationType(gpxFile, gpxItem, dirItem, selected);
 		float exaggeration = type != FIXED_HEIGHT ? getTrackExaggeration(gpxFile, gpxItem, dirItem, selected) : 1f;
 
+		TrackColorScale scale = TrackGradientHelper.from(app);
 		return new Track3DStyle(type, getTrackWallColorType(gpxFile, gpxItem, dirItem, selected),
-				getTrackLinePositionType(gpxFile, gpxItem, dirItem, selected), exaggeration, getElevationMeters(gpxFile, gpxItem, dirItem, selected));
+				getTrackLinePositionType(gpxFile, gpxItem, dirItem, selected), exaggeration,
+				getElevationMeters(gpxFile, gpxItem, dirItem, selected),
+				scale.getConsumptionMin(),
+				scale.getConsumptionMax());
 	}
 
 	public Gpx3DLinePositionType getTrackLinePositionType(@NonNull GpxFile gpxFile,

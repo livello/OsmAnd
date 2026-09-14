@@ -21,7 +21,9 @@ import net.osmand.shared.palette.domain.category.GradientPaletteCategory;
 import net.osmand.shared.routing.ColoringType;
 import net.osmand.plus.track.helpers.SelectedGpxFile;
 import net.osmand.render.RenderingRulesStorage;
+import net.osmand.shared.gpx.EvConsumptionScale;
 import net.osmand.shared.gpx.GradientScaleType;
+import net.osmand.shared.gpx.TrackColorScale;
 import net.osmand.shared.routing.RouteColorize;
 import net.osmand.shared.routing.RouteColorize.ColorizationType;
 import net.osmand.shared.routing.RouteColorize.RouteColorizationPoint;
@@ -52,6 +54,7 @@ public class CachedTrack {
 	private CachedTrackParams params;
 	private Set<String> availableColoringTypes;
 	private boolean forceUpdate;
+	private String lastConsumptionStampKey;
 
 	public CachedTrack(@NonNull OsmandApplication app, @NonNull SelectedGpxFile selectedGpxFile) {
 		this.app = app;
@@ -104,7 +107,8 @@ public class CachedTrack {
 			return Collections.emptyList();
 		}
 		boolean cleared = clearOutdatedCache();
-		String trackId = scaleType + "_" + paletteName + "_" + outlineScaleType;
+		String scaleKey = TrackGradientHelper.from(app).cacheKey();
+		String trackId = scaleType + "_" + paletteName + "_" + outlineScaleType + "_" + scaleKey;
 		List<TrkSegment> segments = nonSimplifiedSegmentsCache.get(trackId);
 
 		if (shouldUpdateSegments(segments, cleared)) {
@@ -146,7 +150,8 @@ public class CachedTrack {
 			return Collections.emptyList();
 		}
 		boolean cleared = clearOutdatedCache();
-		String trackId = zoom + "_" + scaleType + "_" + paletteName;
+		String scaleKey = TrackGradientHelper.from(app).cacheKey();
+		String trackId = zoom + "_" + scaleType + "_" + paletteName + "_" + scaleKey;
 		List<TrkSegment> segments = simplifiedSegmentsCache.get(trackId);
 
 		if (shouldUpdateSegments(segments, cleared)) {
@@ -223,7 +228,25 @@ public class CachedTrack {
 			colorPalette = gradient.getColorPalette();
 		}
 
-		return new RouteColorize(gpxFile, trackAnalysis, colorizationType, colorPalette, maxSpeed, fixedValues);
+		return new RouteColorize(gpxFile, trackAnalysis, colorizationType, colorPalette, maxSpeed,
+				fixedValues, TrackGradientHelper.from(app));
+	}
+
+	public void stampWindowedConsumptionIfNeeded() {
+		TrackColorScale scale = TrackGradientHelper.from(app);
+		GpxTrackAnalysis analysis = currentTrack
+				? selectedGpxFile.getTrackAnalysisToDisplay(app)
+				: selectedGpxFile.getAvailableFullTrackAnalysisToDisplay(app);
+		if (analysis == null) {
+			selectedGpxFile.requestFullTrackAnalysisToDisplay(app);
+			return;
+		}
+		String stampKey = scale.cacheKey() + "_" + selectedGpxFile.getGpxFileToDisplay().getModifiedTime();
+		if (stampKey.equals(lastConsumptionStampKey)) {
+			return;
+		}
+		EvConsumptionScale.stampWindowed(analysis.getPointAttributes(), scale.getWindowMeters());
+		lastConsumptionStampKey = stampKey;
 	}
 
 	@NonNull
@@ -355,5 +378,6 @@ public class CachedTrack {
 		}
 		usedPaletteNames.clear();
 		routeCache.clear();
+		lastConsumptionStampKey = null;
 	}
 }

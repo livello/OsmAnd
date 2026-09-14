@@ -65,9 +65,11 @@ import net.osmand.plus.track.SplitTrackAsyncTask.SplitTrackListener;
 import net.osmand.plus.track.TrackDrawInfo;
 import net.osmand.plus.track.cards.ActionsCard;
 import net.osmand.plus.track.cards.DirectionArrowsCard;
+import net.osmand.plus.track.cards.GradientScaleCard;
 import net.osmand.plus.track.cards.ShowStartFinishCard;
 import net.osmand.plus.track.cards.SplitIntervalCard;
 import net.osmand.plus.track.cards.Track3DCard;
+import net.osmand.plus.track.TrackGradientHelper;
 import net.osmand.plus.track.fragments.controller.TrackColorController;
 import net.osmand.plus.track.fragments.controller.TrackWidthController;
 import net.osmand.plus.track.fragments.controller.TrackWidthController.ITrackWidthSelectedListener;
@@ -113,6 +115,7 @@ public class TrackAppearanceFragment extends ContextMenuScrollFragment implement
 	private long modifiedTime = -1;
 
 	private SplitIntervalCard splitIntervalCard;
+	private GradientScaleCard gradientScaleCard;
 	private boolean showStartFinishIconsInitialValue;
 
 	private final List<BaseCard> cards = new ArrayList<>();
@@ -422,6 +425,9 @@ public class TrackAppearanceFragment extends ContextMenuScrollFragment implement
 			if (card instanceof SplitIntervalCard) {
 				FragmentManager manager = activity.getSupportFragmentManager();
 				SplitIntervalBottomSheet.showInstance(manager, this);
+			} else if (card instanceof GradientScaleCard) {
+				FragmentManager manager = activity.getSupportFragmentManager();
+				GradientScaleBottomSheet.showInstance(manager, this);
 			} else if (card instanceof DirectionArrowsCard) {
 				refreshMap();
 				updateAppearanceIcon();
@@ -731,6 +737,7 @@ public class TrackAppearanceFragment extends ContextMenuScrollFragment implement
 			gpxDataItem.setParameter(COLOR_PALETTE, trackDrawInfo.getGradientColorName());
 			gpxDbHelper.updateDataItem(gpxDataItem);
 		}
+		TrackGradientHelper.applyToSettings(settings, trackDrawInfo);
 	}
 
 	private void discardSplitChanges() {
@@ -746,6 +753,11 @@ public class TrackAppearanceFragment extends ContextMenuScrollFragment implement
 
 	private void discardShowStartFinishChanges() {
 		settings.CURRENT_TRACK_SHOW_START_FINISH.set(showStartFinishIconsInitialValue);
+	}
+
+	void applyGradientScale() {
+		updateContent();
+		refreshMap();
 	}
 
 	void applySplit(GpxSplitType splitType, int timeSplit, double distanceSplit) {
@@ -802,6 +814,11 @@ public class TrackAppearanceFragment extends ContextMenuScrollFragment implement
 
 			TrackColorController trackColorController = getColorCardController();
 			addCard(container, new MultiStateCard(mapActivity, trackColorController));
+
+			inflate(R.layout.list_item_divider_basic, container, true);
+
+			gradientScaleCard = new GradientScaleCard(mapActivity, trackDrawInfo);
+			addCard(container, gradientScaleCard);
 
 			inflate(R.layout.list_item_divider_basic, container, true);
 

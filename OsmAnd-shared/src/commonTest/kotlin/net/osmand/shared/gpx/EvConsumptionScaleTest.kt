@@ -48,8 +48,42 @@ class EvConsumptionScaleTest {
 		assertEquals(palette.getColorByValue(300.0), palette.getColorByValue(900.0))
 	}
 
+	@Test
+	fun windowedUsesEnergyDeltaOverWindow() {
+		val attrs = listOf(
+			energyPoint(0f, 80f, 0f),
+			energyPoint(5f, 80f, 50f),
+			energyPoint(10f, 80f, 50f),
+			energyPoint(15f, 80f, 50f),
+			energyPoint(20f, 80f, 50f)
+		)
+		val values = EvConsumptionScale.windowedWhPerKm(attrs, 100.0)
+		assertEquals(100f, values[4], 0.5f)
+		assertEquals(100f, values[2], 0.5f)
+	}
+
+	@Test
+	fun pointPrefersWindowedTag() {
+		val attributes = PointAttributes(1f, 1f, false, false)
+		attributes.setAttributeValue(PointAttributes.EV_TAG_CONSUMPTION, 80f)
+		attributes.setAttributeValue(PointAttributes.EV_TAG_CONSUMPTION_100M, 190f)
+		attributes.setAttributeValue(PointAttributes.EV_TAG_CONSUMPTION_WINDOW, 142f)
+		assertEquals(142f, EvConsumptionScale.pointWhPerKm(attributes))
+	}
+
+	@Test
+	fun paletteCoversCustomRange() {
+		val palette = EvConsumptionScale.paletteForFixedRange(ColorPalette.MIN_MAX_PALETTE, 20.0, 200.0)
+		assertEquals(20.0, palette.colors.first().value, 0.001)
+		assertEquals(200.0, palette.colors.last().value, 0.001)
+	}
+
 	private fun energyPoint(energyWh: Float, whKm: Float): PointAttributes {
-		return PointAttributes(1f, 1f, false, false).also {
+		return energyPoint(energyWh, whKm, 1f)
+	}
+
+	private fun energyPoint(energyWh: Float, whKm: Float, distanceM: Float): PointAttributes {
+		return PointAttributes(distanceM, 1f, false, false).also {
 			it.setAttributeValue(PointAttributes.EV_TAG_ENERGY, energyWh)
 			it.setAttributeValue(PointAttributes.EV_TAG_CONSUMPTION, whKm)
 		}

@@ -2,6 +2,7 @@ package net.osmand.plus.track;
 
 import static net.osmand.shared.gpx.PointAttributes.EV_TAG_CONSUMPTION;
 import static net.osmand.shared.gpx.PointAttributes.EV_TAG_CONSUMPTION_100M;
+import static net.osmand.shared.gpx.PointAttributes.EV_TAG_CONSUMPTION_WINDOW;
 import static net.osmand.shared.gpx.PointAttributes.EV_TAG_POWER;
 import static net.osmand.shared.gpx.PointAttributes.SENSOR_TAG_BIKE_POWER;
 import static net.osmand.shared.gpx.PointAttributes.SENSOR_TAG_CADENCE;
@@ -89,7 +90,7 @@ public enum Gpx3DVisualizationType {
 			case HEART_RATE, BICYCLE_CADENCE, BICYCLE_POWER, TEMPERATURE, SPEED_SENSOR ->
 					getSensorElevation(point, type, attributes);
 			case EV_CONTROLLER_POWER, EV_CONSUMPTION ->
-					getEvElevation(point, type, attributes);
+					getEvElevation(point, type, attributes, style);
 		};
 		boolean addGpxHeight = heightmapsActive && !CollectionUtils.equalsToAny(type, ALTITUDE, NONE);
 		return addGpxHeight ? elevation + pointElevation : elevation;
@@ -126,16 +127,20 @@ public enum Gpx3DVisualizationType {
 
 	private static float getEvElevation(@NonNull WptPt point,
 	                                    @NonNull Gpx3DVisualizationType type,
-	                                    @Nullable PointAttributes attributes) {
+	                                    @Nullable PointAttributes attributes,
+	                                    @NonNull Track3DStyle style) {
 		if (type == EV_CONTROLLER_POWER) {
 			float watts = evAttribute(point, attributes, EV_TAG_POWER);
 			return Float.isNaN(watts) ? 0 : Math.max(0f, watts) * EV_POWER_TO_HEIGHT_SCALE;
 		}
-		float whKm = evAttribute(point, attributes, EV_TAG_CONSUMPTION_100M);
+		float whKm = evAttribute(point, attributes, EV_TAG_CONSUMPTION_WINDOW);
+		if (Float.isNaN(whKm)) {
+			whKm = evAttribute(point, attributes, EV_TAG_CONSUMPTION_100M);
+		}
 		if (Float.isNaN(whKm)) {
 			whKm = evAttribute(point, attributes, EV_TAG_CONSUMPTION);
 		}
-		return EvConsumptionScale.toHeightMeters(whKm);
+		return EvConsumptionScale.toHeightMeters(whKm, style.getConsumptionMin(), style.getConsumptionMax());
 	}
 
 	private static float evAttribute(@NonNull WptPt point, @Nullable PointAttributes attributes,

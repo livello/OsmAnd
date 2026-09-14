@@ -1106,9 +1106,10 @@ remainingWh / effective Wh/km. Optional route profile adds remaining-route climb
 Needs a GPX recorded by EV-Telemetry with consumption fields (ev_wh_km / energy).<br/>
 1. Open the recorded track on the map.<br/>
 2. Track menu → <b>Appearance</b>.<br/>
-3. Color → <b>Specific consumption</b>. Green ≈ 40 Wh/km, red ≈ 300 Wh/km (fixed scale, not the track min/max).<br/>
+3. Color → <b>Specific consumption</b>. Green ≈ min, red ≈ max of the scale (Appearance → Gradient intervals, default 40–300 Wh/km). Color and 3D height use ΔWh / Δkm over the averaging window (default 100 m), not a single GPX sample.<br/>
 4. Split interval → <b>Specific consumption</b>, pick a kilometre step like Distance. Circles show km and Wh/km of that piece (ΔWh / Δkm).<br/>
-5. 3D track → visualization <b>Specific consumption</b>: wall height and color also follow 40–300 Wh/km. Enable 3D/terrain if OsmAnd requires it.<br/>
+5. 3D track → visualization <b>Specific consumption</b>: wall height and color follow the same scale. Enable 3D/terrain if OsmAnd requires it.<br/>
+Speed color uses the speed interval from the same screen (default 0–60 km/h), not the track min/max.<br/>
 Older GPX files without energy and ev_wh_km tags will not show consumption: circles show —, color and 3D stay unavailable.]]></string>
     <string name="ev_bms_plugin_architecture"><![CDATA[<br/><br/><b>🏗️ Plugin architecture</b><br/>
 OsmAnd plugin class <b>EvBmsPlugin</b> (extends OsmandPlugin). BLE callbacks deliver UART frames; the plugin publishes an <b>EvTelemetry</b> snapshot on the UI thread. Widgets, the HUD, voice, CSV/GPX, history and the settings sheet all read that snapshot. Range uses about 1 s samples even when BLE polls faster, so GPS jitter does not inflate distance.<br/><br/>
@@ -1280,6 +1281,12 @@ Layouts: <i>res/layout/ev_bms_*.xml</i>. Preferences: <i>res/xml/ev_bms_settings
     <string name="ev_bms_deselect_emoji">⬜</string>
     <string name="ev_bms_reset_emoji">↩️</string>
     <string name="ev_bms_coloring_consumption">Specific consumption</string>
+    <string name="ev_bms_gradient_scale">Gradient intervals</string>
+    <string name="ev_bms_gradient_scale_descr">Averaging window for specific consumption, and min–max of the color scale for consumption and speed.</string>
+    <string name="ev_bms_gradient_window">Averaging window</string>
+    <string name="ev_bms_gradient_consumption_range">Specific consumption, Wh/km</string>
+    <string name="ev_bms_gradient_speed_range">Speed, km/h</string>
+    <string name="ev_bms_gradient_scale_range">%1$s–%2$s %3$s</string>
     <string name="ev_bms_3d_consumption_100m">Wh/km last 100 m</string>
     <string name="ev_bms_telemetry_fields_summary">%1$d of %2$d selected</string>
     <string name="ev_bms_telemetry_fields_empty">Select at least one field</string>

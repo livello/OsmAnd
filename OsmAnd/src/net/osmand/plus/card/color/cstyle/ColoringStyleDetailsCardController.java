@@ -7,15 +7,16 @@ import android.text.style.ForegroundColorSpan;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import net.osmand.shared.gpx.EvConsumptionScale;
-import net.osmand.shared.gpx.GpxTrackAnalysis;
-import net.osmand.plus.OsmandApplication;
-import net.osmand.plus.R;
 import net.osmand.plus.card.color.ColoringStyle;
-import net.osmand.shared.routing.ColoringType;
 import net.osmand.plus.settings.backend.ApplicationMode;
+import net.osmand.plus.track.TrackGradientHelper;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.OsmAndFormatter;
+import net.osmand.shared.gpx.GpxTrackAnalysis;
+import net.osmand.shared.gpx.TrackColorScale;
+import net.osmand.shared.routing.ColoringType;
+import net.osmand.plus.OsmandApplication;
+import net.osmand.plus.R;
 import net.osmand.shared.routing.RouteColorize;
 import net.osmand.shared.routing.RouteColorize.ColorizationType;
 
@@ -92,22 +93,18 @@ public class ColoringStyleDetailsCardController implements IColoringStyleDetails
 	@Override
 	public CharSequence[] getLegendHeadlines() {
 		ColoringType coloringType = coloringStyle.getType();
-		if (isLegendDataSpecified() && coloringType.toGradientScaleType() != null) {
+		if (coloringType == ColoringType.SPEED) {
+			TrackColorScale scale = TrackGradientHelper.from(app);
+			return new CharSequence[] {formatValue(scale.getSpeedMinMps()), formatValue(scale.getSpeedMaxMps())};
+		} else if (coloringType == ColoringType.CONSUMPTION) {
+			TrackColorScale scale = TrackGradientHelper.from(app);
+			return new CharSequence[] {formatValue(scale.getConsumptionMin()), formatValue(scale.getConsumptionMax())};
+		} else if (isLegendDataSpecified() && coloringType.toGradientScaleType() != null) {
 			ApplicationMode appMode = app.getSettings().getApplicationMode();
 			ColorizationType colorizationType = coloringType.toGradientScaleType().toColorizationType();
 			double min = RouteColorize.Companion.getMinValue(colorizationType, analysis);
 			double max = RouteColorize.Companion.getMaxValue(colorizationType, analysis, min, appMode.getMaxSpeed());
 			return new CharSequence[] { formatValue(min), formatValue(max) };
-		} else if (coloringType == ColoringType.SPEED) {
-			return new CharSequence[] {
-					app.getString(R.string.shared_string_min_speed),
-					app.getString(R.string.shared_string_max_speed)
-			};
-		} else if (coloringType == ColoringType.CONSUMPTION) {
-			return new CharSequence[] {
-					formatValue(EvConsumptionScale.MIN_WH_KM),
-					formatValue(EvConsumptionScale.MAX_WH_KM)
-			};
 		} else if (coloringType == ColoringType.ALTITUDE) {
 			return new CharSequence[] {
 					app.getString(R.string.shared_string_min_height),

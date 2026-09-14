@@ -40,6 +40,7 @@ class PointAttributes(
 
 		const val EV_TAG_CONSUMPTION = "ev_wh_km"
 		const val EV_TAG_CONSUMPTION_100M = "ev_wh_km_100m"
+		const val EV_TAG_CONSUMPTION_WINDOW = "ev_wh_km_window"
 		const val EV_TAG_POWER = "power_w"
 		const val EV_TAG_ENERGY = "ev_energy_wh"
 		const val EV_TAG_VOLTAGE = "ev_voltage"

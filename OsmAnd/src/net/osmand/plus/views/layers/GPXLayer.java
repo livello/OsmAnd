@@ -252,6 +252,11 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 		appearanceHelper.setTrackDrawInfo(trackDrawInfo);
 	}
 
+	@NonNull
+	public GpxAppearanceHelper getAppearanceHelper() {
+		return appearanceHelper;
+	}
+
 	private void initUI() {
 		paint = new Paint();
 		paint.setStyle(Style.STROKE);
@@ -1311,6 +1316,13 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 		ColoringType outlineColoringType = ColoringType.Companion.valueOf(track3DStyle.getWallColorType());
 		GradientScaleType scaleType = coloringType.toGradientScaleType();
 		GradientScaleType outlineScaleType = outlineColoringType != null ? outlineColoringType.toGradientScaleType() : null;
+		boolean needsConsumptionStamp = coloringType == ColoringType.CONSUMPTION
+				|| outlineColoringType == ColoringType.CONSUMPTION
+				|| track3DStyle.getVisualizationType() == Gpx3DVisualizationType.EV_CONSUMPTION
+				|| track3DStyle.getWallColorType() == Gpx3DWallColorType.CONSUMPTION;
+		if (needsConsumptionStamp) {
+			cachedTrack.stampWindowedConsumptionIfNeeded();
+		}
 		boolean analysisPending = !currentTrack && (scaleType != null || outlineScaleType != null)
 				&& selectedGpxFile.getAvailableFullTrackAnalysisToDisplay(app) == null;
 		if (analysisPending) {
@@ -1321,7 +1333,8 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 			if (outlineColoringType != null && outlineColoringType.isGradient()) {
 				outlineColoringType = ColoringType.TRACK_SOLID;
 				track3DStyle = new Track3DStyle(track3DStyle.getVisualizationType(), Gpx3DWallColorType.SOLID,
-						track3DStyle.getLinePositionType(), track3DStyle.getExaggeration(), track3DStyle.getElevation());
+						track3DStyle.getLinePositionType(), track3DStyle.getExaggeration(), track3DStyle.getElevation(),
+						track3DStyle.getConsumptionMin(), track3DStyle.getConsumptionMax());
 			}
 		}
 

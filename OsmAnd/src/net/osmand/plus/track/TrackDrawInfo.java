@@ -40,6 +40,7 @@ import net.osmand.plus.track.helpers.GpxAppearanceHelper;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.render.RenderingRuleProperty;
 import net.osmand.render.RenderingRulesStorage;
+import net.osmand.shared.gpx.EvConsumptionScale;
 import net.osmand.shared.gpx.GpxDataItem;
 import net.osmand.shared.gpx.GpxFile;
 import net.osmand.util.Algorithms;
@@ -74,6 +75,11 @@ public class TrackDrawInfo {
 	private static final String ADDITIONAL_EXAGGERATION_KEY = "additional_exaggeration";
 	private static final String ELEVATION_METERS_KEY = "elevation_meters";
 	private static final String GRADIENT_COLOR_KEY = "gradient_color";
+	private static final String CONSUMPTION_WINDOW_KEY = "consumption_window_m";
+	private static final String CONSUMPTION_MIN_KEY = "consumption_min_wh_km";
+	private static final String CONSUMPTION_MAX_KEY = "consumption_max_wh_km";
+	private static final String SPEED_MIN_KEY = "speed_min_kmh";
+	private static final String SPEED_MAX_KEY = "speed_max_kmh";
 
 	private String filePath;
 	private String width;
@@ -93,6 +99,11 @@ public class TrackDrawInfo {
 	private float additionalExaggeration = 1f;
 	private float elevationMeters = 1000f;
 	private String gradientColorName = PaletteConstants.DEFAULT_NAME;
+	private double consumptionWindowM = EvConsumptionScale.DEFAULT_WINDOW_M;
+	private double consumptionMinWhKm = EvConsumptionScale.MIN_WH_KM;
+	private double consumptionMaxWhKm = EvConsumptionScale.MAX_WH_KM;
+	private double speedMinKmh = 0;
+	private double speedMaxKmh = EvConsumptionScale.DEFAULT_SPEED_MAX_KMH;
 
 	@TrackAppearanceType
 	private final int appearanceType;
@@ -134,6 +145,7 @@ public class TrackDrawInfo {
 		trackVisualizationType = Gpx3DVisualizationType.get3DVisualizationType(settings.CURRENT_TRACK_3D_VISUALIZATION_TYPE.get());
 		trackWallColorType = Gpx3DWallColorType.Companion.get3DWallColorType(settings.CURRENT_TRACK_3D_WALL_COLORING_TYPE.get());
 		trackLinePositionType = Gpx3DLinePositionType.get3DLinePositionType(settings.CURRENT_TRACK_3D_WALL_COLORING_TYPE.get());
+		TrackGradientHelper.copyFromSettings(settings, this);
 	}
 
 	public void initDefaultTrackParams(@NonNull OsmandApplication app, @NonNull ApplicationMode mode) {
@@ -141,6 +153,7 @@ public class TrackDrawInfo {
 		width = app.getSettings().getCustomRenderProperty(CURRENT_TRACK_WIDTH_ATTR).getModeValue(mode);
 		coloringType = ColoringType.Companion.requireValueOf(TRACK, null);
 		routeInfoAttribute = ColoringType.Companion.getRouteInfoAttribute(null);
+		TrackGradientHelper.copyFromSettings(app.getSettings(), this);
 	}
 
 	public void updateParams(@NonNull OsmandApplication app, @NonNull GpxFile gpxFile, @NonNull GpxDataItem item) {
@@ -162,6 +175,7 @@ public class TrackDrawInfo {
 		additionalExaggeration = ((Double) helper.requireParameter(item, ADDITIONAL_EXAGGERATION)).floatValue();
 		elevationMeters = ((Double) helper.requireParameter(item, ELEVATION_METERS)).floatValue();
 		gradientColorName = helper.getParameter(item, COLOR_PALETTE);
+		TrackGradientHelper.copyFromSettings(app.getSettings(), this);
 	}
 
 	@Nullable
@@ -317,6 +331,46 @@ public class TrackDrawInfo {
 		this.gradientColorName = gradientColorName;
 	}
 
+	public double getConsumptionWindowM() {
+		return consumptionWindowM;
+	}
+
+	public void setConsumptionWindowM(double consumptionWindowM) {
+		this.consumptionWindowM = consumptionWindowM;
+	}
+
+	public double getConsumptionMinWhKm() {
+		return consumptionMinWhKm;
+	}
+
+	public void setConsumptionMinWhKm(double consumptionMinWhKm) {
+		this.consumptionMinWhKm = consumptionMinWhKm;
+	}
+
+	public double getConsumptionMaxWhKm() {
+		return consumptionMaxWhKm;
+	}
+
+	public void setConsumptionMaxWhKm(double consumptionMaxWhKm) {
+		this.consumptionMaxWhKm = consumptionMaxWhKm;
+	}
+
+	public double getSpeedMinKmh() {
+		return speedMinKmh;
+	}
+
+	public void setSpeedMinKmh(double speedMinKmh) {
+		this.speedMinKmh = speedMinKmh;
+	}
+
+	public double getSpeedMaxKmh() {
+		return speedMaxKmh;
+	}
+
+	public void setSpeedMaxKmh(double speedMaxKmh) {
+		this.speedMaxKmh = speedMaxKmh;
+	}
+
 	public void setShowStartFinish(boolean showStartFinish) {
 		this.showStartFinish = showStartFinish;
 	}
@@ -349,6 +403,11 @@ public class TrackDrawInfo {
 			settings.CURRENT_TRACK_SHOW_ARROWS.resetToDefault();
 			settings.CURRENT_TRACK_SHOW_START_FINISH.resetToDefault();
 			settings.CURRENT_TRACK_3D_VISUALIZATION_TYPE.resetToDefault();
+			settings.TRACK_COLOR_CONSUMPTION_WINDOW_M.resetToDefault();
+			settings.TRACK_COLOR_CONSUMPTION_MIN_WH_KM.resetToDefault();
+			settings.TRACK_COLOR_CONSUMPTION_MAX_WH_KM.resetToDefault();
+			settings.TRACK_COLOR_SPEED_MIN_KMH.resetToDefault();
+			settings.TRACK_COLOR_SPEED_MAX_KMH.resetToDefault();
 			initCurrentTrackParams(app);
 		} else if (isDefaultAppearance()) {
 			color = getDefaultColor(settings, renderer);
@@ -361,6 +420,7 @@ public class TrackDrawInfo {
 			trackVisualizationType = Gpx3DVisualizationType.NONE;
 			trackWallColorType = Gpx3DWallColorType.NONE;
 			trackLinePositionType = Gpx3DLinePositionType.TOP;
+			TrackGradientHelper.copyFromSettings(settings, this);
 		} else if (gpxFile != null) {
 			color = gpxFile.getColor(null);
 			width = gpxFile.getWidth(null);
@@ -375,6 +435,7 @@ public class TrackDrawInfo {
 			trackVisualizationType = Gpx3DVisualizationType.get3DVisualizationType(gpxFile.get3DVisualizationType());
 			trackWallColorType = Gpx3DWallColorType.Companion.get3DWallColorType(gpxFile.get3DWallColoringType());
 			trackLinePositionType = Gpx3DLinePositionType.get3DLinePositionType(gpxFile.get3DLinePositionType());
+			TrackGradientHelper.copyFromSettings(settings, this);
 		}
 	}
 
@@ -395,6 +456,11 @@ public class TrackDrawInfo {
 		additionalExaggeration = bundle.getFloat(ADDITIONAL_EXAGGERATION_KEY);
 		elevationMeters = bundle.getFloat(ELEVATION_METERS_KEY);
 		gradientColorName = bundle.getString(GRADIENT_COLOR_KEY);
+		consumptionWindowM = bundle.getDouble(CONSUMPTION_WINDOW_KEY, EvConsumptionScale.DEFAULT_WINDOW_M);
+		consumptionMinWhKm = bundle.getDouble(CONSUMPTION_MIN_KEY, EvConsumptionScale.MIN_WH_KM);
+		consumptionMaxWhKm = bundle.getDouble(CONSUMPTION_MAX_KEY, EvConsumptionScale.MAX_WH_KM);
+		speedMinKmh = bundle.getDouble(SPEED_MIN_KEY, 0);
+		speedMaxKmh = bundle.getDouble(SPEED_MAX_KEY, EvConsumptionScale.DEFAULT_SPEED_MAX_KMH);
 	}
 
 	public void saveToBundle(@NonNull Bundle bundle) {
@@ -413,6 +479,11 @@ public class TrackDrawInfo {
 		bundle.putFloat(ADDITIONAL_EXAGGERATION_KEY, trackVisualizationType == null ? 0 : additionalExaggeration);
 		bundle.putFloat(ELEVATION_METERS_KEY, elevationMeters);
 		bundle.putString(GRADIENT_COLOR_KEY, gradientColorName);
+		bundle.putDouble(CONSUMPTION_WINDOW_KEY, consumptionWindowM);
+		bundle.putDouble(CONSUMPTION_MIN_KEY, consumptionMinWhKm);
+		bundle.putDouble(CONSUMPTION_MAX_KEY, consumptionMaxWhKm);
+		bundle.putDouble(SPEED_MIN_KEY, speedMinKmh);
+		bundle.putDouble(SPEED_MAX_KEY, speedMaxKmh);
 
 		if (color != null) {
 			bundle.putInt(TRACK_COLOR, color);
