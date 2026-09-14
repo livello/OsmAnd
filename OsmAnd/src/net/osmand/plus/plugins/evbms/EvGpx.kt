@@ -57,6 +57,7 @@ object EvGpx {
 		return GpxUtilities.ExtensionTagFilter { tag -> shouldKeepExtension(tag, keep) }
 	}
 
+	@Suppress("UNUSED_PARAMETER")
 	fun keepTagsForMapRestore(
 		selectedFields: List<TelemetryField>,
 		coloringType: String?,
@@ -68,22 +69,15 @@ object EvGpx {
 			keep.add(field.id)
 			keep.addAll(field.gpxAliases())
 		}
-		val coloring = coloringType.orEmpty()
-		val visualization = visualizationType.orEmpty()
-		val wall = wallColoringType.orEmpty()
-		if (coloring.contains("ev_wh_km") || wall.contains("ev_wh_km")
-			|| visualization.contains("ev_wh_km")
-		) {
-			keep.add(PointAttributes.EV_TAG_CONSUMPTION)
-			keep.add(PointAttributes.EV_TAG_CONSUMPTION_100M)
-			keep.add(PointAttributes.EV_TAG_ENERGY)
-			keep.add(TelemetryField.CONSUMPTION.id)
-			keep.add(TelemetryField.COVERAGE.id)
-		}
-		if (visualization == "ev_controller_power" || coloring.contains("power_w")) {
-			keep.add(PointAttributes.EV_TAG_POWER)
-			keep.add(TelemetryField.POWER.id)
-		}
+		// Appearance menus (color / 3D / split) need these tags even before
+		// the user has already selected consumption coloring or 3D height.
+		keep.add(PointAttributes.EV_TAG_CONSUMPTION)
+		keep.add(PointAttributes.EV_TAG_CONSUMPTION_100M)
+		keep.add(PointAttributes.EV_TAG_ENERGY)
+		keep.add(PointAttributes.EV_TAG_POWER)
+		keep.add(TelemetryField.CONSUMPTION.id)
+		keep.add(TelemetryField.COVERAGE.id)
+		keep.add(TelemetryField.POWER.id)
 		return keep
 	}
 
@@ -270,6 +264,13 @@ class EvTrackPointsAnalyser : GpxTrackAnalysis.TrackPointsAnalyser {
 			attribute.setAttributeValue(tag, extra)
 			if (!analysis.hasData(tag) && attribute.hasValidValue(tag)) {
 				analysis.setHasData(tag, true)
+			}
+		}
+		if (!analysis.hasData(PointAttributes.EV_TAG_CONSUMPTION)) {
+			val coverage = attribute.getAttributeValue(TelemetryField.COVERAGE.id)
+			if (!coverage.isNaN()) {
+				attribute.setAttributeValue(PointAttributes.EV_TAG_CONSUMPTION, coverage)
+				analysis.setHasData(PointAttributes.EV_TAG_CONSUMPTION, true)
 			}
 		}
 	}

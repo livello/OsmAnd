@@ -56,6 +56,11 @@ public class ColoringStyleAlgorithms {
 	                                                 @NonNull SelectedGpxFile selectedGpxFile) {
 		ColoringType coloringType = coloringStyle.getType();
 		String attributeName = coloringStyle.getRouteInfoAttribute();
+		if (coloringType == ColoringType.CONSUMPTION) {
+			// Summary analysis often lacks EV tags until full GPX reload; keep the
+			// coloring option visible so appearance can request full analysis.
+			return true;
+		}
 		if (coloringType.isGradient()) {
 			GradientScaleType scaleType = coloringType.toGradientScaleType();
 			GpxTrackAnalysis analysis = selectedGpxFile.getTrackSummaryAnalysisToDisplay(app);

@@ -251,9 +251,7 @@ public class SplitTrackAsyncTask extends AsyncTask<Void, Void, Void> {
 		if (Float.isNaN(whKm)) {
 			return app.getString(R.string.ev_bms_value_none);
 		}
-		return app.getString(R.string.ltr_or_rtl_combine_via_space,
-				String.valueOf(Math.round(whKm)),
-				app.getString(R.string.ev_bms_unit_wh_per_km));
+		return String.valueOf(Math.round(whKm));
 	}
 
 	private static String formatSecondarySplitName(double metricEnd, @NonNull TrackDisplayGroup group,
@@ -267,26 +265,44 @@ public class SplitTrackAsyncTask extends AsyncTask<Void, Void, Void> {
 
 	private static String formatSplitName(double metricEnd, @NonNull TrackDisplayGroup group,
 	                                      @NonNull OsmandApplication app) {
+		if (group.isSplitConsumption()) {
+			return formatSplitDistanceNumber(metricEnd, group);
+		}
 		if (group.isSplitDistance() || group.isSplitUphillDownhill()) {
 			MetricsConstants mc = app.getSettings().METRIC_SYSTEM.get();
 			if (mc == MetricsConstants.KILOMETERS_AND_METERS) {
-				double sd = group.getSplitDistance();
-				int digits = sd < 100 ? 2 : (sd < 1000 ? 1 : 0);
-				int rem1000 = (int) (metricEnd + 0.5) % 1000;
-				if (rem1000 > 1 && digits < 1) {
-					digits = 1;
-				}
-				int rem100 = (int) (metricEnd + 0.5) % 100;
-				if (rem100 > 1 && digits < 2) {
-					digits = 2;
-				}
-				return OsmAndFormatter.getFormattedRoundDistanceKm((float) metricEnd, digits, app);
+				return OsmAndFormatter.getFormattedRoundDistanceKm((float) metricEnd,
+						splitDistanceDigits(metricEnd, group), app);
 			} else {
 				return OsmAndFormatter.getFormattedDistance((float) metricEnd, app);
 			}
 		} else {
 			return Algorithms.formatDuration((int) metricEnd, app.accessibilityEnabled());
 		}
+	}
+
+	@NonNull
+	private static String formatSplitDistanceNumber(double metricEnd, @NonNull TrackDisplayGroup group) {
+		int digits = splitDistanceDigits(metricEnd, group);
+		double km = metricEnd / 1000.0;
+		if (digits <= 0) {
+			return String.valueOf((int) (km + 0.5));
+		}
+		return String.format(java.util.Locale.getDefault(), digits == 1 ? "%.1f" : "%.2f", km);
+	}
+
+	private static int splitDistanceDigits(double metricEnd, @NonNull TrackDisplayGroup group) {
+		double sd = group.getSplitDistance();
+		int digits = sd < 100 ? 2 : (sd < 1000 ? 1 : 0);
+		int rem1000 = (int) (metricEnd + 0.5) % 1000;
+		if (rem1000 > 1 && digits < 1) {
+			digits = 1;
+		}
+		int rem100 = (int) (metricEnd + 0.5) % 100;
+		if (rem100 > 1 && digits < 2) {
+			digits = 2;
+		}
+		return digits;
 	}
 
 	public interface SplitTrackListener {

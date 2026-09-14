@@ -3,8 +3,6 @@ package net.osmand.plus.track.cards;
 import static net.osmand.plus.chooseplan.OsmAndFeature.TERRAIN;
 import static net.osmand.plus.track.Gpx3DVisualizationType.EV_CONTROLLER_POWER;
 import static net.osmand.plus.track.Gpx3DVisualizationType.FIXED_HEIGHT;
-import static net.osmand.shared.gpx.PointAttributes.EV_TAG_CONSUMPTION;
-import static net.osmand.shared.gpx.PointAttributes.EV_TAG_CONSUMPTION_100M;
 import static net.osmand.shared.gpx.PointAttributes.EV_TAG_POWER;
 import static net.osmand.shared.gpx.PointAttributes.SENSOR_TAG_BIKE_POWER;
 import static net.osmand.shared.gpx.PointAttributes.SENSOR_TAG_CADENCE;
@@ -116,8 +114,7 @@ public class Track3DCard extends BaseCard {
 			case TEMPERATURE -> analysis.hasData(SENSOR_TAG_TEMPERATURE);
 			case SPEED_SENSOR -> analysis.hasData(SENSOR_TAG_SPEED);
 			case EV_CONTROLLER_POWER -> analysis.hasData(EV_TAG_POWER);
-			case EV_CONSUMPTION -> analysis.hasData(EV_TAG_CONSUMPTION_100M)
-					|| analysis.hasData(EV_TAG_CONSUMPTION);
+			case EV_CONSUMPTION -> true;
 			default -> true;
 		};
 	}
@@ -182,8 +179,7 @@ public class Track3DCard extends BaseCard {
 		return switch (type) {
 			case ALTITUDE -> analysis.hasElevationData();
 			case SPEED, SLOPE -> analysis.hasSpeedData();
-			case CONSUMPTION -> analysis.hasData(EV_TAG_CONSUMPTION_100M)
-					|| analysis.hasData(EV_TAG_CONSUMPTION);
+			case CONSUMPTION -> true;
 			default -> true;
 		};
 	}
