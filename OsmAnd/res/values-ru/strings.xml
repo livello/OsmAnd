@@ -30,6 +30,13 @@
     <string name="ev_bms_sync_stopped">Синхронизация телеметрии выключена</string>
     <string name="ev_bms_sync_busy">Идёт синхронизация…</string>
     <string name="ev_bms_sync_bind_failed">Не удалось открыть порт телеметрии</string>
+    <string name="ev_bms_sync_conflict_title">Треки отличаются</string>
+    <string name="ev_bms_sync_conflict_message">«%1$s» уже есть на этом телефоне, но содержимое другое.</string>
+    <string name="ev_bms_sync_conflict_replace">Заменить</string>
+    <string name="ev_bms_sync_conflict_ignore">Пропустить</string>
+    <string name="ev_bms_sync_conflict_rename">Сохранить под другим именем</string>
+    <string name="ev_bms_sync_conflict_apply_all">Применить к остальным трекам (%1$d)</string>
+    <string name="ev_bms_sync_result_conflicts">Скопировано %1$d, пропущено %2$d, конфликтов %3$d, ошибок %4$d</string>
     <string name="torrent_maps_verify_hashes">Проверить скачанные карты</string>
     <string name="torrent_maps_verify_hashes_desc">Сверить локальные карты с SHA-1 кусков торрента. Раньше незавершённая загрузка писала прямо в рабочие .obf — из‑за этого пропадали большие области на карте.</string>
     <string name="torrent_maps_verify_running">Проверка карт… %1$d / %2$d</string>

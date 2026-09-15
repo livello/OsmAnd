@@ -1,5 +1,6 @@
 package net.osmand.plus.plugins.evbms
 
+import android.app.Activity
 import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.net.NetworkCapabilities
@@ -8,14 +9,26 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.util.Log
+import android.view.ViewGroup
+import android.widget.Button
+import android.widget.CheckBox
+import android.widget.LinearLayout
+import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import net.osmand.plus.OsmandApplication
 import net.osmand.plus.R
+import net.osmand.plus.settings.enums.ThemeUsageContext
+import net.osmand.plus.utils.AndroidUtils
+import net.osmand.plus.utils.ColorUtilities
+import net.osmand.plus.utils.UiUtilities
 import org.json.JSONObject
+import java.io.File
 import java.net.HttpURLConnection
 import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.net.Proxy
 import java.net.URL
+import java.util.ArrayDeque
 import java.util.LinkedHashSet
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
@@ -49,7 +62,23 @@ class EvBmsSyncController(
 		val skipped: Int,
 		val errors: Int,
 		val message: String,
-		val timeMs: Long = System.currentTimeMillis()
+		val timeMs: Long = System.currentTimeMillis(),
+		val conflicts: Int = 0
+	)
+
+	private enum class ConflictChoice {
+		REPLACE,
+		IGNORE,
+		RENAME
+	}
+
+	private data class TrackConflict(
+		val path: String,
+		val name: String,
+		val temp: File,
+		val dest: File,
+		val remoteSize: Long,
+		val remoteMtime: Long
 	)
 
 	private val ui = Handler(Looper.getMainLooper())
@@ -62,6 +91,10 @@ class EvBmsSyncController(
 	private val listeners = CopyOnWriteArrayList<Listener>()
 	private val pulling = AtomicBoolean(false)
 	private val lastPeerRev = ConcurrentHashMap<String, Long>()
+	private val pendingConflicts = ArrayDeque<TrackConflict>()
+	private val conflictLock = Any()
+	private val rememberedTracks = ConcurrentHashMap<String, String>()
+	private val showingConflict = AtomicBoolean(false)
 	private var server: EvBmsSyncHttpServer? = null
 	private var discovery: EvBmsSyncDiscovery? = null
 	private var liveTask: ScheduledFuture<*>? = null
@@ -253,15 +286,19 @@ class EvBmsSyncController(
 					lastFail = result.message
 				}
 			}
-			val message = if (copied == 0 && errors > 0 && lastFail != null) {
+			val pending = pendingConflictCount()
+			val message = if (copied == 0 && errors > 0 && lastFail != null && pending == 0) {
 				lastFail
 			} else {
-				app.getString(R.string.ev_bms_sync_result, copied, skipped, errors)
+				resultMessage(copied, skipped, errors, pending)
 			}
-			val result = SyncResult(copied, skipped, errors, message)
+			val result = SyncResult(copied, skipped, errors, message, conflicts = pending)
 			lastResult = result
 			pulling.set(false)
-			ui.post { listeners.forEach { it.onSyncFinished(result) } }
+			ui.post {
+				listeners.forEach { it.onSyncFinished(result) }
+				showPendingTrackConflicts()
+			}
 		}
 	}
 
@@ -339,6 +376,7 @@ class EvBmsSyncController(
 		var copied = 0
 		var skipped = 0
 		var errors = 0
+		var conflicts = 0
 		val downloadedCsv = ArrayList<String>()
 		var incomingCharges = emptyList<EvHistoryStore.ChargeRecord>()
 		var incomingTrips = emptyList<EvHistoryStore.ChargeTripRecord>()
@@ -362,35 +400,38 @@ class EvBmsSyncController(
 				}
 				continue
 			}
-			if (catalog.shouldSkipIncoming(entry.path, entry.size, entry.mtime)) {
-				skipped++
-				continue
-			}
-			try {
-				val conn = open(URL("$base/file/${EvBmsSyncFiles.encodePath(entry.path)}"), 15_000, 300_000)
-				try {
-					if (conn.responseCode !in 200..299) {
-						errors++
-						continue
-					}
-					conn.inputStream.use { input ->
-						if (catalog.writeIncoming(entry.path, input, entry.size, entry.mtime)) {
+			val pending = isPendingConflict(entry.path)
+			val remembered = rememberedTracks[entry.path]
+			when (catalog.decideIncoming(entry.path, entry.size, entry.mtime, pending, remembered)) {
+				EvBmsSyncFiles.IncomingDecision.SKIP -> {
+					skipped++
+					continue
+				}
+				EvBmsSyncFiles.IncomingDecision.COPY -> {
+					try {
+						if (downloadAndWrite(base, catalog, entry, downloadedCsv)) {
 							copied++
-							if (entry.path.startsWith(EvBmsSyncFiles.PREFIX_TELEMETRY) &&
-								entry.name.endsWith(".csv", true)
-							) {
-								downloadedCsv.add(entry.name)
-							}
 						} else {
 							skipped++
 						}
+					} catch (e: Exception) {
+						Log.w(TAG, "file ${entry.path}", e)
+						errors++
 					}
-				} finally {
-					conn.disconnect()
 				}
-			} catch (e: Exception) {
-				Log.w(TAG, "file ${entry.path}", e)
-				errors++
+				EvBmsSyncFiles.IncomingDecision.COMPARE -> {
+					try {
+						when (compareAndQueueTrack(base, catalog, entry)) {
+							IncomingOutcome.COPIED -> copied++
+							IncomingOutcome.SKIPPED -> skipped++
+							IncomingOutcome.CONFLICT -> conflicts++
+							IncomingOutcome.ERROR -> errors++
+						}
+					} catch (e: Exception) {
+						Log.w(TAG, "track ${entry.path}", e)
+						errors++
+					}
+				}
 			}
 		}
 		plugin.mergeIncomingHistory(incomingCharges, incomingTrips)
@@ -399,15 +440,94 @@ class EvBmsSyncController(
 		if (errors == 0) {
 			lastPeerRev[revKey] = remoteRev
 		}
+		catalog.publishVisibleGpx()
 		ui.post {
 			listeners.forEach { it.onSyncProgress(remote.size, total, "") }
 		}
+		val pendingCount = pendingConflictCount()
 		return SyncResult(
 			copied,
 			skipped,
 			errors,
-			app.getString(R.string.ev_bms_sync_result, copied, skipped, errors)
+			resultMessage(copied, skipped, errors, pendingCount),
+			conflicts = pendingCount
 		)
+	}
+
+	private enum class IncomingOutcome {
+		COPIED, SKIPPED, CONFLICT, ERROR
+	}
+
+	private fun downloadAndWrite(
+		base: String,
+		catalog: EvBmsSyncFiles,
+		entry: EvBmsSyncFiles.Entry,
+		downloadedCsv: ArrayList<String>
+	): Boolean {
+		val conn = open(URL("$base/file/${EvBmsSyncFiles.encodePath(entry.path)}"), 15_000, 300_000)
+		try {
+			if (conn.responseCode !in 200..299) {
+				throw IllegalStateException("HTTP ${conn.responseCode}")
+			}
+			return conn.inputStream.use { input ->
+				val ok = catalog.writeIncoming(entry.path, input, entry.size, entry.mtime)
+				if (ok &&
+					entry.path.startsWith(EvBmsSyncFiles.PREFIX_TELEMETRY) &&
+					entry.name.endsWith(".csv", true)
+				) {
+					downloadedCsv.add(entry.name)
+				}
+				ok
+			}
+		} finally {
+			conn.disconnect()
+		}
+	}
+
+	private fun compareAndQueueTrack(
+		base: String,
+		catalog: EvBmsSyncFiles,
+		entry: EvBmsSyncFiles.Entry
+	): IncomingOutcome {
+		val dest = catalog.localFile(entry.path) ?: return IncomingOutcome.ERROR
+		val temp = catalog.incomingTempFile(entry.path) ?: return IncomingOutcome.ERROR
+		if (!downloadToFile(base, entry.path, temp)) {
+			temp.delete()
+			return IncomingOutcome.ERROR
+		}
+		if (dest.isFile && catalog.sameContent(dest, temp)) {
+			catalog.alignMtime(dest, entry.mtime)
+			temp.delete()
+			return IncomingOutcome.SKIPPED
+		}
+		if (!dest.isFile || dest.length() <= 0L) {
+			return if (catalog.commitIncomingFile(temp, dest, entry.mtime, index = true)) {
+				IncomingOutcome.COPIED
+			} else {
+				temp.delete()
+				IncomingOutcome.ERROR
+			}
+		}
+		queueTrackConflict(
+			TrackConflict(entry.path, entry.name, temp, dest, entry.size, entry.mtime)
+		)
+		return IncomingOutcome.CONFLICT
+	}
+
+	private fun downloadToFile(base: String, path: String, dest: File): Boolean {
+		dest.parentFile?.mkdirs()
+		val conn = open(URL("$base/file/${EvBmsSyncFiles.encodePath(path)}"), 15_000, 300_000)
+		try {
+			if (conn.responseCode !in 200..299) {
+				return false
+			}
+			conn.inputStream.use { input ->
+				dest.outputStream().use { input.copyTo(it) }
+			}
+			return dest.isFile
+		} finally {
+			conn.disconnect()
+		}
 	}
 
 	private fun downloadText(base: String, path: String): String {
@@ -419,6 +539,194 @@ class EvBmsSyncController(
 			return conn.inputStream.bufferedReader().use { it.readText() }
 		} finally {
 			conn.disconnect()
+		}
+	}
+
+	private fun resultMessage(copied: Int, skipped: Int, errors: Int, conflicts: Int): String {
+		return if (conflicts > 0) {
+			app.getString(R.string.ev_bms_sync_result_conflicts, copied, skipped, conflicts, errors)
+		} else {
+			app.getString(R.string.ev_bms_sync_result, copied, skipped, errors)
+		}
+	}
+
+	private fun pendingConflictCount(): Int = synchronized(conflictLock) { pendingConflicts.size }
+
+	private fun isPendingConflict(path: String): Boolean = synchronized(conflictLock) {
+		pendingConflicts.any { it.path == path }
+	}
+
+	private fun queueTrackConflict(conflict: TrackConflict) {
+		synchronized(conflictLock) {
+			if (pendingConflicts.any { it.path == conflict.path }) {
+				conflict.temp.delete()
+				return
+			}
+			pendingConflicts.add(conflict)
+		}
+	}
+
+	fun showPendingTrackConflicts() {
+		if (!showingConflict.compareAndSet(false, true)) {
+			return
+		}
+		val activity = plugin.mapActivityOrNull()
+		val next = synchronized(conflictLock) { pendingConflicts.firstOrNull() }
+		val remaining = pendingConflictCount()
+		if (next == null || activity == null || !AndroidUtils.isActivityNotDestroyed(activity)) {
+			showingConflict.set(false)
+			return
+		}
+		showConflictDialog(activity, next, remaining)
+	}
+
+	private fun showConflictDialog(activity: Activity, conflict: TrackConflict, remaining: Int) {
+		val nightMode = app.daynightHelper.isNightMode(ThemeUsageContext.OVER_MAP)
+		val themed = UiUtilities.getThemedContext(activity, nightMode)
+		val pad = AndroidUtils.dpToPx(themed, 24f)
+		val content = LinearLayout(themed).apply {
+			orientation = LinearLayout.VERTICAL
+			setPadding(pad, AndroidUtils.dpToPx(themed, 8f), pad, AndroidUtils.dpToPx(themed, 12f))
+		}
+		val message = TextView(themed).apply {
+			text = themed.getString(R.string.ev_bms_sync_conflict_message, conflict.name)
+			setTextColor(ColorUtilities.getPrimaryTextColor(themed, nightMode))
+			textSize = 16f
+		}
+		content.addView(message)
+		val applyAll = CheckBox(themed).apply {
+			text = themed.getString(R.string.ev_bms_sync_conflict_apply_all, remaining)
+			setTextColor(ColorUtilities.getPrimaryTextColor(themed, nightMode))
+			visibility = if (remaining > 1) android.view.View.VISIBLE else android.view.View.GONE
+		}
+		if (remaining > 1) {
+			val lp = LinearLayout.LayoutParams(
+				ViewGroup.LayoutParams.MATCH_PARENT,
+				ViewGroup.LayoutParams.WRAP_CONTENT
+			)
+			lp.topMargin = AndroidUtils.dpToPx(themed, 12f)
+			content.addView(applyAll, lp)
+			UiUtilities.setupCompoundButton(applyAll, nightMode, UiUtilities.CompoundButtonType.GLOBAL)
+		}
+		var decided = false
+		lateinit var dialog: AlertDialog
+		fun addChoice(label: Int, choice: ConflictChoice) {
+			val button = Button(themed)
+			button.setText(label)
+			val lp = LinearLayout.LayoutParams(
+				ViewGroup.LayoutParams.MATCH_PARENT,
+				ViewGroup.LayoutParams.WRAP_CONTENT
+			)
+			lp.topMargin = AndroidUtils.dpToPx(themed, 8f)
+			button.setOnClickListener {
+				if (decided) {
+					return@setOnClickListener
+				}
+				decided = true
+				dialog.dismiss()
+				resolveConflicts(choice, applyAll.isChecked)
+			}
+			content.addView(button, lp)
+		}
+		addChoice(R.string.ev_bms_sync_conflict_replace, ConflictChoice.REPLACE)
+		addChoice(R.string.ev_bms_sync_conflict_ignore, ConflictChoice.IGNORE)
+		addChoice(R.string.ev_bms_sync_conflict_rename, ConflictChoice.RENAME)
+		dialog = AlertDialog.Builder(themed)
+			.setTitle(R.string.ev_bms_sync_conflict_title)
+			.setView(content)
+			.setOnDismissListener {
+				if (!decided) {
+					showingConflict.set(false)
+				}
+			}
+			.create()
+		dialog.setCanceledOnTouchOutside(false)
+		dialog.show()
+	}
+
+	private fun resolveConflicts(choice: ConflictChoice, applyAll: Boolean) {
+		val batch = synchronized(conflictLock) {
+			if (applyAll) {
+				ArrayList(pendingConflicts).also { pendingConflicts.clear() }
+			} else if (pendingConflicts.isNotEmpty()) {
+				arrayListOf(pendingConflicts.removeFirst())
+			} else {
+				emptyList()
+			}
+		}
+		io.execute {
+			val catalog = files()
+			var copied = 0
+			var skipped = 0
+			var errors = 0
+			for (conflict in batch) {
+				when (applyConflict(catalog, conflict, choice)) {
+					IncomingOutcome.COPIED -> copied++
+					IncomingOutcome.SKIPPED -> skipped++
+					else -> errors++
+				}
+			}
+			ui.post {
+				val prev = lastResult
+				if (prev != null && (copied > 0 || skipped > 0 || errors > 0)) {
+					val nextCopied = prev.copied + copied
+					val nextSkipped = prev.skipped + skipped
+					val nextErrors = prev.errors + errors
+					val pending = pendingConflictCount()
+					val updated = SyncResult(
+						nextCopied,
+						nextSkipped,
+						nextErrors,
+						resultMessage(nextCopied, nextSkipped, nextErrors, pending),
+						conflicts = pending
+					)
+					lastResult = updated
+					listeners.forEach { it.onSyncFinished(updated) }
+				}
+				showingConflict.set(false)
+				showPendingTrackConflicts()
+			}
+		}
+	}
+
+	private fun applyConflict(
+		catalog: EvBmsSyncFiles,
+		conflict: TrackConflict,
+		choice: ConflictChoice
+	): IncomingOutcome {
+		return try {
+			val outcome = when (choice) {
+				ConflictChoice.REPLACE -> {
+					if (catalog.commitIncomingFile(conflict.temp, conflict.dest, conflict.remoteMtime, index = true)) {
+						IncomingOutcome.COPIED
+					} else {
+						conflict.temp.delete()
+						IncomingOutcome.ERROR
+					}
+				}
+				ConflictChoice.IGNORE -> {
+					conflict.temp.delete()
+					IncomingOutcome.SKIPPED
+				}
+				ConflictChoice.RENAME -> {
+					val renamed = catalog.uniqueTrackFile(conflict.dest)
+					if (catalog.commitIncomingFile(conflict.temp, renamed, conflict.remoteMtime, index = true)) {
+						IncomingOutcome.COPIED
+					} else {
+						conflict.temp.delete()
+						IncomingOutcome.ERROR
+					}
+				}
+			}
+			if (outcome != IncomingOutcome.ERROR) {
+				rememberedTracks[conflict.path] =
+					EvBmsSyncFiles.fingerprint(conflict.remoteSize, conflict.remoteMtime)
+			}
+			outcome
+		} catch (e: Exception) {
+			Log.w(TAG, "conflict ${conflict.path}", e)
+			conflict.temp.delete()
+			IncomingOutcome.ERROR
 		}
 	}
 

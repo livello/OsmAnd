@@ -3,6 +3,8 @@ package net.osmand.plus.plugins.evbms
 import android.content.Intent
 import android.location.Location
 import android.net.Uri
+import android.provider.DocumentsContract
+import android.provider.OpenableColumns
 import androidx.documentfile.provider.DocumentFile
 import net.osmand.PlatformUtil
 import net.osmand.plus.OsmandApplication
@@ -392,8 +394,8 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 						name,
 						file.uri,
 						file.uri.toString(),
-						file.lastModified(),
-						file.length()
+						documentMtime(file),
+						documentSize(file)
 					)
 				)
 				seen.add(name)
@@ -707,7 +709,10 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 		if (tree != null) {
 			val found = tree.listFiles().firstOrNull { it.isFile && it.name == name }
 			if (found != null) {
-				return found.length()
+				val size = documentSize(found)
+				if (size > 0L) {
+					return size
+				}
 			}
 		}
 		val file = File(app.getAppPath(DIR_NAME), name)
@@ -719,11 +724,44 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 		if (tree != null) {
 			val found = tree.listFiles().firstOrNull { it.isFile && it.name == name }
 			if (found != null) {
-				return found.lastModified()
+				val mtime = documentMtime(found)
+				if (mtime > 0L) {
+					return mtime
+				}
 			}
 		}
 		val file = File(app.getAppPath(DIR_NAME), name)
 		return if (file.isFile) file.lastModified() else 0L
+	}
+
+	private fun documentSize(file: DocumentFile): Long {
+		val len = file.length()
+		if (len > 0L) {
+			return len
+		}
+		return queryLong(file.uri, OpenableColumns.SIZE)
+	}
+
+	private fun documentMtime(file: DocumentFile): Long {
+		val t = file.lastModified()
+		if (t > 0L) {
+			return t
+		}
+		return queryLong(file.uri, DocumentsContract.Document.COLUMN_LAST_MODIFIED)
+	}
+
+	private fun queryLong(uri: Uri, column: String): Long {
+		return try {
+			app.contentResolver.query(uri, arrayOf(column), null, null, null)?.use { cursor ->
+				if (!cursor.moveToFirst()) {
+					return@use 0L
+				}
+				val idx = cursor.getColumnIndex(column)
+				if (idx >= 0 && !cursor.isNull(idx)) cursor.getLong(idx) else 0L
+			} ?: 0L
+		} catch (_: Exception) {
+			0L
+		}
 	}
 
 	fun writeNewFile(name: String, input: InputStream): Boolean {
@@ -734,7 +772,7 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 		if (name.isBlank() || name.contains("..") || name.contains('/') || name.contains('\\')) {
 			return false
 		}
-		if (isActiveFileName(name)) {
+		if (isRecording && isActiveFileName(name)) {
 			return false
 		}
 		if (!replace && existingSize(name) > 0L) {

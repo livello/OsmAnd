@@ -159,6 +159,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerStringPreference("ev_bms_telemetry_gpx_fields", "").makeGlobal().makeShared()
 	val SHEET_TAB: CommonPreference<Int> =
 		registerIntPreference("ev_bms_sheet_tab", 0).makeGlobal().makeShared()
+	val SETTINGS_GROUPS_EXPANDED: CommonPreference<String> =
+		registerStringPreference("ev_bms_settings_groups_expanded", "").makeGlobal().makeShared()
 	val DEBUG_JOURNAL: CommonPreference<Boolean> =
 		registerBooleanPreference("ev_bms_debug_journal", false).makeGlobal().makeShared()
 	val SOC_CAL_STORE: CommonPreference<String> =
@@ -617,6 +619,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		restoreSessions()
 		repairChargeHistory()
 		profileStore.ensureDefault()
+		publishTracksToMyPlaces()
 		restoreTelemetrySession()
 		if (SYNC_MASTER.get()) {
 			sync.startMaster()
@@ -649,7 +652,10 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		restoreTelemetrySessionIfNeeded()
 		closeStaleChargeAgainstTrip()
 		sync.restartMasterIfEnabled()
+		handler.post { sync.showPendingTrackConflicts() }
 	}
+
+	fun mapActivityOrNull(): MapActivity? = mapActivity
 
 	override fun mapActivityPause(activity: MapActivity) {
 		if (mapActivity === activity) {
@@ -4398,6 +4404,16 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		return recorder
 	}
 
+	fun publishTracksToMyPlaces() {
+		Thread({
+			try {
+				sync.files().publishVisibleGpx()
+			} catch (e: Exception) {
+				Log.w(TAG, "publish tracks to My Places", e)
+			}
+		}, "ev-bms-gpx-places").apply { isDaemon = true }.start()
+	}
+
 	fun historyCsvStore(): EvHistoryStore = historyStore
 
 	fun syncPort(): Int = SYNC_PORT.get().coerceIn(EvBmsSyncController.MIN_PORT, EvBmsSyncController.MAX_PORT)
@@ -4587,6 +4603,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		recorder.saveAndClose()
 		RECORD_TELEMETRY.set(false)
 		clearTelemetrySession()
+		publishTracksToMyPlaces()
 		app.showToastMessage(R.string.ev_bms_telemetry_saved)
 	}
 

@@ -72,10 +72,15 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			SettingsJump("ev_bms_calibration", "📏", R.string.ev_bms_calibration),
 			SettingsJump("ev_bms_recording", "💾", R.string.ev_bms_recording),
 			SettingsJump("ev_bms_voice", "🔊", R.string.ev_bms_voice),
+			SettingsJump("ev_bms_voice_stop_range", "🧭", R.string.ev_bms_voice_stop_range),
+			SettingsJump("ev_bms_voice_cells", "⚠️", R.string.ev_bms_voice_cells),
+			SettingsJump("ev_bms_voice_temps", "🌡️", R.string.ev_bms_voice_temps),
 			SettingsJump("ev_bms_charge", "🔌", R.string.ev_bms_charge_settings),
 			SettingsJump("ev_bms_history_cat", "📋", R.string.ev_bms_history_group),
 			SettingsJump("ev_bms_range", "🛣️", R.string.ev_bms_range_settings)
 		)
+
+		private val SETTINGS_CATEGORY_KEYS = SETTINGS_JUMPS.map { it.key }.toSet()
 	}
 
 	private val plugin = PluginsHelper.requirePlugin(EvBmsPlugin::class.java)
@@ -234,6 +239,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 
 	@SuppressLint("RestrictedApi")
 	fun scrollToSettingsGroup(key: String) {
+		expandSettingsGroup(key)
 		val pref = findPreference<Preference>(key) ?: return
 		val list = listView ?: return
 		val adapter = list.adapter
@@ -320,6 +326,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		setupIcons()
 		refreshRecordingPref()
 		refreshCalibrationPref()
+		applyCategoryCollapse()
 	}
 
 	fun refreshTelemetryFieldsPref() {
@@ -442,11 +449,75 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		pref.icon = getContentIcon(iconRes)
 	}
 
-	private fun decorateCategory(key: String, emoji: String) {
+	private fun decorateCategory(key: String, emoji: String, expanded: Boolean = false) {
 		val pref = findPreference<Preference>(key) ?: return
-		val title = pref.title?.toString().orEmpty()
-		if (title.isNotEmpty() && !title.startsWith(emoji)) {
-			pref.title = "$emoji $title"
+		val jump = SETTINGS_JUMPS.firstOrNull { it.key == key }
+		val label = if (jump != null) getString(jump.titleRes) else {
+			pref.title?.toString().orEmpty()
+				.removePrefix("$emoji ")
+				.removeSuffix(" ▾")
+				.removeSuffix(" ▸")
+				.trim()
+		}
+		val arrow = if (expanded) "▾" else "▸"
+		pref.title = "$emoji $label  $arrow"
+		pref.isSelectable = true
+		pref.onPreferenceClickListener = Preference.OnPreferenceClickListener {
+			toggleSettingsGroup(key)
+			true
+		}
+	}
+
+	private fun expandedGroupKeys(): MutableSet<String> {
+		return plugin.SETTINGS_GROUPS_EXPANDED.get()
+			.split(',')
+			.map { it.trim() }
+			.filter { it.isNotEmpty() }
+			.toMutableSet()
+	}
+
+	private fun saveExpandedGroups(keys: Set<String>) {
+		plugin.SETTINGS_GROUPS_EXPANDED.set(keys.sorted().joinToString(","))
+	}
+
+	private fun expandSettingsGroup(key: String) {
+		val keys = expandedGroupKeys()
+		if (keys.add(key)) {
+			saveExpandedGroups(keys)
+			applyCategoryCollapse()
+		}
+	}
+
+	private fun toggleSettingsGroup(key: String) {
+		val keys = expandedGroupKeys()
+		if (!keys.add(key)) {
+			keys.remove(key)
+		}
+		saveExpandedGroups(keys)
+		applyCategoryCollapse()
+	}
+
+	private fun applyCategoryCollapse() {
+		val screen = preferenceScreen ?: return
+		val expanded = expandedGroupKeys()
+		var current: String? = null
+		for (i in 0 until screen.preferenceCount) {
+			val pref = screen.getPreference(i)
+			val key = pref.key
+			if (key != null && key in SETTINGS_CATEGORY_KEYS) {
+				current = key
+				val open = key in expanded
+				val emoji = SETTINGS_JUMPS.firstOrNull { it.key == key }?.emoji ?: ""
+				decorateCategory(key, emoji, open)
+				continue
+			}
+			if (current != null) {
+				pref.isVisible = current in expanded
+			}
+		}
+		val password = findPreference<Preference>(plugin.BMS_PASSWORD.id)
+		if (password != null && password.isVisible) {
+			password.isVisible = plugin.BMS_PROTOCOL.get() != "ant"
 		}
 	}
 

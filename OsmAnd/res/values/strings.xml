@@ -41,6 +41,13 @@
 	<string name="ev_bms_sync_stopped">Telemetry sync is off</string>
 	<string name="ev_bms_sync_busy">Synchronization already running…</string>
 	<string name="ev_bms_sync_bind_failed">Could not open the telemetry port</string>
+	<string name="ev_bms_sync_conflict_title">Track already exists</string>
+	<string name="ev_bms_sync_conflict_message">%1$s already exists on this phone with different content.</string>
+	<string name="ev_bms_sync_conflict_replace">Replace</string>
+	<string name="ev_bms_sync_conflict_ignore">Ignore</string>
+	<string name="ev_bms_sync_conflict_rename">Save with a different name</string>
+	<string name="ev_bms_sync_conflict_apply_all">Apply this choice to remaining tracks (%1$d)</string>
+	<string name="ev_bms_sync_result_conflicts">Copied %1$d, skipped %2$d, conflicts %3$d, errors %4$d</string>
 	<string name="torrent_maps_verify_hashes">Verify downloaded maps</string>
 	<string name="torrent_maps_verify_hashes_desc">Check local torrent maps against piece SHA-1 hashes. Incomplete writes used to land in the live maps folder and wipe large regions.</string>
 	<string name="torrent_maps_verify_running">Checking maps… %1$d / %2$d</string>

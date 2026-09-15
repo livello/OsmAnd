@@ -866,6 +866,7 @@ public class AnimateDraggingMapThread implements TouchListener {
 		resetMapTarget();
 		MapRendererView mapRenderer = getMapRenderer();
 		MapAnimator animator = getAnimator();
+		float durationSec = 0f;
 		if (mapRenderer != null && animator != null) {
 			animator.pause();
 
@@ -889,6 +890,7 @@ public class AnimateDraggingMapThread implements TouchListener {
 				animator.cancelCurrentAnimation(userInteractionAnimationKey, AnimatedValue.Zoom);
 			}
 
+			PointI zoomPixel = null;
 			if (zoomingLatLon != null) {
 				if (!targetChanged) {
 					// Remember last target position before it is changed with animation
@@ -899,7 +901,7 @@ public class AnimateDraggingMapThread implements TouchListener {
 				}
 
 				PointI zoomPosition31 = NativeUtilities.calculateTarget31(mapRenderer, zoomingLatLon.getLatitude(), zoomingLatLon.getLongitude(), false);
-				PointI zoomPixel = new PointI();
+				zoomPixel = new PointI();
 				mapRenderer.getElevatedPointFromLocation(zoomPosition31, zoomPixel, false);
 				mapRenderer.setMapTarget(zoomPixel, zoomPosition31);
 			}
@@ -909,10 +911,14 @@ public class AnimateDraggingMapThread implements TouchListener {
 						duration,
 						TimingFunction.Linear,
 						userInteractionAnimationKey);
+			} else if (zoomingLatLon != null && zoomPixel != null) {
+				tileView.zoomAroundPixel(zoomEnd, zoomPart, zoomPixel.getX(), zoomPixel.getY(), notifyListener);
 			} else {
 				tileView.setFractionalZoom(zoomEnd, zoomPart, notifyListener);
 			}
+			durationSec = duration;
 		}
+		final float zoomDuration = durationSec;
 
 		double finalLat = targetLat;
 		double finalLon = targetLon;
@@ -923,13 +929,23 @@ public class AnimateDraggingMapThread implements TouchListener {
 					invalidateMapTarget();
 				}
 
-				animatingMapZoom = true;
-				animatingMapAnimator();
-				animatingMapZoom = false;
-
-				if (!stopped && zoomingLatLon != null) {
-					tileView.setLatLonAnimate(zoomingLatLon.getLatitude(), zoomingLatLon.getLongitude(), notifyListener);
+				if (zoomDuration > 0) {
+					animatingMapZoom = true;
+					animatingMapAnimator();
+					animatingMapZoom = false;
 				}
+
+				if (!stopped && zoomingLatLon != null && zoomDuration > 0) {
+					// Keep the cursor GPS point under the pointer: unpin map-target
+					// back to the screen center without recentering on the cursor.
+					resetMapTarget();
+					tileView.applyRendererMapCenter(notifyListener);
+				}
+			} else if (zoomingLatLon != null) {
+				RotatedTileBox tb = tileView.getRotatedTileBox();
+				float px = tb.getPixXFromLatLon(zoomingLatLon.getLatitude(), zoomingLatLon.getLongitude());
+				float py = tb.getPixYFromLatLon(zoomingLatLon.getLatitude(), zoomingLatLon.getLongitude());
+				tileView.zoomAroundPixel(zoomEnd, zoomPart, Math.round(px), Math.round(py), notifyListener);
 			} else {
 				RotatedTileBox tb = tileView.getRotatedTileBox();
 				animatingZoomInThread(tb.getZoom(), tb.getZoomFloatPart(), zoomEnd, zoomPart, animationTime, notifyListener);
