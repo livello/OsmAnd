@@ -14,9 +14,9 @@ import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 
 /**
- * File-level catalog for LAN telemetry sync. Serves what the plugin already writes:
- * ev_telemetry CSV/GPX, every OsmAnd rec GPX (including monthly subfolders), and a
- * cached current-route GPX if present.
+ * File-level catalog for LAN telemetry sync. Serves telemetry CSV/GPX, every OsmAnd
+ * GPX under tracks/ (rec, import, user folders, My Places), and a cached current-route
+ * GPX if present.
  */
 class EvBmsSyncFiles(
 	private val app: OsmandApplication,
@@ -24,7 +24,7 @@ class EvBmsSyncFiles(
 ) {
 	companion object {
 		const val PREFIX_TELEMETRY = "ev_telemetry/"
-		const val PREFIX_TRACKS = "tracks/rec/"
+		const val PREFIX_TRACKS = "tracks/"
 		const val PREFIX_NAV = "navigation/"
 		const val ROUTE_NAME = "route.gpx"
 		const val INCOMING_SUFFIX = ".sync-incoming"
@@ -108,7 +108,9 @@ class EvBmsSyncFiles(
 		if (files.isEmpty()) {
 			return 0L
 		}
-		return files.sumOf { it.size } + files.maxOf { it.mtime }
+		return files.size.toLong() * 1_000_003L +
+			files.sumOf { it.size.coerceAtLeast(0L) } +
+			files.maxOf { it.mtime }
 	}
 
 	fun parseCatalog(text: String): List<Entry> {
@@ -134,7 +136,7 @@ class EvBmsSyncFiles(
 	fun listAll(): List<Entry> {
 		val out = ArrayList<Entry>()
 		out.addAll(listTelemetry())
-		out.addAll(listRecordedTracks())
+		out.addAll(listAllTracks())
 		routeFile()?.let { file ->
 			out.add(
 				Entry(
@@ -389,8 +391,8 @@ class EvBmsSyncFiles(
 		}
 	}
 
-	private fun listRecordedTracks(): List<Entry> {
-		val dir = app.getAppPath(IndexConstants.GPX_RECORDED_INDEX_DIR)
+	private fun listAllTracks(): List<Entry> {
+		val dir = app.getAppPath(IndexConstants.GPX_INDEX_DIR)
 		if (!dir.isDirectory) {
 			return emptyList()
 		}
@@ -430,7 +432,36 @@ class EvBmsSyncFiles(
 		if (rel.isBlank() || rel.endsWith("/")) {
 			return null
 		}
-		return File(app.getAppPath(IndexConstants.GPX_RECORDED_INDEX_DIR), rel)
+		return File(app.getAppPath(IndexConstants.GPX_INDEX_DIR), rel)
+	}
+
+	fun alreadyHaveRemoteCopy(dest: File, incoming: File): Boolean {
+		if (dest.isFile && sameContent(dest, incoming)) {
+			return true
+		}
+		val size = incoming.length()
+		if (size <= 0L) {
+			return false
+		}
+		val files = dest.parentFile?.listFiles() ?: return false
+		for (file in files) {
+			if (!file.isFile || file.length() != size) {
+				continue
+			}
+			if (!file.name.endsWith(".gpx", true) ||
+				file.name.endsWith(INCOMING_SUFFIX, true) ||
+				file.name.endsWith(".part", true)
+			) {
+				continue
+			}
+			if (file.absolutePath == incoming.absolutePath) {
+				continue
+			}
+			if (sameContent(file, incoming)) {
+				return true
+			}
+		}
+		return false
 	}
 
 	private fun routeFile(): File? {
@@ -498,8 +529,11 @@ class EvBmsSyncFiles(
 				publishTelemetryGpx(entry.name, entry.spec, entry.lastModified, entry.sizeBytes)
 			}
 		}
-		indexTree(app.getAppPath(IndexConstants.GPX_RECORDED_INDEX_DIR))
-		indexTree(placesTelemetryDir())
+		indexTree(app.getAppPath(IndexConstants.GPX_INDEX_DIR))
+		try {
+			app.smartFolderHelper.notifyUpdateListeners()
+		} catch (_: Exception) {
+		}
 	}
 
 	private fun placesTelemetryDir(): File {

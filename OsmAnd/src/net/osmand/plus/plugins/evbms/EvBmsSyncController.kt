@@ -249,7 +249,7 @@ class EvBmsSyncController(
 			targets.add(host to port)
 		}
 		parseEndpoint(rawHost, plugin.syncPort())?.let { addTarget(it.first, it.second) }
-		if (manual || rawHost.isBlank()) {
+		if (targets.isEmpty()) {
 			for (peer in discoveredPeers()) {
 				addTarget(peer.host, peer.port)
 			}
@@ -338,7 +338,7 @@ class EvBmsSyncController(
 
 	private fun pullLocked(host: String, port: Int, force: Boolean): SyncResult {
 		val base = "http://$host:$port"
-		val catalogConn = open(URL("$base/files"), 15_000, 30_000)
+		val catalogConn = open(URL("$base/files"), 20_000, 120_000)
 		val catalogText = try {
 			if (catalogConn.responseCode !in 200..299) {
 				return SyncResult(
@@ -477,6 +477,10 @@ class EvBmsSyncController(
 				) {
 					downloadedCsv.add(entry.name)
 				}
+				if (ok && EvBmsSyncFiles.isTrackPath(entry.path)) {
+					rememberedTracks[entry.path] =
+						EvBmsSyncFiles.fingerprint(entry.size, entry.mtime)
+				}
 				ok
 			}
 		} finally {
@@ -495,23 +499,29 @@ class EvBmsSyncController(
 			temp.delete()
 			return IncomingOutcome.ERROR
 		}
-		if (dest.isFile && catalog.sameContent(dest, temp)) {
+		if (catalog.alreadyHaveRemoteCopy(dest, temp)) {
 			catalog.alignMtime(dest, entry.mtime)
 			temp.delete()
+			rememberedTracks[entry.path] = EvBmsSyncFiles.fingerprint(entry.size, entry.mtime)
 			return IncomingOutcome.SKIPPED
 		}
 		if (!dest.isFile || dest.length() <= 0L) {
 			return if (catalog.commitIncomingFile(temp, dest, entry.mtime, index = true)) {
+				rememberedTracks[entry.path] = EvBmsSyncFiles.fingerprint(entry.size, entry.mtime)
 				IncomingOutcome.COPIED
 			} else {
 				temp.delete()
 				IncomingOutcome.ERROR
 			}
 		}
-		queueTrackConflict(
-			TrackConflict(entry.path, entry.name, temp, dest, entry.size, entry.mtime)
-		)
-		return IncomingOutcome.CONFLICT
+		val renamed = catalog.uniqueTrackFile(dest)
+		return if (catalog.commitIncomingFile(temp, renamed, entry.mtime, index = true)) {
+			rememberedTracks[entry.path] = EvBmsSyncFiles.fingerprint(entry.size, entry.mtime)
+			IncomingOutcome.COPIED
+		} else {
+			temp.delete()
+			IncomingOutcome.ERROR
+		}
 	}
 
 	private fun downloadToFile(base: String, path: String, dest: File): Boolean {

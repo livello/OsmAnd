@@ -12,7 +12,7 @@
 	Thx - Hardy
 -->
 	<string name="ev_bms_sync">Telemetry sync</string>
-	<string name="ev_bms_sync_desc">Two-way live sync of CSV, GPX, and ride tracks over Wi‑Fi / hotspot. No password.</string>
+	<string name="ev_bms_sync_desc">Two-way live sync of CSV, GPX, and every track from My Places over Wi‑Fi / hotspot. No password. Synchronize downloads the selected phone.</string>
 	<string name="ev_bms_sync_master_section">This phone</string>
 	<string name="ev_bms_sync_client_section">Phones on the network</string>
 	<string name="ev_bms_sync_master">Share telemetry</string>

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="ev_bms_sync">Синхронизация телеметрии</string>
-    <string name="ev_bms_sync_desc">Двусторонняя живая синхронизация CSV, GPX и треков по Wi‑Fi / точке доступа, без пароля.</string>
+    <string name="ev_bms_sync_desc">Двусторонняя живая синхронизация CSV, GPX и всех треков из «Мои места» по Wi‑Fi / точке доступа, без пароля. «Синхронизировать» скачивает выбранный смартфон.</string>
     <string name="ev_bms_sync_master_section">Этот телефон</string>
     <string name="ev_bms_sync_client_section">Смартфоны в сети</string>
     <string name="ev_bms_sync_master">Раздавать телеметрию</string>

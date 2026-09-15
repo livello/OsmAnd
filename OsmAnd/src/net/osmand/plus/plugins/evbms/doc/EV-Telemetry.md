@@ -260,10 +260,10 @@ Both phones are peers when «Раздавать телеметрию» is on: ea
 
 - **UDP autodiscover** on port **8743**: beacon `EVBMS1` + JSON (`plugin=osmand.ev.bms`, device name, TCP port, role `sync-peer`). The dialog lists discovered smartphones; tap one to fill the host. Manual IP remains as fallback.
 - **TCP** default **8742** (editable). No password. Foreground notification keeps serving with the screen off.
-- **Live two-way**: periodic pull/push (~12 s) plus a pull when a peer appears. Manual «Синхронизировать» is still there.
+- **Live two-way**: periodic pull/push (~12 s) plus a pull when a peer appears. Manual «Синхронизировать» downloads **all GPX tracks** from the selected phone into My Places.
 - **Additive UNION only**: never delete the other side’s files. Same filename: skip a smaller/older remote copy; take a larger/newer one (growing CSV/GPX). Do not overwrite a file this phone is currently recording. History JSON/CSV is UNION by `startMs`; on conflict keep the richer/newer local row. Empty trips (&lt; 0.2 km) are not stored. `leftoverTrips` is kept so a merge cannot wipe the old journal.
 
-HTTP: `GET /health`, `GET /files`, `GET /file/<path>`. Serves `ev_telemetry` CSV/GPX, charge/trip history CSV, recent `tracks/rec` GPX, and `cache/share/route.gpx` if present. Recording keeps running.
+HTTP: `GET /health`, `GET /files`, `GET /file/<path>`. Serves `ev_telemetry` CSV/GPX, charge/trip history CSV, every GPX under `tracks/` (recorded, imported, and user folders), and `cache/share/route.gpx` if present. Manual «Синхронизировать» pulls from the selected phone. Recording keeps running.
 
 ---
 
