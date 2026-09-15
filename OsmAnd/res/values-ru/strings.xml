@@ -4606,9 +4606,9 @@ remainingAh × напряжение пакета на малом токе × к�
 1. Откройте записанный трек на карте.<br/>
 2. Меню трека → <b>Внешний вид</b>.<br/>
 3. Цвет → <b>Удельный расход</b>. Зелёный ≈ минимум, красный ≈ максимум шкалы (Внешний вид → Интервалы градиента, по умолчанию 40–300 Вт·ч/км). Цвет и высота 3D считаются как ΔВт·ч / Δкм по окну усреднения (по умолчанию 100 м), а не по одной пробе GPX.<br/>
-4. Интервал разбиения → <b>Удельный расход</b>, выберите шаг в километрах как для «Расстояния». Кружки на карте: километр и Вт·ч/км этого куска (ΔВт·ч / Δкм).<br/>
+4. Интервал разбиения → <b>Удельный расход</b>, выберите шаг в километрах как для «Расстояния». Кружки на карте: целое число Вт·ч/км этого куска (ΔВт·ч / Δкм).<br/>
 5. 3D-трек → визуализация <b>Удельный расход</b>: высота и цвет стены по той же шкале. Включите 3D-рельеф, если OsmAnd его требует.<br/>
-Цвет по скорости берёт интервал с того же экрана (по умолчанию 0–60 км/ч), а не min/max трека.<br/>
+Цвет по скорости берёт интервал с того же экрана (по умолчанию 0–60 км/ч); скорость вне интервала серая.<br/>
 Старые GPX без тегов энергии и ev_wh_km не покажут расход: кружки будут с «—», цвет и 3D недоступны.]]></string>
     <string name="ev_bms_plugin_architecture"><![CDATA[<br/><br/><b>🏗️ Архитектура плагина</b><br/>
 Класс плагина OsmAnd <b>EvBmsPlugin</b> (наследник OsmandPlugin). Колбэки BLE отдают кадры UART; плагин публикует снимок <b>EvTelemetry</b> в UI-потоке. Виджеты, HUD, голос, CSV/GPX, история и лист настроек читают этот снимок. Запас хода берёт пробы примерно раз в секунду даже при более частом опросе BLE, чтобы дрожание GPS не раздувало дистанцию.<br/><br/>
@@ -4629,7 +4629,7 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
 • <b>protocol/</b> — JbdBmsProtocol, JbdBleModuleProtocol, AntBmsProtocol, FarDriverProtocol, VescProtocol, BmsSnapshot<br/>
 Вёрстка: <i>res/layout/ev_bms_*.xml</i>. Настройки: <i>res/xml/ev_bms_settings.xml</i>. Строки: <i>res/values/strings.xml</i> и <i>values-ru</i>.]]></string>
     <string name="ev_bms_changelog"><![CDATA[<br/><br/><b>📝 Список изменений</b> · %1$s<br/>
-• 🗺️ Удельный расход на GPX: цвет и 3D по шкале 40–300 Вт·ч/км; кружки разбиения показывают км и Вт·ч/км куска<br/>
+• 🗺️ Удельный расход на GPX: цвет и 3D по шкале 40–300 Вт·ч/км; кружки разбиения показывают целое Вт·ч/км куска<br/>
 • 🧲 Обновление из торрента только если mtime в торренте новее dateCreated локального OBF; раздача точных совпадений; в «Карты и ресурсы» — метка и пункт «Скачать из EV-торрента»<br/>
 • 🧲 Исправление краша при запуске: не хранить torrent handle из alert (dangling JNI); брать через session.find(infoHash); закачка отсутствующих только при ручном старте<br/>
 • ⚙️ Зелёный прямоугольник на панели перехода обводит emoji-кнопки групп, видимых при прокрутке настроек<br/>
@@ -4781,11 +4781,12 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
     <string name="ev_bms_reset_emoji">↩️</string>
     <string name="ev_bms_coloring_consumption">Удельный расход</string>
     <string name="ev_bms_gradient_scale">Интервалы градиента</string>
-    <string name="ev_bms_gradient_scale_descr">Окно усреднения удельного расхода и диапазоны шкалы цвета расхода и скорости.</string>
+    <string name="ev_bms_gradient_scale_descr">Окно усреднения удельного расхода. Мин–макс шкалы цвета расхода и скорости; скорость вне интервала серая.</string>
     <string name="ev_bms_gradient_window">Окно усреднения</string>
     <string name="ev_bms_gradient_consumption_range">Удельный расход, Вт·ч/км</string>
     <string name="ev_bms_gradient_speed_range">Скорость, км/ч</string>
     <string name="ev_bms_gradient_scale_range">%1$s–%2$s %3$s</string>
+    <string name="track_split_label_opacity">Фон подписи отрезков</string>
     <string name="ev_bms_3d_consumption_100m">Вт·ч/км за 100 м</string>
     <string name="ev_bms_telemetry_fields_summary">Выбрано %1$d из %2$d</string>
     <string name="ev_bms_telemetry_fields_empty">Выберите хотя бы одно поле</string>

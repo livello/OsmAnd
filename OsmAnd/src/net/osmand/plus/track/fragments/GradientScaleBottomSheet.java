@@ -41,7 +41,7 @@ public class GradientScaleBottomSheet extends MenuBottomSheetDialogFragment {
 	private static final float CONSUMPTION_TO = 400f;
 	private static final float CONSUMPTION_STEP = 5f;
 	private static final float SPEED_FROM = 0f;
-	private static final float SPEED_TO = 120f;
+	private static final float SPEED_TO = 160f;
 	private static final float SPEED_STEP = 5f;
 
 	private TrackDrawInfo trackDrawInfo;

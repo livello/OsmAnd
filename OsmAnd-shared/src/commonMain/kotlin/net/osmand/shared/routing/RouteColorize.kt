@@ -204,8 +204,13 @@ class RouteColorize {
 	}
 
 	private fun setColorsToPoints(points: List<RouteColorizationPoint>) {
+		val greyOutsideSpeed = colorizationType == ColorizationType.SPEED && maxValue > minValue
 		for (point in points) {
-			point.primaryColor = palette.getColorByValue(point.value)
+			if (greyOutsideSpeed && (point.value < minValue || point.value > maxValue)) {
+				point.primaryColor = ColorPalette.LIGHT_GREY
+			} else {
+				point.primaryColor = palette.getColorByValue(point.value)
+			}
 		}
 	}
 

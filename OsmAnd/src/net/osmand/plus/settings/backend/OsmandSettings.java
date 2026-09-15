@@ -1802,6 +1802,7 @@ public class OsmandSettings {
 	public final CommonPreference<Float> TRACK_COLOR_CONSUMPTION_MAX_WH_KM = new FloatPreference(this, "track_color_consumption_max_wh_km", 300f).makeGlobal().makeShared().cache();
 	public final CommonPreference<Float> TRACK_COLOR_SPEED_MIN_KMH = new FloatPreference(this, "track_color_speed_min_kmh", 0f).makeGlobal().makeShared().cache();
 	public final CommonPreference<Float> TRACK_COLOR_SPEED_MAX_KMH = new FloatPreference(this, "track_color_speed_max_kmh", 60f).makeGlobal().makeShared().cache();
+	public final CommonPreference<Integer> TRACK_SPLIT_LABEL_OPACITY = new IntPreference(this, "track_split_label_opacity", 55).makeGlobal().makeShared().cache();
 	public final CommonPreference<String> CURRENT_TRACK_ROUTE_ACTIVITY = new StringPreference(this, "current_track_route_activity", "").makeProfile().cache();
 
 	{

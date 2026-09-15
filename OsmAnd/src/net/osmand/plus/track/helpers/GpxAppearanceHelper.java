@@ -244,6 +244,15 @@ public class GpxAppearanceHelper {
 		return drawInfo != null ? drawInfo.getColoringType().getName(drawInfo.getRouteInfoAttribute()) : null;
 	}
 
+	public int getSplitLabelAlpha() {
+		TrackDrawInfo drawInfo = getTrackDrawInfo();
+		if (drawInfo != null) {
+			return drawInfo.getSplitLabelAlpha();
+		}
+		int opacity = settings.TRACK_SPLIT_LABEL_OPACITY.get();
+		return Math.round(Math.max(0, Math.min(100, opacity)) * 255 / 100f);
+	}
+
 	@NonNull
 	public <T> T requireParameter(@NonNull GpxDataItem gpxItem, @NonNull GpxParameter parameter) {
 		GpxDirItem dirItem = gpxDbHelper.getGpxDirItem(gpxItem);

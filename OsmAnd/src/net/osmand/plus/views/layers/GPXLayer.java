@@ -183,6 +183,7 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 	private int nextSplitLabelExtraId = SPLIT_LABEL_EXTRA_ID_START;
 	private int startFinishPointsCountCached;
 	private int splitLabelsCountCached;
+	private int splitLabelAlphaCached = -1;
 	private int pointCountCached;
 	private int hiddenGroupsCountCached;
 	private boolean textVisibleCached;
@@ -568,7 +569,7 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 
 					int color = appearanceHelper.getTrackColor(gpxFile, cachedColor, gpxItem, dirItem, selected);
 					paintInnerRect.setColor(color);
-					paintInnerRect.setAlpha(179);
+					paintInnerRect.setAlpha(appearanceHelper.getSplitLabelAlpha());
 
 					int contrastColor = ColorUtilities.getContrastColor(app, color, false);
 					paintTextIcon.setColor(contrastColor);
@@ -588,6 +589,9 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 			boolean heightmapsActive = isHeightmapsActive();
 			int startFinishPointsCount = 0;
 			int splitLabelsCount = 0;
+			int splitLabelAlpha = appearanceHelper.getSplitLabelAlpha();
+			changed |= splitLabelAlpha != splitLabelAlphaCached;
+			splitLabelAlphaCached = splitLabelAlpha;
 			for (SelectedGpxFile selectedGpxFile : selectedGPXFiles) {
 				GpxFile gpxFile = selectedGpxFile.getGpxFile();
 				String path = gpxFile.getPath();
@@ -695,10 +699,10 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 							int extraId = registerSplitLabel(selectedGpxFile, item);
 							PointI point31 = new PointI(Utilities.get31TileNumberX(point.getLon()), Utilities.get31TileNumberY(point.getLat()));
 							if (visualizationType == Gpx3DVisualizationType.NONE || trackLinePosition != Gpx3DLinePositionType.TOP) {
-								splitLabel = new SplitLabel(point31, name, NativeUtilities.createColorARGB(color, 179), extraId);
+								splitLabel = new SplitLabel(point31, name, NativeUtilities.createColorARGB(color, splitLabelAlpha), extraId);
 							} else {
 								float labelHeight = (float) Gpx3DVisualizationType.getPointElevation(point, track3DStyle, heightmapsActive);
-								splitLabel = new SplitLabel(point31, name, NativeUtilities.createColorARGB(color, 179), extraId, labelHeight);
+								splitLabel = new SplitLabel(point31, name, NativeUtilities.createColorARGB(color, splitLabelAlpha), extraId, labelHeight);
 							}
 							splitLabels.add(splitLabel);
 						}

@@ -155,8 +155,7 @@ public class SplitTrackAsyncTask extends AsyncTask<Void, Void, Void> {
 		} else if (group.isSplitConsumption()) {
 			item.splitMetric = analysis.getMetricEnd();
 			item.secondarySplitMetric = analysis.getSecondaryMetricEnd();
-			item.splitName = formatSplitName(analysis.getMetricEnd(), group, app);
-			item.splitName += " · " + formatConsumptionSplitName(analysis, app);
+			item.splitName = formatConsumptionSplitName(analysis, app);
 		} else if (group.getSplitTime() > 0 || group.getSplitDistance() > 0) {
 			item.splitMetric = analysis.getMetricEnd();
 			item.secondarySplitMetric = analysis.getSecondaryMetricEnd();
@@ -265,9 +264,6 @@ public class SplitTrackAsyncTask extends AsyncTask<Void, Void, Void> {
 
 	private static String formatSplitName(double metricEnd, @NonNull TrackDisplayGroup group,
 	                                      @NonNull OsmandApplication app) {
-		if (group.isSplitConsumption()) {
-			return formatSplitDistanceNumber(metricEnd, group);
-		}
 		if (group.isSplitDistance() || group.isSplitUphillDownhill()) {
 			MetricsConstants mc = app.getSettings().METRIC_SYSTEM.get();
 			if (mc == MetricsConstants.KILOMETERS_AND_METERS) {
@@ -279,16 +275,6 @@ public class SplitTrackAsyncTask extends AsyncTask<Void, Void, Void> {
 		} else {
 			return Algorithms.formatDuration((int) metricEnd, app.accessibilityEnabled());
 		}
-	}
-
-	@NonNull
-	private static String formatSplitDistanceNumber(double metricEnd, @NonNull TrackDisplayGroup group) {
-		int digits = splitDistanceDigits(metricEnd, group);
-		double km = metricEnd / 1000.0;
-		if (digits <= 0) {
-			return String.valueOf((int) (km + 0.5));
-		}
-		return String.format(java.util.Locale.getDefault(), digits == 1 ? "%.1f" : "%.2f", km);
 	}
 
 	private static int splitDistanceDigits(double metricEnd, @NonNull TrackDisplayGroup group) {

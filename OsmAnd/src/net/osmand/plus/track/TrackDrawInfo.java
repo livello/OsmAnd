@@ -80,6 +80,8 @@ public class TrackDrawInfo {
 	private static final String CONSUMPTION_MAX_KEY = "consumption_max_wh_km";
 	private static final String SPEED_MIN_KEY = "speed_min_kmh";
 	private static final String SPEED_MAX_KEY = "speed_max_kmh";
+	private static final String SPLIT_LABEL_OPACITY_KEY = "split_label_opacity";
+	public static final int DEFAULT_SPLIT_LABEL_OPACITY = 55;
 
 	private String filePath;
 	private String width;
@@ -104,6 +106,7 @@ public class TrackDrawInfo {
 	private double consumptionMaxWhKm = EvConsumptionScale.MAX_WH_KM;
 	private double speedMinKmh = 0;
 	private double speedMaxKmh = EvConsumptionScale.DEFAULT_SPEED_MAX_KMH;
+	private int splitLabelOpacity = DEFAULT_SPLIT_LABEL_OPACITY;
 
 	@TrackAppearanceType
 	private final int appearanceType;
@@ -371,6 +374,18 @@ public class TrackDrawInfo {
 		this.speedMaxKmh = speedMaxKmh;
 	}
 
+	public int getSplitLabelOpacity() {
+		return splitLabelOpacity;
+	}
+
+	public void setSplitLabelOpacity(int splitLabelOpacity) {
+		this.splitLabelOpacity = Math.max(0, Math.min(100, splitLabelOpacity));
+	}
+
+	public int getSplitLabelAlpha() {
+		return Math.round(splitLabelOpacity * 255 / 100f);
+	}
+
 	public void setShowStartFinish(boolean showStartFinish) {
 		this.showStartFinish = showStartFinish;
 	}
@@ -408,6 +423,7 @@ public class TrackDrawInfo {
 			settings.TRACK_COLOR_CONSUMPTION_MAX_WH_KM.resetToDefault();
 			settings.TRACK_COLOR_SPEED_MIN_KMH.resetToDefault();
 			settings.TRACK_COLOR_SPEED_MAX_KMH.resetToDefault();
+			settings.TRACK_SPLIT_LABEL_OPACITY.resetToDefault();
 			initCurrentTrackParams(app);
 		} else if (isDefaultAppearance()) {
 			color = getDefaultColor(settings, renderer);
@@ -461,6 +477,7 @@ public class TrackDrawInfo {
 		consumptionMaxWhKm = bundle.getDouble(CONSUMPTION_MAX_KEY, EvConsumptionScale.MAX_WH_KM);
 		speedMinKmh = bundle.getDouble(SPEED_MIN_KEY, 0);
 		speedMaxKmh = bundle.getDouble(SPEED_MAX_KEY, EvConsumptionScale.DEFAULT_SPEED_MAX_KMH);
+		splitLabelOpacity = bundle.getInt(SPLIT_LABEL_OPACITY_KEY, DEFAULT_SPLIT_LABEL_OPACITY);
 	}
 
 	public void saveToBundle(@NonNull Bundle bundle) {
@@ -484,6 +501,7 @@ public class TrackDrawInfo {
 		bundle.putDouble(CONSUMPTION_MAX_KEY, consumptionMaxWhKm);
 		bundle.putDouble(SPEED_MIN_KEY, speedMinKmh);
 		bundle.putDouble(SPEED_MAX_KEY, speedMaxKmh);
+		bundle.putInt(SPLIT_LABEL_OPACITY_KEY, splitLabelOpacity);
 
 		if (color != null) {
 			bundle.putInt(TRACK_COLOR, color);

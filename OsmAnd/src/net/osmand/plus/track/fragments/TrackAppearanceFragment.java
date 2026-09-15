@@ -68,6 +68,7 @@ import net.osmand.plus.track.cards.DirectionArrowsCard;
 import net.osmand.plus.track.cards.GradientScaleCard;
 import net.osmand.plus.track.cards.ShowStartFinishCard;
 import net.osmand.plus.track.cards.SplitIntervalCard;
+import net.osmand.plus.track.cards.SplitLabelOpacityCard;
 import net.osmand.plus.track.cards.Track3DCard;
 import net.osmand.plus.track.TrackGradientHelper;
 import net.osmand.plus.track.fragments.controller.TrackColorController;
@@ -428,9 +429,11 @@ public class TrackAppearanceFragment extends ContextMenuScrollFragment implement
 			} else if (card instanceof GradientScaleCard) {
 				FragmentManager manager = activity.getSupportFragmentManager();
 				GradientScaleBottomSheet.showInstance(manager, this);
-			} else if (card instanceof DirectionArrowsCard) {
+			} else if (card instanceof DirectionArrowsCard || card instanceof SplitLabelOpacityCard) {
 				refreshMap();
-				updateAppearanceIcon();
+				if (card instanceof DirectionArrowsCard) {
+					updateAppearanceIcon();
+				}
 			} else {
 				if (card instanceof Track3DCard
 						&& trackDrawInfo.getTrackVisualizationType() == Gpx3DVisualizationType.EV_CONSUMPTION) {
@@ -806,6 +809,7 @@ public class TrackAppearanceFragment extends ContextMenuScrollFragment implement
 			if (!selectedGpxFile.isShowCurrentTrack()) {
 				splitIntervalCard = new SplitIntervalCard(mapActivity, trackDrawInfo);
 				addCard(container, splitIntervalCard);
+				addCard(container, new SplitLabelOpacityCard(mapActivity, trackDrawInfo));
 			}
 			addCard(container, new DirectionArrowsCard(mapActivity, trackDrawInfo));
 			addCard(container, new ShowStartFinishCard(mapActivity, trackDrawInfo));
