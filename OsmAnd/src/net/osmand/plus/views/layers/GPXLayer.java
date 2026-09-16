@@ -23,6 +23,8 @@ import net.osmand.PlatformUtil;
 import net.osmand.core.android.MapRendererContext;
 import net.osmand.core.android.MapRendererView;
 import net.osmand.core.jni.*;
+import net.osmand.core.jni.ColorARGB;
+import net.osmand.core.jni.GpxAdditionalIconsProvider.SplitLabel;
 import net.osmand.data.LatLon;
 import net.osmand.data.PointDescription;
 import net.osmand.data.QuadRect;
@@ -179,6 +181,7 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 	//OpenGl
 	private List<GpxAdditionalIconsProvider> additionalIconsProviders = new ArrayList<>();
 	private final Map<Integer, SelectedGpxPoint> splitLabelPointsByExtraId = new HashMap<>();
+	private final List<SelectedGpxPoint> clickableSplitLabels = new ArrayList<>();
 	private int nextSplitLabelExtraId = SPLIT_LABEL_EXTRA_ID_START;
 	private int startFinishPointsCountCached;
 	private int splitLabelsCountCached;
@@ -365,6 +368,7 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 			drawXAxisPointsOpenGl(trackChartPoints, mapRenderer, tileBox);
 			drawSelectedFilesSplitsOpenGl(mapRenderer, tileBox, visibleGPXFiles, forceUpdate);
 			int splitCanvasSave = canvas.save();
+			// Screen space: layer canvas is already map-rotated, renderer pixels are not.
 			canvas.rotate(-tileBox.getRotate(), tileBox.getCenterPixelX(), tileBox.getCenterPixelY());
 			drawSelectedFilesSplits(canvas, tileBox, visibleGPXFiles);
 			canvas.restoreToCount(splitCanvasSave);
@@ -559,6 +563,7 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 
 	private void drawSelectedFilesSplits(@NonNull Canvas canvas, @NonNull RotatedTileBox tileBox,
 	                                     @NonNull List<SelectedGpxFile> selectedGPXFiles) {
+		clickableSplitLabels.clear();
 		if (tileBox.getZoom() >= START_ZOOM) {
 			for (SelectedGpxFile selectedGpxFile : selectedGPXFiles) {
 				List<GpxDisplayGroup> groups = getSplitGroups(selectedGpxFile);
@@ -582,7 +587,7 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 					paintOuterRect.setAlpha(splitLabelAlpha);
 
 					List<GpxDisplayItem> items = groups.get(0).getDisplayItems();
-					drawSplitItems(canvas, tileBox, items, color);
+					drawSplitItems(canvas, tileBox, selectedGpxFile, items, color);
 				}
 			}
 		}
@@ -686,6 +691,30 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 						}
 					}
 				}
+				List<GpxDisplayGroup> groups = getSplitGroups(selectedGpxFile);
+				if (!Algorithms.isEmpty(groups)) {
+					int trackColor = appearanceHelper.getTrackColor(gpxFile, cachedColor, gpxItem, dirItem, selected);
+					List<VisibleSplitLabel> visible = buildAdaptiveSplitLabels(tileBox, groups.get(0).getDisplayItems(), trackColor);
+					for (VisibleSplitLabel label : visible) {
+						WptPt point = label.item.getLabelPoint();
+						if (point == null || label.name == null) {
+							continue;
+						}
+						int extraId = registerSplitLabel(selectedGpxFile, label.item);
+						PointI point31 = new PointI(Utilities.get31TileNumberX(point.getLon()), Utilities.get31TileNumberY(point.getLat()));
+						// Invisible native billboard: keeps the label glued to the track
+						// and restores stock extraId clicks. Visible text/fill is canvas.
+						ColorARGB nativeColor = NativeUtilities.createColorARGB(label.color, 0);
+						SplitLabel splitLabel;
+						if (visualizationType == Gpx3DVisualizationType.NONE || trackLinePosition != Gpx3DLinePositionType.TOP) {
+							splitLabel = new SplitLabel(point31, label.name, nativeColor, extraId);
+						} else {
+							float labelHeight = (float) Gpx3DVisualizationType.getPointElevation(point, track3DStyle, heightmapsActive);
+							splitLabel = new SplitLabel(point31, label.name, nativeColor, extraId, labelHeight);
+						}
+						splitLabels.add(splitLabel);
+					}
+				}
 				if (!startFinishPoints.isEmpty() || !splitLabels.isEmpty()) {
 					GpxAdditionalIconsProvider additionalIconsProvider = new GpxAdditionalIconsProvider(getPointsOrder() - selectedGPXFiles.size() - 800, tileBox.getDensity(),
 							startFinishPoints, startFinishExtraIds, splitLabels,
@@ -739,6 +768,7 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 
 	private void clearSelectedFilesSplits() {
 		splitLabelPointsByExtraId.clear();
+		clickableSplitLabels.clear();
 		nextSplitLabelExtraId = SPLIT_LABEL_EXTRA_ID_START;
 
 		MapRendererView mapRenderer = getMapRenderer();
@@ -767,13 +797,19 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 
 	private int registerSplitLabel(@NonNull SelectedGpxFile selectedGpxFile, @NonNull GpxDisplayItem item) {
 		int extraId = nextSplitLabelExtraId++;
-		splitLabelPointsByExtraId.put(extraId, SelectedGpxPoint.createSplitLabel(selectedGpxFile, item.getLabelPoint()));
+		SelectedGpxPoint gpxPoint = SelectedGpxPoint.createSplitLabel(selectedGpxFile, item.getLabelPoint());
+		splitLabelPointsByExtraId.put(extraId, gpxPoint);
 		return extraId;
 	}
 
 	private void collectSplitLabel(@NonNull MapSelectionResult result, @NonNull SelectedGpxPoint gpxPoint) {
 		for (SelectedMapObject selectedObject : result.getAllObjects()) {
 			if (selectedObject.object() == gpxPoint) {
+				return;
+			}
+			if (selectedObject.object() instanceof SelectedGpxPoint existing
+					&& existing.isSplitLabel()
+					&& existing.getSelectedPoint() == gpxPoint.getSelectedPoint()) {
 				return;
 			}
 		}
@@ -795,23 +831,25 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 	}
 
 	private void drawSplitItems(@NonNull Canvas canvas, @NonNull RotatedTileBox tileBox,
+	                            @NonNull SelectedGpxFile selectedGpxFile,
 	                            @NonNull List<GpxDisplayItem> items, @ColorInt int trackColor) {
-		QuadRect latLonBounds = tileBox.getLatLonBounds();
 		int r = (int) (12 * tileBox.getDensity());
 		paintTextIcon.setTextSize(r);
 		List<VisibleSplitLabel> visible = buildAdaptiveSplitLabels(tileBox, items, trackColor);
+		MapRendererView mapRenderer = getMapRenderer();
 		for (VisibleSplitLabel label : visible) {
 			WptPt point = label.item.getLabelPoint();
-			if (point == null || point.getLat() < latLonBounds.bottom || point.getLat() > latLonBounds.top
-					|| point.getLon() < latLonBounds.left || point.getLon() > latLonBounds.right) {
+			if (point == null || !NativeUtilities.containsLatLon(mapRenderer, tileBox, point.getLat(), point.getLon())) {
 				continue;
 			}
-			float x = tileBox.getPixXFromLatLon(point.getLat(), point.getLon());
-			float y = tileBox.getPixYFromLatLon(point.getLat(), point.getLon());
 			String name = label.name;
 			if (name == null) {
 				continue;
 			}
+			clickableSplitLabels.add(SelectedGpxPoint.createSplitLabel(selectedGpxFile, point));
+			PointF screen = NativeUtilities.getPixelFromLatLon(mapRenderer, tileBox, point.getLat(), point.getLon());
+			float x = screen.x;
+			float y = screen.y;
 			Rect bounds = new Rect();
 			paintTextIcon.getTextBounds(name, 0, name.length(), bounds);
 
@@ -846,6 +884,7 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 		if (items.isEmpty()) {
 			return result;
 		}
+		MapRendererView mapRenderer = getMapRenderer();
 		float minGap = 56f * tileBox.getDensity();
 		int groupStart = -1;
 		float startX = Float.NaN;
@@ -855,8 +894,9 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 			if (point == null) {
 				continue;
 			}
-			float x = tileBox.getPixXFromLatLon(point.getLat(), point.getLon());
-			float y = tileBox.getPixYFromLatLon(point.getLat(), point.getLon());
+			PointF screen = NativeUtilities.getPixelFromLatLon(mapRenderer, tileBox, point.getLat(), point.getLon());
+			float x = screen.x;
+			float y = screen.y;
 			if (groupStart < 0) {
 				groupStart = i;
 				startX = x;
@@ -1687,6 +1727,36 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 		}
 	}
 
+	private void collectSplitLabelsFromPoint(@NonNull MapSelectionResult result) {
+		if (clickableSplitLabels.isEmpty()) {
+			return;
+		}
+		PointF point = result.getPoint();
+		RotatedTileBox tb = result.getTileBox();
+		MapRendererView mapRenderer = getMapRenderer();
+		float radius = getScaledTouchRadius(app, tb.getDefaultRadiusPoi()) * TOUCH_RADIUS_MULTIPLIER * 1.5f;
+		List<PointI> touchPolygon31 = null;
+		if (mapRenderer != null) {
+			touchPolygon31 = NativeUtilities.getPolygon31FromPixelAndRadius(mapRenderer, point, radius);
+			if (touchPolygon31 == null) {
+				return;
+			}
+		}
+		for (SelectedGpxPoint gpxPoint : clickableSplitLabels) {
+			WptPt labelPoint = gpxPoint.getSelectedPoint();
+			if (labelPoint == null) {
+				continue;
+			}
+			boolean add = mapRenderer != null
+					? NativeUtilities.isPointInsidePolygon(labelPoint.getLat(), labelPoint.getLon(), touchPolygon31)
+					: tb.isLatLonNearPixel(labelPoint.getLat(), labelPoint.getLon(), point.x, point.y, radius);
+			if (add) {
+				collectSplitLabel(result, gpxPoint);
+				return;
+			}
+		}
+	}
+
 	public void collectTracksFromPoint(@NonNull MapSelectionResult result, boolean showTrackPointMenu) {
 		List<SelectedGpxFile> selectedGpxFiles = new ArrayList<>(selectedGpxHelper.getSelectedGPXFiles());
 		if (selectedGpxFiles.isEmpty()) {
@@ -1837,6 +1907,7 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 	public void collectObjectsFromPoint(@NonNull MapSelectionResult result, @NonNull MapSelectionRules rules) {
 		if (result.getTileBox().getZoom() >= START_ZOOM) {
 			collectWptFromPoint(result);
+			collectSplitLabelsFromPoint(result);
 
 			if (!rules.isOnlyTouchableObjects() && !rules.isOnlyPoints()) {
 				collectTracksFromPoint(result, false);

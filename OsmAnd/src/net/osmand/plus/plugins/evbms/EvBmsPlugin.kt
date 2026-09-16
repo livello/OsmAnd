@@ -575,7 +575,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				app.getString(R.string.ev_bms_plugin_range_method) +
 				app.getString(R.string.ev_bms_plugin_consumption_map) +
 				app.getString(R.string.ev_bms_plugin_architecture) +
-				app.getString(R.string.ev_bms_changelog, EvBmsRevision.GIT_HASH)
+				EvBmsRevision.changelogHtml()
 	}
 
 	override fun getDescription(linksEnabled: Boolean): CharSequence {

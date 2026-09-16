@@ -1408,7 +1408,7 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			plugin.descriptionHtml()
 		} catch (e: Exception) {
 			app.getString(R.string.ev_bms_plugin_description) +
-					"<br/><br/>Changelog · ${EvBmsRevision.GIT_HASH}"
+					EvBmsRevision.changelogHtml()
 		}
 		text.setTextColor(ColorUtilities.getPrimaryTextColor(requireContext(), nightMode))
 		text.movementMethod = LinkMovementMethod.getInstance()
