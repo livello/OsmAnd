@@ -1,6 +1,7 @@
 package net.osmand.plus.plugins.evbms
 
 import android.app.Activity
+import android.content.res.ColorStateList
 import android.os.Handler
 import android.os.Looper
 import android.view.LayoutInflater
@@ -51,6 +52,7 @@ class EvBmsSyncDialog(
 			}
 			refreshMaster()
 			refreshPeers()
+			refreshClient()
 			uiHandler.postDelayed(this, 1000)
 		}
 	}
@@ -68,6 +70,7 @@ class EvBmsSyncDialog(
 		progress = content.findViewById(R.id.sync_progress)
 		progressText = content.findViewById(R.id.sync_progress_text)
 		lastResult = content.findViewById(R.id.sync_last_result)
+		styleSyncButton()
 
 		val textColor = ColorUtilities.getPrimaryTextColor(themed, nightMode)
 		portField.setTextColor(textColor)
@@ -222,11 +225,32 @@ class EvBmsSyncDialog(
 		}
 	}
 
+	private fun styleSyncButton() {
+		val bg = ColorUtilities.getActiveColor(themed, nightMode)
+		val fg = ColorUtilities.getActiveButtonsAndLinksTextColor(themed, nightMode)
+		syncButton.backgroundTintList = ColorStateList.valueOf(bg)
+		syncButton.setTextColor(fg)
+		syncButton.isEnabled = true
+		syncButton.isClickable = true
+		syncButton.isFocusable = true
+		syncButton.alpha = 1f
+	}
+
 	private fun refreshClient() {
 		if (dialog?.isShowing != true) {
 			return
 		}
-		syncButton.isEnabled = !sync.isPulling()
+		styleSyncButton()
+		val pulling = sync.isPulling()
+		if (pulling && progress.visibility != View.VISIBLE) {
+			progress.visibility = View.VISIBLE
+			progress.isIndeterminate = true
+		}
+		if (!pulling && progress.isIndeterminate && progress.visibility == View.VISIBLE) {
+			progress.visibility = View.GONE
+			progress.isIndeterminate = false
+			progressText.text = ""
+		}
 		val result = sync.lastResult
 		lastResult.text = if (result == null) {
 			themed.getString(R.string.ev_bms_sync_result_none)

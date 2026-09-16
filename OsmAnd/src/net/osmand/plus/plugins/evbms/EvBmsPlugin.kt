@@ -42,10 +42,13 @@ import net.osmand.plus.views.mapwidgets.WidgetsPanel
 import net.osmand.plus.views.mapwidgets.widgets.MapWidget
 import net.osmand.plus.widgets.ctxmenu.ContextMenuAdapter
 import net.osmand.plus.widgets.ctxmenu.callback.OnDataChangeUiAdapter
+import net.osmand.plus.shared.SharedUtil
 import net.osmand.plus.widgets.ctxmenu.data.ContextMenuItem
 import net.osmand.shared.gpx.GpxTrackAnalysis
+import net.osmand.shared.gpx.primitives.WptPt
 import org.json.JSONException
 import org.json.JSONObject
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.ArrayDeque
 import java.util.Date
@@ -123,8 +126,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		private const val SPEED_PROFILE_HOLD_MS = 2000L
 		private const val HISTORY_SAMPLE_MIN_MS = 2000L
 		private const val PREFS_PERSIST_MIN_MS = 2500L
-		private const val MAX_CHARGE_WAYPOINT_MS = 8 * 60 * 60_000L
 		private const val MIN_CHARGE_WAYPOINT_AH = 0.8
+		private const val MIN_CHARGE_WAYPOINT_WH = 50.0
 		const val RANGE_SOURCE_10KM = "rolling_10km"
 		const val RANGE_SOURCE_5MIN = "window_5min"
 		const val RANGE_SOURCE_PNZ = "pnz"
@@ -1187,6 +1190,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		if (ANNOUNCE_CHARGE_ETA.get()) {
 			voice.onChargeFinished()
 		}
+		flushPendingGpxEvents(latestTelemetry)
 	}
 
 	private fun startTripSession(now: Long, loc: Location?) {
@@ -2439,17 +2443,22 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 
 	private fun shouldWriteChargeWaypoint(record: EvHistoryStore.ChargeRecord): Boolean {
 		val chargedAh = record.chargedAh
-		if (chargedAh != null && chargedAh < MIN_CHARGE_WAYPOINT_AH) {
-			return false
-		}
-		if (record.durationMs() > MAX_CHARGE_WAYPOINT_MS) {
+		val energyWh = record.energyWh
+		if ((chargedAh == null || chargedAh < MIN_CHARGE_WAYPOINT_AH) &&
+			(energyWh == null || energyWh < MIN_CHARGE_WAYPOINT_WH)
+		) {
 			return false
 		}
 		val end = if (record.endMs > 0L) record.endMs else System.currentTimeMillis()
-		val midOverlap = tripHistory().filter { it.isRealRide() }.any { ride ->
-			ride.startMs > record.startMs + 120_000L && ride.startMs < end - 120_000L
+		// Skip only a stuck session that fully wraps a real ride. Overnight home
+		// charges and normal 20–90 min stops must still get a map waypoint.
+		val containedRide = tripHistory().filter { it.isRealRide() }.any { ride ->
+			ride.endMs > 0L &&
+				ride.startMs > record.startMs + 120_000L &&
+				ride.endMs < end - 120_000L &&
+				(ride.distanceKm ?: 0.0) >= 2.0
 		}
-		return !midOverlap
+		return !containedRide
 	}
 
 	private fun tripEventDescription(row: EvHistoryStore.ChargeTripRecord): String {
@@ -3694,33 +3703,17 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				}
 			}
 		}
-		val events = ArrayList(pendingGpxEvents)
-		pendingGpxEvents.clear()
 		if (recorder.isRecording) {
 			recorder.setWriteGpx(RECORD_GPX.get() && !isTripRecording())
 			val recIv = activeRecordIntervalMs()
-			if (events.isEmpty()) {
+			if (pendingGpxEvents.isEmpty()) {
 				if (lastRecordMs == 0L || sample.timeMs - lastRecordMs >= recIv) {
 					lastRecordMs = sample.timeMs
 					recorder.append(sample)
 				}
-			} else {
-				lastRecordMs = sample.timeMs
-				recorder.append(sample)
-				for (event in events) {
-					if (event.waypoint) {
-						val lat = event.lat ?: continue
-						val lon = event.lon ?: continue
-						recorder.appendWaypoint(lat, lon, event.timeMs, event.name, event.description)
-					} else {
-						recorder.appendNamedPoint(sample, event.name, event.description)
-					}
-				}
 			}
 		}
-		for (event in events) {
-			writeTripRecordingWaypoint(event)
-		}
+		flushPendingGpxEvents(sample)
 		voice.onLink(
 			bmsUp = bmsFreshAfter,
 			controllerUp = ctrlFreshAfter,
@@ -4210,7 +4203,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		recorder.setWriteGpx(RECORD_GPX.get() && !isTripRecording())
 	}
 
-	fun isTripRecording(): Boolean = app.savingTrackHelper.isRecording
+	fun isTripRecording(): Boolean = app.savingTrackHelper.getIsRecording()
 
 	@Throws(JSONException::class)
 	override fun attachAdditionalInfoToRecordedTrack(location: Location, json: JSONObject) {
@@ -4248,8 +4241,41 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		)
 	}
 
+	private fun flushPendingGpxEvents(sample: EvTelemetry?) {
+		if (pendingGpxEvents.isEmpty()) {
+			return
+		}
+		val events = ArrayList(pendingGpxEvents)
+		pendingGpxEvents.clear()
+		if (recorder.isRecording && sample != null) {
+			lastRecordMs = sample.timeMs
+			recorder.append(sample)
+			for (event in events) {
+				if (event.waypoint) {
+					val lat = event.lat ?: continue
+					val lon = event.lon ?: continue
+					recorder.appendWaypoint(lat, lon, event.timeMs, event.name, event.description)
+				} else {
+					recorder.appendNamedPoint(sample, event.name, event.description)
+				}
+			}
+		} else {
+			for (event in events) {
+				if (!event.waypoint) {
+					continue
+				}
+				val lat = event.lat ?: continue
+				val lon = event.lon ?: continue
+				recorder.appendWaypoint(lat, lon, event.timeMs, event.name, event.description)
+			}
+		}
+		for (event in events) {
+			writeTripRecordingWaypoint(event)
+		}
+	}
+
 	private fun writeTripRecordingWaypoint(event: GpxEvent) {
-		if (!event.waypoint || !isTripRecording()) {
+		if (!event.waypoint) {
 			return
 		}
 		val lat = event.lat ?: return
@@ -4258,17 +4284,75 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				event.name.contains("Wh", true) ||
 				event.name.contains("Вт", true)
 		val color = if (isCharge) 0xFF43A047.toInt() else 0xFF1E88E5.toInt()
-		app.savingTrackHelper.insertPointData(
-			lat,
-			lon,
-			event.timeMs,
-			event.description,
-			event.name,
-			app.getString(R.string.ev_bms_plugin_name),
-			color,
-			"charging_station",
-			"circle"
+		val helper = app.savingTrackHelper
+		val intoCurrent = helper.getIsRecording() || helper.hasDataToSave()
+		journal.i(
+			"gpx",
+			"charge wpt recording=${helper.getIsRecording()} hasData=${helper.hasDataToSave()} " +
+					"lat=$lat lon=$lon name=${event.name}"
 		)
+		if (intoCurrent) {
+			helper.insertPointData(
+				lat,
+				lon,
+				event.timeMs,
+				event.description,
+				event.name,
+				app.getString(R.string.ev_bms_plugin_name),
+				color,
+				"charging_station",
+				"circle"
+			)
+			return
+		}
+		appendChargeWaypointToLatestGpx(lat, lon, event, color)
+	}
+
+	private fun appendChargeWaypointToLatestGpx(lat: Double, lon: Double, event: GpxEvent, color: Int) {
+		val file = latestRecordedGpxFile(event.timeMs) ?: return
+		try {
+			val gpx = SharedUtil.loadGpxFile(file)
+			if (gpx.error != null) {
+				journal.w("gpx", "cannot load ${file.name}: ${gpx.error}")
+				return
+			}
+			val duplicate = gpx.getPointsList().any { pt ->
+				kotlin.math.abs(pt.lat - lat) < 1e-4 &&
+					kotlin.math.abs(pt.lon - lon) < 1e-4 &&
+					(pt.name?.contains("Вт") == true || pt.name?.contains("Wh") == true ||
+						pt.name == event.name)
+			}
+			if (duplicate) {
+				return
+			}
+			val pt = WptPt(lat, lon, event.timeMs, Double.NaN, 0f, Float.NaN)
+			pt.name = event.name
+			pt.desc = event.description
+			pt.category = app.getString(R.string.ev_bms_plugin_name)
+			pt.setColor(color)
+			pt.setIconName("charging_station")
+			pt.setBackgroundType("circle")
+			gpx.addPoint(pt)
+			val warn = SharedUtil.writeGpxFile(file, gpx)
+			if (warn != null) {
+				journal.w("gpx", "cannot write ${file.name}: $warn")
+			} else {
+				journal.i("gpx", "appended charge wpt to ${file.absolutePath}")
+			}
+		} catch (e: Exception) {
+			journal.w("gpx", "append wpt failed: ${e.message}")
+		}
+	}
+
+	private fun latestRecordedGpxFile(aroundMs: Long): File? {
+		val rec = app.appCustomization.tracksDir
+		val day = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(aroundMs))
+		val month = SimpleDateFormat("yyyy-MM", Locale.US).format(Date(aroundMs))
+		val dirs = listOf(File(rec, month), rec)
+		return dirs.filter { it.isDirectory }
+			.flatMap { it.listFiles()?.toList().orEmpty() }
+			.filter { it.isFile && it.name.endsWith(".gpx", true) && it.name.startsWith(day) }
+			.maxByOrNull { it.lastModified() }
 	}
 
 	fun selectedTelemetryFields(): List<TelemetryField> = TelemetryField.parse(TELEMETRY_FIELDS.get())

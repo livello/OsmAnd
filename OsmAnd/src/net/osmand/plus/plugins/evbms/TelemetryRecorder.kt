@@ -108,7 +108,7 @@ class TelemetryRecorder(private val app: OsmandApplication) {
 
 	@Synchronized
 	fun startNewSession(): Boolean {
-		detach()
+		closeWriters(writeFooter = true)
 		csvSpec = null
 		gpxSpec = null
 		pendingWaypoints.clear()

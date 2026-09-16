@@ -1,8 +1,11 @@
 package net.osmand.plus.track.helpers;
 
+import static net.osmand.shared.gpx.GpxParameter.COLORING_TYPE;
 import static net.osmand.shared.gpx.GpxParameter.FILE_LAST_MODIFIED_TIME;
 import static net.osmand.shared.gpx.GpxParameter.JOIN_SEGMENTS;
 import static net.osmand.shared.gpx.GpxParameter.SHOW_AS_MARKERS;
+import static net.osmand.shared.gpx.GpxParameter.TRACK_3D_WALL_COLORING_TYPE;
+import static net.osmand.shared.gpx.GpxParameter.TRACK_VISUALIZATION_TYPE;
 
 import android.app.Activity;
 import android.os.AsyncTask.Status;
@@ -21,10 +24,14 @@ import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
 import net.osmand.plus.plugins.PluginsHelper;
 import net.osmand.plus.plugins.development.OsmandDevelopmentPlugin;
+import net.osmand.plus.plugins.evbms.EvBmsPlugin;
+import net.osmand.plus.plugins.evbms.EvGpx;
+import net.osmand.plus.plugins.evbms.TelemetryField;
 import net.osmand.plus.mapmarkers.MapMarkersGroup;
 import net.osmand.plus.mapmarkers.MapMarkersHelper;
 import net.osmand.plus.plugins.monitoring.SavingTrackHelper;
 import net.osmand.plus.settings.enums.HistorySource;
+import net.osmand.plus.shared.SharedUtil;
 import net.osmand.plus.track.GpxSelectionParams;
 import net.osmand.plus.track.data.GPXInfo;
 import net.osmand.plus.track.helpers.SelectGpxTask.SelectGpxTaskListener;
@@ -430,84 +437,171 @@ public class GpxSelectionHelper {
 			return;
 		}
 		pendingRestoreStartTime = System.currentTimeMillis();
-		loadNextPendingSelection(restoreGeneration.get());
+		restorePendingBatch(restoreGeneration.get());
 	}
 
-	private void loadNextPendingSelection(int generation) {
+	private void restorePendingBatch(int generation) {
 		if (generation != restoreGeneration.get()) {
 			pendingRestoreRunning.set(false);
 			startPendingGpxRestore();
 			return;
 		}
-		PendingSelection selection = getNextPendingSelection(generation);
-		if (selection == null) {
+		List<PendingSelection> batch = new ArrayList<>();
+		synchronized (pendingSelections) {
+			for (PendingSelection selection : pendingSelections.values()) {
+				if (selection.generation == generation && !selection.restoreAttempted) {
+					selection.restoreAttempted = true;
+					selection.restoreAttempts++;
+					batch.add(selection);
+				}
+			}
+		}
+		if (batch.isEmpty()) {
 			pendingRestoreRunning.set(false);
 			log.info("Restored selected GPX geometry in "
 					+ (System.currentTimeMillis() - pendingRestoreStartTime) + " ms");
 			app.getGpxDbHelper().startFilesystemReconciliation();
 			return;
 		}
-
-		File file = new File(selection.path);
-		if (!file.isFile()) {
-			removePendingSelection(selection);
-			saveCurrentSelections();
-			app.runInUIThread(() -> loadNextPendingSelection(generation));
-			return;
+		AtomicInteger remaining = new AtomicInteger(batch.size());
+		GpxUtilities.ExtensionTagFilter tagFilter = createMapRestoreExtensionFilter();
+		for (PendingSelection selection : batch) {
+			OsmAndTaskManager.executeTask(new RestoreSelectedGpxTask(selection, generation, tagFilter, remaining));
 		}
-		long scheduledModifiedTime = file.lastModified();
-		long fileRestoreStart = System.currentTimeMillis();
-		OsmAndTaskManager.executeTask(new GpxFileLoaderTask(file, null, false, gpx -> {
-			try {
-				if (isPendingSelectionActive(selection, generation)) {
-					boolean fileUnchanged = file.isFile() && file.lastModified() == scheduledModifiedTime
-							&& gpx != null && gpx.getModifiedTime() == scheduledModifiedTime;
-					if (gpx != null && gpx.getError() == null && fileUnchanged) {
-						if (selection.color != null) {
-							gpx.setColor(selection.color);
-						}
-						if (selection.hiddenGroups != null) {
-							readHiddenGroups(gpx, selection.hiddenGroups);
-						}
-						GpxSelectionParams params = GpxSelectionParams.newInstance()
-								.showOnMap().syncGroup().setSelectedByUser(selection.selectedByUser);
-						SelectedGpxFile selectedFile = selectGpxFile(gpx, params);
-						log.info("Restored selected GPX name=" + file.getName()
-								+ ", size=" + file.length()
-								+ ", points=" + (selectedFile != null ? selectedFile.getPointsToDisplayCount() : 0)
-								+ " in " + (System.currentTimeMillis() - fileRestoreStart) + " ms");
-						app.getOsmandMap().refreshMap();
-						removePendingSelection(selection);
-					} else if (!file.isFile() || gpx == null || gpx.getError() != null) {
-						removePendingSelection(selection);
-					} else {
-						markPendingSelectionForRetry(selection);
-					}
-					saveCurrentSelections();
-				}
-			} catch (RuntimeException error) {
-				log.error("Failed to restore selected GPX " + selection.path, error);
-				// Keep the pending preference for a retry on the next process start.
-				saveCurrentSelections();
-			} finally {
-				loadNextPendingSelection(generation);
-			}
-			return true;
-		}));
 	}
 
-	@Nullable
-	private PendingSelection getNextPendingSelection(int generation) {
+	@NonNull
+	private GpxUtilities.ExtensionTagFilter createMapRestoreExtensionFilter() {
+		EvBmsPlugin plugin = PluginsHelper.getPlugin(EvBmsPlugin.class);
+		List<TelemetryField> fields = plugin != null
+				? plugin.selectedGpxTelemetryFields()
+				: java.util.Collections.emptyList();
+		return EvGpx.createMapRestoreFilter(fields, null, null, null);
+	}
+
+	@NonNull
+	private GpxUtilities.ExtensionTagFilter createMapRestoreExtensionFilter(@Nullable GpxDataItem dataItem) {
+		EvBmsPlugin plugin = PluginsHelper.getPlugin(EvBmsPlugin.class);
+		List<TelemetryField> fields = plugin != null
+				? plugin.selectedGpxTelemetryFields()
+				: java.util.Collections.emptyList();
+		String coloringType = dataItem != null ? dataItem.getParameter(COLORING_TYPE) : null;
+		String visualizationType = dataItem != null ? dataItem.getParameter(TRACK_VISUALIZATION_TYPE) : null;
+		String wallColoringType = dataItem != null ? dataItem.getParameter(TRACK_3D_WALL_COLORING_TYPE) : null;
+		return EvGpx.createMapRestoreFilter(fields, coloringType, visualizationType, wallColoringType);
+	}
+
+	private void onPendingRestoreTaskFinished(@NonNull AtomicInteger remaining, int generation) {
+		if (remaining.decrementAndGet() > 0) {
+			return;
+		}
+		if (generation != restoreGeneration.get()) {
+			pendingRestoreRunning.set(false);
+			return;
+		}
+		boolean hasRetry = false;
 		synchronized (pendingSelections) {
 			for (PendingSelection selection : pendingSelections.values()) {
 				if (selection.generation == generation && !selection.restoreAttempted) {
-					selection.restoreAttempted = true;
-					selection.restoreAttempts++;
-					return selection;
+					hasRetry = true;
+					break;
 				}
 			}
 		}
-		return null;
+		if (hasRetry) {
+			restorePendingBatch(generation);
+			return;
+		}
+		pendingRestoreRunning.set(false);
+		log.info("Restored selected GPX geometry in "
+				+ (System.currentTimeMillis() - pendingRestoreStartTime) + " ms");
+		app.getGpxDbHelper().startFilesystemReconciliation();
+	}
+
+	private void applyRestoredGpx(@NonNull PendingSelection selection, int generation,
+	                              @NonNull File file, long scheduledModifiedTime,
+	                              long fileRestoreStart, @Nullable GpxFile gpx) {
+		if (!isPendingSelectionActive(selection, generation)) {
+			return;
+		}
+		boolean fileUnchanged = file.isFile() && file.lastModified() == scheduledModifiedTime
+				&& gpx != null && gpx.getModifiedTime() == scheduledModifiedTime;
+		if (gpx != null && gpx.getError() == null && fileUnchanged) {
+			if (selection.color != null) {
+				gpx.setColor(selection.color);
+			}
+			if (selection.hiddenGroups != null) {
+				readHiddenGroups(gpx, selection.hiddenGroups);
+			}
+			GpxSelectionParams params = GpxSelectionParams.newInstance()
+					.showOnMap().syncGroup().setSelectedByUser(selection.selectedByUser);
+			SelectedGpxFile selectedFile = selectGpxFile(gpx, params);
+			log.info("Restored selected GPX name=" + file.getName()
+					+ ", size=" + file.length()
+					+ ", points=" + (selectedFile != null ? selectedFile.getPointsToDisplayCount() : 0)
+					+ ", skippedEv=" + gpx.getOptionalExtensionsSkipped()
+					+ " in " + (System.currentTimeMillis() - fileRestoreStart) + " ms");
+			app.getOsmandMap().refreshMap();
+			removePendingSelection(selection);
+		} else if (!file.isFile() || gpx == null || gpx.getError() != null) {
+			removePendingSelection(selection);
+		} else {
+			markPendingSelectionForRetry(selection);
+		}
+		saveCurrentSelections();
+	}
+
+	@SuppressWarnings("deprecation")
+	private class RestoreSelectedGpxTask extends android.os.AsyncTask<Void, Void, GpxFile> {
+		private final PendingSelection selection;
+		private final int generation;
+		private final GpxUtilities.ExtensionTagFilter defaultFilter;
+		private final AtomicInteger remaining;
+		private File file;
+		private long scheduledModifiedTime;
+		private long fileRestoreStart;
+
+		private RestoreSelectedGpxTask(@NonNull PendingSelection selection, int generation,
+		                               @NonNull GpxUtilities.ExtensionTagFilter defaultFilter,
+		                               @NonNull AtomicInteger remaining) {
+			this.selection = selection;
+			this.generation = generation;
+			this.defaultFilter = defaultFilter;
+			this.remaining = remaining;
+		}
+
+		@Override
+		protected GpxFile doInBackground(Void... voids) {
+			fileRestoreStart = System.currentTimeMillis();
+			file = new File(selection.path);
+			if (!file.isFile()) {
+				return null;
+			}
+			scheduledModifiedTime = file.lastModified();
+			KFile kFile = new KFile(selection.path);
+			GpxDataItem dataItem = kFile.exists() ? app.getGpxDbHelper().getItem(kFile, false) : null;
+			GpxUtilities.ExtensionTagFilter tagFilter = dataItem != null
+					? createMapRestoreExtensionFilter(dataItem)
+					: defaultFilter;
+			return SharedUtil.loadGpxFile(file, null, false, tagFilter);
+		}
+
+		@Override
+		protected void onPostExecute(GpxFile gpx) {
+			try {
+				if (file == null || !file.isFile()) {
+					removePendingSelection(selection);
+					saveCurrentSelections();
+				} else {
+					applyRestoredGpx(selection, generation, file, scheduledModifiedTime, fileRestoreStart, gpx);
+				}
+			} catch (RuntimeException error) {
+				log.error("Failed to restore selected GPX " + selection.path, error);
+				saveCurrentSelections();
+			} finally {
+				onPendingRestoreTaskFinished(remaining, generation);
+			}
+		}
 	}
 
 	private boolean isPendingSelectionActive(@NonNull PendingSelection selection, int generation) {

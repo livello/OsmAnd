@@ -159,10 +159,12 @@ public class POIMapLayer extends OsmandMapLayer implements IContextMenuProvider,
 		showTravel = app.getSettings().SHOW_TRAVEL.get();
 		routeArticleFilterEnabled = travelRendererHelper.getRouteArticlesProperty().get();
 		routeArticlePointsFilterEnabled = travelRendererHelper.getRouteArticlePointsProperty().get();
-		routeArticleFilter = travelRendererHelper.getRouteArticleFilter();
-		routeArticlePointsFilter = travelRendererHelper.getRouteArticlePointsFilter();
-		routeTrackFilters = travelRendererHelper.getRouteTrackFilters();
-		routeArticlePointsFilterByName = routeArticlePointsFilter != null ? routeArticlePointsFilter.getFilterByName() : null;
+		if (showTravel) {
+			routeArticleFilter = travelRendererHelper.getRouteArticleFilter();
+			routeArticlePointsFilter = travelRendererHelper.getRouteArticlePointsFilter();
+			routeTrackFilters = travelRendererHelper.getRouteTrackFilters();
+			routeArticlePointsFilterByName = routeArticlePointsFilter != null ? routeArticlePointsFilter.getFilterByName() : null;
+		}
 
 		routingHelper.addListener(this);
 		travelRendererHelper.addFileVisibilityListener(this);
@@ -748,9 +750,14 @@ public class POIMapLayer extends OsmandMapLayer implements IContextMenuProvider,
 		boolean routeArticlePointsFilterEnabled = travelRendererHelper.getRouteArticlePointsProperty().get();
 		boolean routeTrackFilterEnabled = travelRendererHelper.getRouteTracksProperty().get();
 		boolean routeTrackAsPoiFilterEnabled = travelRendererHelper.getRouteTracksAsPoiProperty().get();
-		PoiUIFilter routeArticleFilter = travelRendererHelper.getRouteArticleFilter();
-		PoiUIFilter routeArticlePointsFilter = travelRendererHelper.getRouteArticlePointsFilter();
-		Set<PoiUIFilter> routeTrackFilters = travelRendererHelper.getRouteTrackFilters();
+		PoiUIFilter routeArticleFilter = null;
+		PoiUIFilter routeArticlePointsFilter = null;
+		Set<PoiUIFilter> routeTrackFilters = null;
+		if (showTravel) {
+			routeArticleFilter = travelRendererHelper.getRouteArticleFilter();
+			routeArticlePointsFilter = travelRendererHelper.getRouteArticlePointsFilter();
+			routeTrackFilters = travelRendererHelper.getRouteTrackFilters();
+		}
 		String routeArticlePointsFilterByName = routeArticlePointsFilter != null ? routeArticlePointsFilter.getFilterByName() : null;
 		DataSourceType wikiDataSource = app.getSettings().WIKI_DATA_SOURCE_TYPE.get();
 		boolean customObjectsChanged = customObjectsDelegate != null && customObjectsDelegate.isChanged();

@@ -177,6 +177,10 @@ object GpxUtilities {
 		fun readExtensions(res: GpxFile, parser: XmlPullParser): Boolean
 	}
 
+	fun interface ExtensionTagFilter {
+		fun keep(tag: String): Boolean
+	}
+
 	fun parseColor(colorString: String?, defColor: Int?): Int? {
 		val color = parseColor(colorString)
 		return color ?: defColor
@@ -1224,8 +1228,17 @@ object GpxUtilities {
 		extensionsReader: GpxExtensionsReader?,
 		addGeneralTrack: Boolean
 	): GpxFile {
+		return loadGpxFile(file, extensionsReader, addGeneralTrack, null)
+	}
+
+	fun loadGpxFile(
+		file: KFile,
+		extensionsReader: GpxExtensionsReader?,
+		addGeneralTrack: Boolean,
+		keepExtensionTag: ExtensionTagFilter?
+	): GpxFile {
 		return try {
-			val gpxFile = loadGpxFile(file, null, extensionsReader, addGeneralTrack)
+			val gpxFile = loadGpxFile(file, null, extensionsReader, addGeneralTrack, keepExtensionTag)
 			gpxFile.path = file.absolutePath()
 			gpxFile.modifiedTime = file.lastModified()
 			gpxFile.pointsModifiedTime = gpxFile.modifiedTime
@@ -1252,10 +1265,21 @@ object GpxUtilities {
 		extensionsReader: GpxExtensionsReader?,
 		addGeneralTrack: Boolean
 	): GpxFile {
+		return loadGpxFile(file, source, extensionsReader, addGeneralTrack, null)
+	}
+
+	fun loadGpxFile(
+		file: KFile?,
+		source: Source?,
+		extensionsReader: GpxExtensionsReader?,
+		addGeneralTrack: Boolean,
+		keepExtensionTag: ExtensionTagFilter?
+	): GpxFile {
 		val insideTagDepth = mutableMapOf("trk" to 0)
 		oneOffLogParseTimeErrors = true
 		val gpxFile = GpxFile(null)
 		gpxFile.metadata.time = 0
+		var skippedOptionalExtensions = false
 		var parser: XmlPullParser? = null
 		try {
 			parser = XmlPullParser()
@@ -1328,7 +1352,12 @@ object GpxUtilities {
 										parser
 									)
 								) {
-									readExtensionsText(parser, tag, parse)
+									if (keepExtensionTag != null && !keepExtensionTag.keep(tag)) {
+										skipTag(parser, tag)
+										skippedOptionalExtensions = true
+									} else {
+										readExtensionsText(parser, tag, parse)
+									}
 								}
 							}
 						}
@@ -1682,12 +1711,23 @@ object GpxUtilities {
 			parser?.close()
 		}
 
+		gpxFile.optionalExtensionsSkipped = skippedOptionalExtensions
 		return gpxFile
 	}
 
 	private fun getExtensionsSupportedTag(tag: String): String {
 		val supportedTag = SUPPORTED_EXTENSION_TAGS[tag]
 		return supportedTag ?: tag.replace(XML_COLON, ":")
+	}
+
+	@Throws(XmlParserException::class, IOException::class)
+	private fun skipTag(parser: XmlPullParser, key: String) {
+		var tok: Int
+		while (parser.next().also { tok = it } != XmlPullParser.END_DOCUMENT) {
+			if (tok == XmlPullParser.END_TAG && parser.getName() == key) {
+				return
+			}
+		}
 	}
 
 	@Throws(XmlParserException::class, IOException::class)

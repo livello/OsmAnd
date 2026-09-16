@@ -318,7 +318,20 @@ public class SelectedGpxFile {
 	private GpxTrackAnalysis calculateTrackAnalysis(@NonNull AnalysisRequest request,
 	                                                boolean collectPointData) {
 		long analysisStart = System.currentTimeMillis();
-		GpxTrackAnalysis analysis = request.gpxFile.getAnalysis(request.fileTimestamp, null, null,
+		GpxFile source = request.gpxFile;
+		if (collectPointData && source.getOptionalExtensionsSkipped()
+				&& !Algorithms.isEmpty(source.getPath())) {
+			File file = new File(source.getPath());
+			if (file.isFile()) {
+				GpxFile full = SharedUtil.loadGpxFile(file, null, false);
+				if (full.getError() == null) {
+					full.setModifiedTime(source.getModifiedTime());
+					full.setPointsModifiedTime(source.getPointsModifiedTime());
+					source = full;
+				}
+			}
+		}
+		GpxTrackAnalysis analysis = source.getAnalysis(request.fileTimestamp, null, null,
 				PluginsHelper.getTrackPointsAnalyser(), collectPointData);
 		if (collectPointData && !showCurrentTrack) {
 			String path = request.gpxFile.getPath();

@@ -97,6 +97,44 @@ class GpxUtilitiesLoadTest {
 		assertTrue(generalSegment.points[3].lastPoint)
 	}
 
+	@Test
+	fun testLoadGpxFileSkipsFilteredPointExtensions() {
+		val xml = """
+			<gpx version="1.1" creator="test" xmlns:osmand="https://osmand.net/docs/technical/osmand-file-formats/osmand-gpx">
+			  <trk>
+			    <trkseg>
+			      <trkpt lat="10.0" lon="20.0">
+			        <extensions>
+			          <speed>5.5</speed>
+			          <osmand:voltage_v>96.4</osmand:voltage_v>
+			          <osmand:rpm>3200</osmand:rpm>
+			          <osmand:icon>charging_station</osmand:icon>
+			        </extensions>
+			      </trkpt>
+			    </trkseg>
+			  </trk>
+			</gpx>
+			""".trimIndent()
+		val gpxFile = GpxUtilities.loadGpxFile(
+			null,
+			Buffer().writeUtf8(xml),
+			null,
+			false
+		) { tag ->
+			val id = tag.lowercase().substringAfterLast(':').replace("_-_", ":")
+			id != "rpm"
+		}
+
+		assertNull(gpxFile.error)
+		assertTrue(gpxFile.optionalExtensionsSkipped)
+		val point = gpxFile.tracks[0].segments[0].points[0]
+		assertEquals(5.5f, point.speed)
+		val extensions = point.getExtensionsToRead()
+		assertEquals("charging_station", extensions["icon"] ?: extensions["osmand:icon"])
+		assertTrue(extensions.containsKey("voltage_v") || extensions.containsKey("osmand:voltage_v"))
+		assertTrue(!extensions.containsKey("rpm") && !extensions.containsKey("osmand:rpm"))
+	}
+
 	private fun buildTimedTrackGpx(pointsCount: Int, startTime: Long): String {
 		return buildString {
 			append("<gpx version=\"1.1\" creator=\"test\"><trk><trkseg>")

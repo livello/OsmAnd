@@ -9,6 +9,7 @@ import android.content.res.AssetManager;
 import android.database.sqlite.SQLiteException;
 import android.os.AsyncTask;
 import android.os.HandlerThread;
+import android.os.Looper;
 import android.util.DisplayMetrics;
 
 import androidx.annotation.NonNull;
@@ -35,6 +36,7 @@ import net.osmand.osm.PoiCategory;
 import net.osmand.osm.PoiType;
 import net.osmand.plus.AppInitializer;
 import net.osmand.plus.OsmAndTaskManager;
+import net.osmand.plus.OsmAndTaskManager.OsmAndTaskRunnable;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
 import net.osmand.plus.Version;
@@ -161,6 +163,8 @@ public class ResourceManager {
 	private boolean indexesLoadedOnStart;
 
 	private final AmenitySearcher amenitySearcher;
+	private final ConcurrentHashMap<String, List<String>> poiSubTypesByPrefixCache = new ConcurrentHashMap<>();
+	private final Set<String> poiSubTypesPrefetching = ConcurrentHashMap.newKeySet();
 
 	public ResourceManager(@NonNull OsmandApplication app) {
 		this.app = app;
@@ -510,6 +514,7 @@ public class ResourceManager {
 
 	public List<String> indexingMaps(@Nullable IProgress progress,
 			@NonNull List<File> filesToReindex) {
+		clearPoiSubTypesCache();
 		long val = System.currentTimeMillis();
 		ArrayList<File> files = new ArrayList<>();
 		File appPath = app.getAppPath(null);
@@ -762,18 +767,63 @@ public class ResourceManager {
 		return amenitySearcher.getAmenityRepositories(true, settings.fileVisibility());
 	}
 
+	public void clearPoiSubTypesCache() {
+		poiSubTypesByPrefixCache.clear();
+	}
+
 	@NonNull
 	public List<String> searchPoiSubTypesByPrefix(@NonNull String prefix) {
-		Set<String> poiSubTypes = new HashSet<>();
-		for (AmenityIndexRepository repository : getAmenityRepositories()) {
-			if (repository instanceof AmenityIndexRepositoryBinary binaryRepository) {
-				List<PoiSubType> subTypes = binaryRepository.searchPoiSubTypesByPrefix(prefix);
-				for (PoiSubType subType : subTypes) {
-					poiSubTypes.add(subType.name);
+		List<String> cached = poiSubTypesByPrefixCache.get(prefix);
+		if (cached != null) {
+			return new ArrayList<>(cached);
+		}
+		if (Looper.getMainLooper().isCurrentThread()) {
+			log.warn("searchPoiSubTypesByPrefix(" + prefix + ") skipped on UI thread");
+			schedulePoiSubTypesPrefetch(prefix);
+			return new ArrayList<>();
+		}
+		synchronized (poiSubTypesByPrefixCache) {
+			cached = poiSubTypesByPrefixCache.get(prefix);
+			if (cached != null) {
+				return new ArrayList<>(cached);
+			}
+			Set<String> poiSubTypes = new HashSet<>();
+			for (AmenityIndexRepository repository : getAmenityRepositories()) {
+				File file = repository.getFile();
+				if (file != null && file.getName().endsWith(BINARY_WIKI_MAP_INDEX_EXT)) {
+					continue;
+				}
+				if (repository instanceof AmenityIndexRepositoryBinary binaryRepository) {
+					List<PoiSubType> subTypes = binaryRepository.searchPoiSubTypesByPrefix(prefix);
+					for (PoiSubType subType : subTypes) {
+						poiSubTypes.add(subType.name);
+					}
 				}
 			}
+			List<String> result = new ArrayList<>(poiSubTypes);
+			poiSubTypesByPrefixCache.put(prefix, result);
+			return new ArrayList<>(result);
 		}
-		return new ArrayList<>(poiSubTypes);
+	}
+
+	private void schedulePoiSubTypesPrefetch(@NonNull String prefix) {
+		if (!poiSubTypesPrefetching.add(prefix)) {
+			return;
+		}
+		app.getTaskManager().runInBackground(new OsmAndTaskRunnable<Void, Void, List<String>>() {
+			@Override
+			protected List<String> doInBackground(Void... params) {
+				return searchPoiSubTypesByPrefix(prefix);
+			}
+
+			@Override
+			protected void onPostExecute(List<String> result) {
+				poiSubTypesPrefetching.remove(prefix);
+				if (app.getOsmandMap() != null) {
+					app.getOsmandMap().refreshMap();
+				}
+			}
+		});
 	}
 
 	public AmenityIndexRepositoryBinary getAmenityRepositoryByFileName(String filename) {
@@ -870,6 +920,7 @@ public class ResourceManager {
 
 	public void closeFile(String fileName) {
 		amenitySearcher.removeAmenityRepository(fileName);
+		clearPoiSubTypesCache();
 		addressMap.remove(fileName);
 		transportRepositories.remove(fileName);
 		indexFileNames.remove(fileName);
@@ -904,6 +955,7 @@ public class ResourceManager {
 		travelRepositories.clear();
 		addressMap.clear();
 		amenitySearcher.clearAmenityRepositories();
+		clearPoiSubTypesCache();
 		for (BinaryMapReaderResource res : fileReaders.values()) {
 			res.close();
 		}

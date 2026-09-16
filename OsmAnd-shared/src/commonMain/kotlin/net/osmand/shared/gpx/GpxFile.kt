@@ -34,6 +34,7 @@ class GpxFile : GpxExtensions {
 	var hasAltitude: Boolean = false
 	var modifiedTime: Long = 0
 	var pointsModifiedTime: Long = 0
+	var optionalExtensionsSkipped: Boolean = false
 
 	private var generalTrack: Track? = null
 	private var generalSegment: TrkSegment? = null
@@ -954,6 +955,7 @@ class GpxFile : GpxExtensions {
 		dest.path = this.path
 		dest.showCurrentTrack = this.showCurrentTrack
 		dest.hasAltitude = this.hasAltitude
+		dest.optionalExtensionsSkipped = this.optionalExtensionsSkipped
 		dest.modifiedTime = currentTimeMillis()
 		dest.pointsModifiedTime = dest.modifiedTime
 		dest.copyExtensions(this)

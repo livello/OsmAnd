@@ -36,6 +36,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 class EvBmsSyncController(
 	private val app: OsmandApplication,
@@ -90,6 +91,10 @@ class EvBmsSyncController(
 	}
 	private val listeners = CopyOnWriteArrayList<Listener>()
 	private val pulling = AtomicBoolean(false)
+	private val cancelPull = AtomicBoolean(false)
+	private val pendingManualHost = AtomicReference<String?>(null)
+	@Volatile
+	private var activeConn: HttpURLConnection? = null
 	private val lastPeerRev = ConcurrentHashMap<String, Long>()
 	private val pendingConflicts = ArrayDeque<TrackConflict>()
 	private val conflictLock = Any()
@@ -232,12 +237,67 @@ class EvBmsSyncController(
 	}
 
 	fun syncNow(rawHost: String, manual: Boolean = true) {
+		if (manual) {
+			pendingManualHost.set(rawHost)
+			if (pulling.get()) {
+				cancelPull.set(true)
+				disconnectActive()
+				return
+			}
+		} else if (pulling.get() || pendingManualHost.get() != null) {
+			return
+		}
 		if (!pulling.compareAndSet(false, true)) {
 			if (manual) {
-				app.showToastMessage(R.string.ev_bms_sync_busy)
+				pendingManualHost.set(rawHost)
+				cancelPull.set(true)
+				disconnectActive()
 			}
 			return
 		}
+		io.execute {
+			try {
+				var host = rawHost
+				var force = manual
+				while (true) {
+					cancelPull.set(false)
+					val queued = pendingManualHost.getAndSet(null)
+					if (queued != null) {
+						host = queued
+						force = true
+					}
+					runPullTargets(host, force)
+					val next = pendingManualHost.getAndSet(null)
+					if (next != null) {
+						host = next
+						force = true
+						continue
+					}
+					break
+				}
+			} catch (e: Exception) {
+				Log.w(TAG, "sync", e)
+				lastResult = SyncResult(0, 0, 1, app.getString(R.string.ev_bms_sync_failed, e.message ?: "sync"))
+			} finally {
+				val queued = pendingManualHost.getAndSet(null)
+				if (queued != null) {
+					pulling.set(false)
+					syncNow(queued, true)
+				} else {
+					cancelPull.set(false)
+					pulling.set(false)
+					disconnectActive()
+					val result = lastResult ?: SyncResult(0, 0, 0, app.getString(R.string.ev_bms_sync_result, 0, 0, 0))
+					ui.post {
+						listeners.forEach { it.onSyncFinished(result) }
+						showPendingTrackConflicts()
+					}
+				}
+			}
+		}
+	}
+
+	private fun runPullTargets(rawHost: String, force: Boolean) {
 		val targets = ArrayList<Pair<String, Int>>()
 		val seen = HashSet<String>()
 		fun addTarget(host: String, port: Int) {
@@ -255,8 +315,7 @@ class EvBmsSyncController(
 			}
 		}
 		if (targets.isEmpty()) {
-			pulling.set(false)
-			if (manual) {
+			if (force) {
 				app.showToastMessage(R.string.ev_bms_sync_host_empty)
 			}
 			return
@@ -264,42 +323,43 @@ class EvBmsSyncController(
 		if (rawHost.isNotBlank()) {
 			plugin.SYNC_HOST.set(rawHost.trim())
 		}
-		io.execute {
-			var copied = 0
-			var skipped = 0
-			var errors = 0
-			var lastFail: String? = null
-			for (target in targets) {
-				val result = try {
-					pullLocked(target.first, target.second, force = manual)
-				} catch (e: Exception) {
-					Log.w(TAG, "pull ${target.first}", e)
-					SyncResult(
-						0, 0, 1,
-						app.getString(R.string.ev_bms_sync_failed, "${target.first}:${target.second}")
-					)
-				}
-				copied += result.copied
-				skipped += result.skipped
-				errors += result.errors
-				if (result.errors > 0 && result.copied == 0) {
-					lastFail = result.message
-				}
+		ui.post {
+			listeners.forEach { it.onSyncProgress(0, 1, "") }
+		}
+		var copied = 0
+		var skipped = 0
+		var errors = 0
+		var lastFail: String? = null
+		for (target in targets) {
+			if (cancelPull.get()) {
+				break
 			}
-			val pending = pendingConflictCount()
-			val message = if (copied == 0 && errors > 0 && lastFail != null && pending == 0) {
-				lastFail
-			} else {
-				resultMessage(copied, skipped, errors, pending)
+			val result = try {
+				pullLocked(target.first, target.second, force)
+			} catch (e: Exception) {
+				if (cancelPull.get()) {
+					break
+				}
+				Log.w(TAG, "pull ${target.first}", e)
+				SyncResult(
+					0, 0, 1,
+					app.getString(R.string.ev_bms_sync_failed, "${target.first}:${target.second}")
+				)
 			}
-			val result = SyncResult(copied, skipped, errors, message, conflicts = pending)
-			lastResult = result
-			pulling.set(false)
-			ui.post {
-				listeners.forEach { it.onSyncFinished(result) }
-				showPendingTrackConflicts()
+			copied += result.copied
+			skipped += result.skipped
+			errors += result.errors
+			if (result.errors > 0 && result.copied == 0) {
+				lastFail = result.message
 			}
 		}
+		val pending = pendingConflictCount()
+		val message = if (copied == 0 && errors > 0 && lastFail != null && pending == 0) {
+			lastFail
+		} else {
+			resultMessage(copied, skipped, errors, pending)
+		}
+		lastResult = SyncResult(copied, skipped, errors, message, conflicts = pending)
 	}
 
 	private fun startDiscoveryLocked() {
@@ -382,6 +442,9 @@ class EvBmsSyncController(
 		var incomingTrips = emptyList<EvHistoryStore.ChargeTripRecord>()
 		val total = remote.size.coerceAtLeast(1)
 		for ((index, entry) in remote.withIndex()) {
+			if (cancelPull.get()) {
+				break
+			}
 			ui.post {
 				listeners.forEach { it.onSyncProgress(index, remote.size, entry.name) }
 			}
@@ -437,7 +500,7 @@ class EvBmsSyncController(
 		plugin.mergeIncomingHistory(incomingCharges, incomingTrips)
 		plugin.forgetTelemetryHistoryDone(downloadedCsv)
 		plugin.repairChargeHistory()
-		if (errors == 0) {
+		if (errors == 0 && !cancelPull.get()) {
 			lastPeerRev[revKey] = remoteRev
 		}
 		catalog.publishVisibleGpx()
@@ -740,14 +803,28 @@ class EvBmsSyncController(
 		}
 	}
 
+	private fun disconnectActive() {
+		try {
+			activeConn?.disconnect()
+		} catch (_: Exception) {
+		}
+		activeConn = null
+	}
+
 	private fun open(url: URL, connectMs: Int, readMs: Int): HttpURLConnection {
-		return (url.openConnection(Proxy.NO_PROXY) as HttpURLConnection).apply {
+		val conn = (url.openConnection(Proxy.NO_PROXY) as HttpURLConnection).apply {
 			connectTimeout = connectMs
 			readTimeout = readMs
 			requestMethod = "GET"
 			useCaches = false
 			instanceFollowRedirects = false
 		}
+		activeConn = conn
+		if (cancelPull.get()) {
+			conn.disconnect()
+			throw java.io.InterruptedIOException("cancelled")
+		}
+		return conn
 	}
 
 	fun parseEndpoint(raw: String, defaultPort: Int): Pair<String, Int>? {

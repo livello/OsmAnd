@@ -12,6 +12,7 @@ import static net.osmand.render.RenderingRulesStorage.LINE_RULES;
 import static net.osmand.render.RenderingRulesStorage.ORDER_RULES;
 import static net.osmand.render.RenderingRulesStorage.POINT_RULES;
 
+import android.os.Looper;
 import android.text.TextUtils;
 
 import androidx.annotation.NonNull;
@@ -23,6 +24,7 @@ import net.osmand.core.android.MapRendererContext;
 import net.osmand.osm.MapPoiTypes;
 import net.osmand.osm.PoiCategory;
 import net.osmand.osm.PoiType;
+import net.osmand.plus.OsmAndTaskManager.OsmAndTaskRunnable;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.poi.PoiUIFilter;
 import net.osmand.plus.render.RendererRegistry.RendererEventListener;
@@ -47,6 +49,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class TravelRendererHelper implements RendererEventListener {
 
@@ -74,6 +77,8 @@ public class TravelRendererHelper implements RendererEventListener {
 	private PoiUIFilter routeArticleFilter;
 	private PoiUIFilter routeArticlePointsFilter;
 	private Set<PoiUIFilter> routeTrackFilters;
+	private final AtomicBoolean travelFiltersUpdateScheduled = new AtomicBoolean();
+	private volatile boolean travelPoiFiltersLoaded;
 
 	public interface OnFileVisibilityChangeListener {
 		void fileVisibilityChanged();
@@ -111,9 +116,11 @@ public class TravelRendererHelper implements RendererEventListener {
 	}
 
 	public void updateVisibilityPrefs() {
+		travelPoiFiltersLoaded = false;
 		updateFilesVisibility();
 		updateTravelVisibility();
 		updateRouteTypesVisibility();
+		updateTravelPoiFilters();
 	}
 
 	public void updateFilesVisibility() {
@@ -225,26 +232,67 @@ public class TravelRendererHelper implements RendererEventListener {
 
 	@Nullable
 	public PoiUIFilter getRouteArticleFilter() {
-		if (routeArticleFilter == null) {
-			updateRouteArticleFilter();
-		}
+		ensureTravelPoiFiltersLoaded();
 		return routeArticleFilter;
 	}
 
 	@Nullable
 	public PoiUIFilter getRouteArticlePointsFilter() {
-		if (routeArticlePointsFilter == null) {
-			updateRouteArticlePointsFilter();
-		}
+		ensureTravelPoiFiltersLoaded();
 		return routeArticlePointsFilter;
 	}
 
 	@Nullable
 	public Set<PoiUIFilter> getRouteTrackFilters() {
-		if (routeTrackFilters == null) {
-			updateRouteTrackFilters();
-		}
+		ensureTravelPoiFiltersLoaded();
 		return routeTrackFilters;
+	}
+
+	private void ensureTravelPoiFiltersLoaded() {
+		if (!needsTravelPoiFiltersUpdate()) {
+			return;
+		}
+		if (isUiThread()) {
+			scheduleTravelFiltersUpdate();
+		} else {
+			updateTravelPoiFilters();
+		}
+	}
+
+	private boolean needsTravelPoiFiltersUpdate() {
+		return app.getPoiTypes().isInit() && !travelPoiFiltersLoaded;
+	}
+
+	private static boolean isUiThread() {
+		return Looper.getMainLooper().isCurrentThread();
+	}
+
+	private void scheduleTravelFiltersUpdate() {
+		if (!travelFiltersUpdateScheduled.compareAndSet(false, true)) {
+			return;
+		}
+		app.getTaskManager().runInBackground(new OsmAndTaskRunnable<Void, Void, Void>() {
+			@Override
+			protected Void doInBackground(Void... params) {
+				updateTravelPoiFilters();
+				return null;
+			}
+
+			@Override
+			protected void onPostExecute(Void result) {
+				travelFiltersUpdateScheduled.set(false);
+				if (app.getOsmandMap() != null) {
+					app.getOsmandMap().refreshMap();
+				}
+			}
+		});
+	}
+
+	private void updateTravelPoiFilters() {
+		updateRouteArticleFilter();
+		updateRouteArticlePointsFilter();
+		updateRouteTrackFilters();
+		travelPoiFiltersLoaded = true;
 	}
 
 	public void updateRouteArticleFilter() {

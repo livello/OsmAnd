@@ -128,6 +128,9 @@
 			android:layout_width="match_parent"
 			android:layout_height="wrap_content"
 			android:layout_marginTop="8dp"
+			android:clickable="true"
+			android:enabled="true"
+			android:focusable="true"
 			android:text="@string/ev_bms_sync_now" />
 
 		<ProgressBar

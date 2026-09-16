@@ -37,6 +37,7 @@ import androidx.core.text.HtmlCompat
 import androidx.fragment.app.FragmentManager
 import androidx.preference.Preference
 import androidx.preference.PreferenceGroupAdapter
+import androidx.preference.PreferenceViewHolder
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import net.osmand.plus.R
@@ -461,10 +462,34 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		}
 		val arrow = if (expanded) "▾" else "▸"
 		pref.title = "$emoji $label  $arrow"
+		pref.isEnabled = true
 		pref.isSelectable = true
+		pref.isPersistent = false
+		pref.shouldDisableView = false
 		pref.onPreferenceClickListener = Preference.OnPreferenceClickListener {
 			toggleSettingsGroup(key)
 			true
+		}
+	}
+
+	override fun onBindPreferenceViewHolder(preference: Preference, holder: PreferenceViewHolder) {
+		super.onBindPreferenceViewHolder(preference, holder)
+		val key = preference.key ?: return
+		if (key !in SETTINGS_CATEGORY_KEYS) {
+			return
+		}
+		enableViewTree(holder.itemView, true)
+		holder.itemView.isClickable = true
+		holder.itemView.isFocusable = true
+		holder.itemView.setOnClickListener { toggleSettingsGroup(key) }
+	}
+
+	private fun enableViewTree(view: View, enabled: Boolean) {
+		view.isEnabled = enabled
+		if (view is ViewGroup) {
+			for (i in 0 until view.childCount) {
+				enableViewTree(view.getChildAt(i), enabled)
+			}
 		}
 	}
 
@@ -1216,6 +1241,11 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 	}
 
 	override fun onPreferenceClick(preference: Preference): Boolean {
+		val key = preference.key
+		if (key != null && key in SETTINGS_CATEGORY_KEYS) {
+			toggleSettingsGroup(key)
+			return true
+		}
 		val activity = activity ?: return false
 		when (preference.key) {
 			plugin.SETTINGS_PROFILE.id -> {

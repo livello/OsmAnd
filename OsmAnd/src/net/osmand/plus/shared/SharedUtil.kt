@@ -106,6 +106,15 @@ object SharedUtil {
 
 	@JvmStatic
 	fun loadGpxFile(
+		file: File,
+		extensionsReader: GpxExtensionsReader?,
+		addGeneralTrack: Boolean,
+		keepExtensionTag: GpxUtilities.ExtensionTagFilter?
+	): GpxFile =
+		GpxUtilities.loadGpxFile(kFile(file), extensionsReader, addGeneralTrack, keepExtensionTag)
+
+	@JvmStatic
+	fun loadGpxFile(
 		file: KFile,
 		extensionsReader: GpxExtensionsReader?,
 		addGeneralTrack: Boolean
