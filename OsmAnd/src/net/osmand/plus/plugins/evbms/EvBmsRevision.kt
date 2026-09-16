@@ -1,11 +1,12 @@
 package net.osmand.plus.plugins.evbms
 
 object EvBmsRevision {
-	const val GIT_HASH = "252a10498d"
+	const val GIT_HASH = "fdd12e2989"
 
 	data class Commit(val hash: String, val date: String, val subject: String)
 
 	val RECENT_COMMITS = listOf(
+		Commit("fdd12e2989", "2026-09-16", "Pin split labels to the OpenGL track, restore their clicks, and list the last 10 commits in About."),
 		Commit("252a10498d", "2026-09-16", "Write charge waypoints into saved GPX after recording ends."),
 		Commit("07d5a911e2", "2026-09-16", "Thin split labels with zoom, apply background opacity, and add a history emoji legend."),
 		Commit("114ce99fb5", "2026-09-15", "Sync every GPX under tracks/ from the selected phone into My Places."),
@@ -15,7 +16,6 @@ object EvBmsRevision {
 		Commit("30d8949493", "2026-09-14", "Show specific-consumption color and 3D in track appearance."),
 		Commit("ec3b1e36ff", "2026-09-14", "Add GPX specific-consumption color, 3D and split labels at 40–300 Wh/km."),
 		Commit("659fa570dd", "2026-09-14", "Add autodiscover and live two-way telemetry/track sync between phones."),
-		Commit("0bf0779da6", "2026-09-14", "Add LAN telemetry sync from motorcycle Z1 to analysis phone S200X."),
 	)
 
 	fun changelogHtml(): String {
