@@ -86,6 +86,7 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	private var journalBound = false
 	private var sheetTitleView: TextView? = null
 	private val expandedHistoryDays = HashSet<String>()
+	private var historyLegendExpanded = false
 
 	private data class ChartRow(
 		val field: TelemetryField,
@@ -794,6 +795,7 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		val inflater = layoutInflater
 		plugin.repairChargeHistory()
 		val (charges, trips) = plugin.displayHistory()
+		list.addView(bindHistoryLegend(inflater, list))
 		if (charges.isEmpty() && trips.isEmpty()) {
 			list.addView(emptyHint(getString(R.string.ev_bms_history_empty)))
 			return
@@ -816,6 +818,64 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			}
 			list.addView(bindDayHistoryRow(inflater, list, day))
 		}
+	}
+
+	private fun bindHistoryLegend(
+		inflater: android.view.LayoutInflater,
+		list: LinearLayout
+	): View {
+		val item = inflater.inflate(R.layout.ev_bms_history_row, list, false)
+		item.findViewById<View>(R.id.delete_btn).visibility = View.GONE
+		item.findViewById<View>(R.id.history_chart).visibility = View.GONE
+		item.findViewById<View>(R.id.history_chart_legend).visibility = View.GONE
+		item.findViewById<TextView>(R.id.title).text =
+			"📋 ${getString(R.string.ev_bms_history_legend_title)}"
+		applyHistoryLegend(item)
+		val toggle = View.OnClickListener {
+			historyLegendExpanded = !historyLegendExpanded
+			applyHistoryLegend(item)
+		}
+		item.findViewById<View>(R.id.history_text).setOnClickListener(toggle)
+		item.findViewById<View>(R.id.expand_btn).setOnClickListener(toggle)
+		return item
+	}
+
+	private fun applyHistoryLegend(item: View) {
+		val metrics = item.findViewById<LinearLayout>(R.id.history_metrics)
+		val expand = item.findViewById<TextView>(R.id.expand_btn)
+		metrics.removeAllViews()
+		expand.text = if (historyLegendExpanded) "▾" else "▸"
+		expand.alpha = 1f
+		val hint = getString(
+			if (historyLegendExpanded) R.string.ev_bms_history_legend_collapse
+			else R.string.ev_bms_history_legend_expand
+		)
+		expand.contentDescription = hint
+		TooltipCompat.setTooltipText(expand, hint)
+		if (historyLegendExpanded) {
+			fillHistoryMetrics(item, historyLegendChips())
+		}
+	}
+
+	private fun historyLegendChips(): List<HistoryChip> {
+		return listOf(
+			HistoryChip("🛵", getString(R.string.ev_bms_history_legend_trip), getString(R.string.ev_bms_history_legend_trip)),
+			HistoryChip("🔌", getString(R.string.ev_bms_history_legend_charge), getString(R.string.ev_bms_history_legend_charge)),
+			HistoryChip("⏱️", getString(R.string.ev_bms_history_legend_duration), getString(R.string.ev_bms_history_legend_duration)),
+			HistoryChip("🔋", getString(R.string.ev_bms_history_legend_ah), getString(R.string.ev_bms_history_legend_ah)),
+			HistoryChip("⚡", getString(R.string.ev_bms_history_legend_energy_v), getString(R.string.ev_bms_history_legend_energy_v)),
+			HistoryChip("📊", getString(R.string.ev_bms_history_legend_wh), getString(R.string.ev_bms_history_legend_wh)),
+			HistoryChip("📈", getString(R.string.ev_bms_history_legend_whkm), getString(R.string.ev_bms_history_legend_whkm)),
+			HistoryChip("🛣️", getString(R.string.ev_bms_history_legend_distance), getString(R.string.ev_bms_history_legend_distance)),
+			HistoryChip("🕒", getString(R.string.ev_bms_history_legend_moving), getString(R.string.ev_bms_history_legend_moving)),
+			HistoryChip("🚀", getString(R.string.ev_bms_history_legend_speed), getString(R.string.ev_bms_history_legend_speed)),
+			HistoryChip("⏸️", getString(R.string.ev_bms_history_legend_stop), getString(R.string.ev_bms_history_legend_stop)),
+			HistoryChip("🌡️", getString(R.string.ev_bms_history_legend_batt_temp), getString(R.string.ev_bms_history_legend_batt_temp)),
+			HistoryChip("🔥", getString(R.string.ev_bms_history_legend_motor_temp), getString(R.string.ev_bms_history_legend_motor_temp)),
+			HistoryChip("🔻", getString(R.string.ev_bms_history_legend_cell), getString(R.string.ev_bms_history_legend_cell)),
+			HistoryChip("📈", getString(R.string.ev_bms_history_legend_chart), getString(R.string.ev_bms_history_legend_chart)),
+			HistoryChip("🗑️", getString(R.string.shared_string_delete), getString(R.string.shared_string_delete))
+		)
 	}
 
 	private sealed class HistoryRow(val sortMs: Long) {

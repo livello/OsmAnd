@@ -44,6 +44,7 @@ public class SplitLabelOpacityCard extends BaseCard {
 			trackDrawInfo.setSplitLabelOpacity(Math.round(value));
 			summary.setText(formatOpacity(trackDrawInfo.getSplitLabelOpacity()));
 			if (fromUser) {
+				app.getSettings().TRACK_SPLIT_LABEL_OPACITY.set(trackDrawInfo.getSplitLabelOpacity());
 				notifyCardPressed();
 			}
 		});
