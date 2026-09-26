@@ -30,6 +30,7 @@ class EvHistoryStore(private val app: OsmandApplication) {
 		private const val MIN_DAY_PIECE_MS = 60_000L
 		private const val KEEP_TAIL_MIN_MS = 4 * 60 * 60_000L
 		private const val FOLLOW_TRIP_MAX_GAP_MS = 4 * 60 * 60_000L
+		private const val DUPLICATE_OVERLAP_MS = 60_000L
 	}
 
 	data class ChargeRecord(
@@ -262,6 +263,65 @@ class EvHistoryStore(private val app: OsmandApplication) {
 		return score
 	}
 
+	fun dedupeOverlappingCharges(
+		rows: List<ChargeRecord>,
+		nowMs: Long = System.currentTimeMillis()
+	): List<ChargeRecord> {
+		val kept = ArrayList<ChargeRecord>()
+		val ordered = rows.sortedWith(
+			compareByDescending<ChargeRecord> { it.isOpen() }.thenByDescending { chargeScore(it) }
+		)
+		for (row in ordered) {
+			val start = row.startMs
+			val end = intervalEnd(row.endMs, row.startMs, nowMs)
+			if (kept.none { isDuplicateSpan(start, end, it.startMs, intervalEnd(it.endMs, it.startMs, nowMs)) }) {
+				kept.add(row)
+			}
+		}
+		return kept.sortedBy { it.startMs }
+	}
+
+	fun dedupeOverlappingTrips(rows: List<ChargeTripRecord>): List<ChargeTripRecord> {
+		val kept = ArrayList<ChargeTripRecord>()
+		for (row in rows.sortedByDescending { tripScore(it) }) {
+			val start = row.startMs
+			val end = intervalEnd(row.endMs, row.startMs, row.endMs)
+			if (kept.none { other ->
+					isDuplicateSpan(
+						start,
+						end,
+						other.startMs,
+						intervalEnd(other.endMs, other.startMs, other.endMs)
+					)
+				}
+			) {
+				kept.add(row)
+			}
+		}
+		return kept.sortedBy { it.startMs }
+	}
+
+	private fun intervalEnd(endMs: Long, startMs: Long, nowMs: Long): Long {
+		return when {
+			endMs > startMs -> endMs
+			nowMs > startMs -> nowMs
+			else -> startMs + 1L
+		}
+	}
+
+	private fun isDuplicateSpan(a0: Long, a1: Long, b0: Long, b1: Long): Boolean {
+		val overlap = overlapMs(a0, a1, b0, b1)
+		if (overlap < DUPLICATE_OVERLAP_MS) {
+			return false
+		}
+		val shorter = minOf(a1 - a0, b1 - b0).coerceAtLeast(1L)
+		return overlap * 2 >= shorter
+	}
+
+	private fun overlapMs(a0: Long, a1: Long, b0: Long, b1: Long): Long {
+		return (minOf(a1, b1) - maxOf(a0, b0)).coerceAtLeast(0L)
+	}
+
 	fun parseChargeCsvText(text: String): List<ChargeRecord> {
 		val lines = text.lineSequence().filter { it.isNotBlank() }.toList()
 		if (lines.size < 2) {
@@ -449,8 +509,10 @@ class EvHistoryStore(private val app: OsmandApplication) {
 		trips: List<ChargeTripRecord>,
 		nowMs: Long = System.currentTimeMillis()
 	): Pair<List<ChargeRecord>, List<ChargeTripRecord>> {
-		val splitTrips = splitTripsAroundCharges(trips, charges, nowMs).sortedBy { it.startMs }
-		val clipped = splitChargesAroundTrips(charges, splitTrips, nowMs)
+		val uniqueCharges = dedupeOverlappingCharges(charges, nowMs)
+		val uniqueTrips = dedupeOverlappingTrips(trips)
+		val splitTrips = splitTripsAroundCharges(uniqueTrips, uniqueCharges, nowMs).sortedBy { it.startMs }
+		val clipped = splitChargesAroundTrips(uniqueCharges, splitTrips, nowMs)
 		val dayCharges = clipped.flatMap { splitChargeAcrossDays(it, nowMs) }
 		val dayTrips = splitTrips.flatMap { splitTripAcrossDays(it) }.filter { it.isRealRide() }
 		return dayCharges to dayTrips

@@ -526,8 +526,8 @@ class EvVoiceAnnouncer(private val app: OsmandApplication) {
 			val km = Math.round(kotlin.math.abs(reserve)).toInt()
 			parts.add(
 				when {
-					reserve > 0.5 -> app.getString(R.string.ev_bms_voice_range_reserve_short, km)
-					reserve < -0.5 -> app.getString(R.string.ev_bms_voice_range_reserve_extra, km)
+					reserve > 0.5 -> app.getString(R.string.ev_bms_voice_range_reserve_extra, km)
+					reserve < -0.5 -> app.getString(R.string.ev_bms_voice_range_reserve_short, km)
 					else -> app.getString(R.string.ev_bms_voice_range_reserve_ok)
 				}
 			)

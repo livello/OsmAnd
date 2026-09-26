@@ -61,6 +61,7 @@ import net.osmand.plus.track.helpers.ParseGpxRouteTask.ParseGpxRouteListener;
 import net.osmand.plus.track.helpers.save.SaveGpxHelper;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.ColorUtilities;
+import net.osmand.plus.utils.OsmAndFormatter;
 import net.osmand.plus.utils.FileUtils.RenameCallback;
 import net.osmand.plus.utils.NativeUtilities;
 import net.osmand.plus.utils.UiUtilities;
@@ -702,15 +703,20 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 						}
 						int extraId = registerSplitLabel(selectedGpxFile, label.item);
 						PointI point31 = new PointI(Utilities.get31TileNumberX(point.getLon()), Utilities.get31TileNumberY(point.getLat()));
-						// Invisible native billboard: keeps the label glued to the track
-						// and restores stock extraId clicks. Visible text/fill is canvas.
-						ColorARGB nativeColor = NativeUtilities.createColorARGB(label.color, 0);
+						// Kilometer circles stay on the OpenGL track. Consumption squares are canvas,
+						// shifted off the circle, and redrawn while the map coasts.
+						String nativeName = label.name;
+						String kmName = consumptionDistanceLabel(label.item);
+						if (kmName != null) {
+							nativeName = kmName;
+						}
+						ColorARGB nativeColor = NativeUtilities.createColorARGB(label.color, splitLabelAlpha);
 						SplitLabel splitLabel;
 						if (visualizationType == Gpx3DVisualizationType.NONE || trackLinePosition != Gpx3DLinePositionType.TOP) {
-							splitLabel = new SplitLabel(point31, label.name, nativeColor, extraId);
+							splitLabel = new SplitLabel(point31, nativeName, nativeColor, extraId);
 						} else {
 							float labelHeight = (float) Gpx3DVisualizationType.getPointElevation(point, track3DStyle, heightmapsActive);
-							splitLabel = new SplitLabel(point31, label.name, nativeColor, extraId, labelHeight);
+							splitLabel = new SplitLabel(point31, nativeName, nativeColor, extraId, labelHeight);
 						}
 						splitLabels.add(splitLabel);
 					}
@@ -846,6 +852,10 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 			if (name == null) {
 				continue;
 			}
+			boolean consumption = isConsumptionSplit(label.item);
+			if (mapRenderer != null && !consumption) {
+				continue;
+			}
 			clickableSplitLabels.add(SelectedGpxPoint.createSplitLabel(selectedGpxFile, point));
 			PointF screen = NativeUtilities.getPixelFromLatLon(mapRenderer, tileBox, point.getLat(), point.getLon());
 			float x = screen.x;
@@ -856,6 +866,9 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 			float nameHalfWidth = bounds.width() / 2f;
 			float nameHalfHeight = bounds.height() / 2f;
 			float density = (float) Math.ceil(tileBox.getDensity());
+			if (mapRenderer != null) {
+				y -= nameHalfHeight + 14f * density + 6f * density;
+			}
 			RectF rect = new RectF(x - nameHalfWidth - 2 * density,
 					y + nameHalfHeight + 3 * density,
 					x + nameHalfWidth + 3 * density,
@@ -929,6 +942,20 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 		}
 		int color = last.getLabelColor(trackColor, altitudeAscColor, altitudeDescColor);
 		result.add(new VisibleSplitLabel(last, name, color));
+	}
+
+	private boolean isConsumptionSplit(@NonNull GpxDisplayItem item) {
+		TrackDisplayGroup group = GpxDisplayGroup.getTrackDisplayGroup(item.group);
+		return group != null && group.isSplitConsumption();
+	}
+
+	@Nullable
+	private String consumptionDistanceLabel(@NonNull GpxDisplayItem item) {
+		if (!isConsumptionSplit(item) || item.splitMetric < 0) {
+			return null;
+		}
+		int digits = item.splitMetric >= 10000 ? 0 : 1;
+		return OsmAndFormatter.getFormattedRoundDistanceKm((float) item.splitMetric, digits, app);
 	}
 
 	@Nullable

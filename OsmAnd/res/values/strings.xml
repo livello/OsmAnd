@@ -1450,12 +1450,12 @@ Layouts: <i>res/layout/ev_bms_*.xml</i>. Preferences: <i>res/xml/ev_bms_settings
     <string name="ev_bms_announce_range_reserve_low">Announce low range reserve</string>
     <string name="ev_bms_range_reserve_small_km">Small range-reserve threshold</string>
     <string name="ev_bms_range_reserve_low_km">Low range-reserve threshold</string>
-    <string name="ev_bms_voice_range_reserve_short">Range shortfall %1$d kilometers</string>
+    <string name="ev_bms_voice_range_reserve_short">Range shortage %1$d kilometers. Reduce speed</string>
     <string name="ev_bms_voice_range_reserve_extra">Range reserve %1$d kilometers</string>
     <string name="ev_bms_voice_range_reserve_ok">Range matches the remaining route</string>
-    <string name="ev_bms_voice_range_reserve_small">Small range reserve. Shortfall %1$d kilometers</string>
-    <string name="ev_bms_voice_range_reserve_low">Low range reserve. Shortfall %1$d kilometers</string>
-    <string name="ev_bms_voice_range_short">Remaining range is less than the route. Range %1$d kilometers, route %2$d kilometers</string>
+    <string name="ev_bms_voice_range_reserve_small">Range shortage %1$d kilometers. Reduce speed</string>
+    <string name="ev_bms_voice_range_reserve_low">Range shortage %1$d kilometers. Reduce speed</string>
+    <string name="ev_bms_voice_range_short">Range shortage. Range %1$d kilometers, route %2$d kilometers. Reduce speed</string>
     <string name="ev_bms_widget_battery_temp">Battery temperature</string>
     <string name="ev_bms_widget_battery_temp_desc">Battery pack temperature from the BMS</string>
     <string name="ev_bms_announce_cell_voltage">Cell voltage alerts</string>

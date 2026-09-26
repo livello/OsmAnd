@@ -746,7 +746,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		if (!charging) {
 			return null
 		}
-		val live = lastBms?.currentA
+		// A dropped BMS link keeps the last charge current. Only a fresh sample can replace it.
+		val live = if (isBmsFresh()) lastBms?.currentA else null
 		val current = when {
 			live != null && live >= 0.4 -> live
 			chargeFrozenCurrentA != null && chargeFrozenCurrentA!! >= 0.4 &&
@@ -970,14 +971,18 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			}
 		} else if (chargeSessionOpen) {
 			chargeHold = 0
-			val liveI = if (bmsFresh) packI else null
-			if (charging && (liveI == null || liveI < 0.4)) {
+			if (!bmsFresh) {
+				// Link lost: current is assumed unchanged, so the ETA keeps counting.
+				if (charging) {
+					chargeCurrentStoppedMs = 0L
+				}
+			} else if (charging && (packI == null || packI < 0.4)) {
 				if (chargeCurrentStoppedMs == 0L) {
 					chargeCurrentStoppedMs = now
 				} else if (now - chargeCurrentStoppedMs >= CHARGE_CURRENT_STOP_MS) {
 					pauseChargeCurrent(now, remainingAh, tempC, loc)
 				}
-			} else if (liveI != null && liveI >= 0.4) {
+			} else if (packI != null && packI >= 0.4) {
 				chargeCurrentStoppedMs = 0L
 			}
 			if (moving) {
@@ -1842,12 +1847,32 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 
 	fun repairChargeHistory() {
 		closeStaleChargeAgainstTrip()
+		collapseStoredDuplicates()
 		unionDiskHistoryCsv()
 		dropEmptyTrips()
 		rebuildHistoryFromTelemetry()
 		dropEmptyTrips()
 		mergeSplitChargeHistory()
 		dropEmptyTrips()
+		collapseStoredDuplicates()
+	}
+
+	private fun collapseStoredDuplicates() {
+		val now = System.currentTimeMillis()
+		val charges = chargeHistory()
+		val uniqueCharges = historyStore.dedupeOverlappingCharges(charges, now)
+		if (uniqueCharges.map { it.startMs to it.endMs } != charges.map { it.startMs to it.endMs }) {
+			CHARGE_HISTORY.set(historyStore.encodeCharges(uniqueCharges))
+			historyStore.rewriteChargeCsv(uniqueCharges)
+			journal.i("history", "collapsed ${charges.size} charge rows into ${uniqueCharges.size}")
+		}
+		val trips = historyStore.realTrips(tripHistory())
+		val uniqueTrips = historyStore.dedupeOverlappingTrips(trips)
+		if (uniqueTrips.map { it.startMs to it.endMs } != trips.map { it.startMs to it.endMs }) {
+			TRIP_HISTORY.set(historyStore.encodeTrips(uniqueTrips))
+			historyStore.rewriteTripCsv(uniqueTrips)
+			journal.i("history", "collapsed ${trips.size} trip rows into ${uniqueTrips.size}")
+		}
 	}
 
 	private fun telemetryHistoryDoneKey(name: String): String = "$TELEMETRY_HISTORY_VERSION:$name"
@@ -2353,9 +2378,14 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		if (!row.isRealRide()) {
 			return
 		}
-		val rows = historyStore.realTrips(tripHistory()) + row
+		val before = historyStore.realTrips(tripHistory())
+		val rows = historyStore.dedupeOverlappingTrips(before + row)
 		TRIP_HISTORY.set(historyStore.encodeTrips(rows))
-		historyStore.appendTripCsv(row)
+		if (rows.size == before.size + 1) {
+			historyStore.appendTripCsv(row)
+		} else {
+			historyStore.rewriteTripCsv(rows)
+		}
 	}
 
 	private fun markGpxEvent(
@@ -2564,8 +2594,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		if (!helper.isRouteCalculated) {
 			return null
 		}
-		val next = helper.leftDistanceNextIntermediate
-		val meters = if (next > 0) next else helper.leftDistance
+		// Remaining route to the final destination, not the next intermediate point.
+		val meters = helper.leftDistance
 		if (meters <= 0) {
 			return null
 		}

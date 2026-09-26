@@ -725,6 +725,9 @@ public class AnimateDraggingMapThread implements TouchListener {
 			if (!stopped && animateElevationAngle) {
 				tileView.keepElevationAngle(elevationAngle);
 			}
+			if (!stopped && (animateTarget || animateZoom || animateAzimuth || animateElevationAngle)) {
+				tileView.refreshMap();
+			}
 
 			if (mapRenderer.isMapAnimationFinished()) {
 				break;

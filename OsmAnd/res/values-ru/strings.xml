@@ -4948,12 +4948,12 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
     <string name="ev_bms_announce_range_reserve_low">Оповещение о низком резерве хода</string>
     <string name="ev_bms_range_reserve_small_km">Порог малого резерва хода</string>
     <string name="ev_bms_range_reserve_low_km">Порог низкого резерва хода</string>
-    <string name="ev_bms_voice_range_reserve_short">Нехватка хода %1$d километров</string>
+    <string name="ev_bms_voice_range_reserve_short">Нехватка запаса хода %1$d километров. Снижайте скорость</string>
     <string name="ev_bms_voice_range_reserve_extra">Резерв хода %1$d километров</string>
     <string name="ev_bms_voice_range_reserve_ok">Запас хода совпадает с остатком маршрута</string>
-    <string name="ev_bms_voice_range_reserve_small">Малый резерв хода. Нехватка %1$d километров</string>
-    <string name="ev_bms_voice_range_reserve_low">Низкий резерв хода. Нехватка %1$d километров</string>
-    <string name="ev_bms_voice_range_short">Запас хода меньше остатка маршрута. Запас %1$d километров, маршрут %2$d километров</string>
+    <string name="ev_bms_voice_range_reserve_small">Нехватка запаса хода %1$d километров. Снижайте скорость</string>
+    <string name="ev_bms_voice_range_reserve_low">Нехватка запаса хода %1$d километров. Снижайте скорость</string>
+    <string name="ev_bms_voice_range_short">Нехватка запаса хода. Запас %1$d километров, маршрут %2$d километров. Снижайте скорость</string>
     <string name="ev_bms_widget_battery_temp">Температура батареи</string>
     <string name="ev_bms_widget_battery_temp_desc">Температура пакета по BMS</string>
     <string name="ev_bms_announce_cell_voltage">Оповещения по напряжению ячейки</string>
