@@ -1803,6 +1803,8 @@ public class OsmandSettings {
 	public final CommonPreference<Float> TRACK_COLOR_SPEED_MIN_KMH = new FloatPreference(this, "track_color_speed_min_kmh", 0f).makeGlobal().makeShared().cache();
 	public final CommonPreference<Float> TRACK_COLOR_SPEED_MAX_KMH = new FloatPreference(this, "track_color_speed_max_kmh", 60f).makeGlobal().makeShared().cache();
 	public final CommonPreference<Integer> TRACK_SPLIT_LABEL_OPACITY = new IntPreference(this, "track_split_label_opacity", 55).makeGlobal().makeShared().cache();
+	public final CommonPreference<Boolean> TRACK_CONSUMPTION_SPLIT_SHOW_KM_CIRCLES = new BooleanPreference(this, "track_consumption_split_show_km_circles", true).makeGlobal().makeShared().cache();
+	public final CommonPreference<Integer> TRACK_CONSUMPTION_SPLIT_KM_CIRCLE_SCALE_PERCENT = new IntPreference(this, "track_consumption_split_km_circle_scale_percent", 100).makeGlobal().makeShared().cache();
 	public final CommonPreference<String> CURRENT_TRACK_ROUTE_ACTIVITY = new StringPreference(this, "current_track_route_activity", "").makeProfile().cache();
 
 	{

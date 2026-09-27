@@ -253,6 +253,22 @@ public class GpxAppearanceHelper {
 		return Math.round(Math.max(0, Math.min(100, opacity)) * 255 / 100f);
 	}
 
+	public boolean isConsumptionSplitShowKmCircles() {
+		TrackDrawInfo drawInfo = getTrackDrawInfo();
+		if (drawInfo != null) {
+			return drawInfo.isConsumptionSplitShowKmCircles();
+		}
+		return settings.TRACK_CONSUMPTION_SPLIT_SHOW_KM_CIRCLES.get();
+	}
+
+	public float getConsumptionSplitKmCircleScale() {
+		TrackDrawInfo drawInfo = getTrackDrawInfo();
+		int percent = drawInfo != null
+				? drawInfo.getConsumptionSplitKmCircleScalePercent()
+				: settings.TRACK_CONSUMPTION_SPLIT_KM_CIRCLE_SCALE_PERCENT.get();
+		return Math.max(50, Math.min(200, percent)) / 100f;
+	}
+
 	@NonNull
 	public <T> T requireParameter(@NonNull GpxDataItem gpxItem, @NonNull GpxParameter parameter) {
 		GpxDirItem dirItem = gpxDbHelper.getGpxDirItem(gpxItem);

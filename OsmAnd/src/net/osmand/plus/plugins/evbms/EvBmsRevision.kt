@@ -1,11 +1,12 @@
 package net.osmand.plus.plugins.evbms
 
 object EvBmsRevision {
-	const val GIT_HASH = "7cd5101f4e"
+	const val GIT_HASH = "ff107ad916"
 
 	data class Commit(val hash: String, val date: String, val subject: String)
 
 	val RECENT_COMMITS = listOf(
+		Commit("ff107ad916", "2026-09-27", "Let users hide consumption kilometre circles and resize them while keeping Wh/km squares on the track."),
 		Commit("7cd5101f4e", "2026-09-26", "Stop doubled trip-journal rows, compare range with the route to the destination, and keep consumption squares on the moving track."),
 		Commit("fdd12e2989", "2026-09-16", "Pin split labels to the OpenGL track, restore their clicks, and list the last 10 commits in About."),
 		Commit("252a10498d", "2026-09-16", "Write charge waypoints into saved GPX after recording ends."),

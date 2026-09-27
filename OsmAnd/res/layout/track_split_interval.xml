@@ -107,6 +107,24 @@
 
 	</LinearLayout>
 
+	<LinearLayout
+		android:id="@+id/consumption_split_options"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:orientation="vertical"
+		android:visibility="gone"
+		tools:visibility="visible">
+
+		<include
+			android:id="@+id/consumption_km_circles_switch"
+			layout="@layout/bottom_sheet_item_with_switch" />
+
+		<include
+			android:id="@+id/consumption_km_circle_size"
+			layout="@layout/bottom_sheet_item_slider_with_two_text" />
+
+	</LinearLayout>
+
 	<net.osmand.plus.widgets.TextViewEx
 		android:id="@+id/split_interval_none_descr"
 		android:layout_width="match_parent"

@@ -1223,6 +1223,8 @@ Layouts: <i>res/layout/ev_bms_*.xml</i>. Preferences: <i>res/xml/ev_bms_settings
     <string name="ev_bms_gradient_speed_range">Speed, km/h</string>
     <string name="ev_bms_gradient_scale_range">%1$s–%2$s %3$s</string>
     <string name="track_split_label_opacity">Split label background</string>
+    <string name="ev_bms_consumption_split_km_circles">Kilometre circles</string>
+    <string name="ev_bms_consumption_split_km_circle_size">Kilometre circle size</string>
     <string name="ev_bms_3d_consumption_100m">Wh/km last 100 m</string>
     <string name="ev_bms_telemetry_fields_summary">%1$d of %2$d selected</string>
     <string name="ev_bms_telemetry_fields_empty">Select at least one field</string>

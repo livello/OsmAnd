@@ -81,7 +81,10 @@ public class TrackDrawInfo {
 	private static final String SPEED_MIN_KEY = "speed_min_kmh";
 	private static final String SPEED_MAX_KEY = "speed_max_kmh";
 	private static final String SPLIT_LABEL_OPACITY_KEY = "split_label_opacity";
+	private static final String CONSUMPTION_SPLIT_SHOW_KM_CIRCLES_KEY = "consumption_split_show_km_circles";
+	private static final String CONSUMPTION_SPLIT_KM_CIRCLE_SCALE_KEY = "consumption_split_km_circle_scale_percent";
 	public static final int DEFAULT_SPLIT_LABEL_OPACITY = 55;
+	public static final int DEFAULT_CONSUMPTION_SPLIT_KM_CIRCLE_SCALE_PERCENT = 100;
 
 	private String filePath;
 	private String width;
@@ -107,6 +110,8 @@ public class TrackDrawInfo {
 	private double speedMinKmh = 0;
 	private double speedMaxKmh = EvConsumptionScale.DEFAULT_SPEED_MAX_KMH;
 	private int splitLabelOpacity = DEFAULT_SPLIT_LABEL_OPACITY;
+	private boolean consumptionSplitShowKmCircles = true;
+	private int consumptionSplitKmCircleScalePercent = DEFAULT_CONSUMPTION_SPLIT_KM_CIRCLE_SCALE_PERCENT;
 
 	@TrackAppearanceType
 	private final int appearanceType;
@@ -386,6 +391,26 @@ public class TrackDrawInfo {
 		return Math.round(splitLabelOpacity * 255 / 100f);
 	}
 
+	public boolean isConsumptionSplitShowKmCircles() {
+		return consumptionSplitShowKmCircles;
+	}
+
+	public void setConsumptionSplitShowKmCircles(boolean consumptionSplitShowKmCircles) {
+		this.consumptionSplitShowKmCircles = consumptionSplitShowKmCircles;
+	}
+
+	public int getConsumptionSplitKmCircleScalePercent() {
+		return consumptionSplitKmCircleScalePercent;
+	}
+
+	public void setConsumptionSplitKmCircleScalePercent(int consumptionSplitKmCircleScalePercent) {
+		this.consumptionSplitKmCircleScalePercent = Math.max(50, Math.min(200, consumptionSplitKmCircleScalePercent));
+	}
+
+	public float getConsumptionSplitKmCircleScale() {
+		return consumptionSplitKmCircleScalePercent / 100f;
+	}
+
 	public void setShowStartFinish(boolean showStartFinish) {
 		this.showStartFinish = showStartFinish;
 	}
@@ -424,6 +449,8 @@ public class TrackDrawInfo {
 			settings.TRACK_COLOR_SPEED_MIN_KMH.resetToDefault();
 			settings.TRACK_COLOR_SPEED_MAX_KMH.resetToDefault();
 			settings.TRACK_SPLIT_LABEL_OPACITY.resetToDefault();
+			settings.TRACK_CONSUMPTION_SPLIT_SHOW_KM_CIRCLES.resetToDefault();
+			settings.TRACK_CONSUMPTION_SPLIT_KM_CIRCLE_SCALE_PERCENT.resetToDefault();
 			initCurrentTrackParams(app);
 		} else if (isDefaultAppearance()) {
 			color = getDefaultColor(settings, renderer);
@@ -478,6 +505,9 @@ public class TrackDrawInfo {
 		speedMinKmh = bundle.getDouble(SPEED_MIN_KEY, 0);
 		speedMaxKmh = bundle.getDouble(SPEED_MAX_KEY, EvConsumptionScale.DEFAULT_SPEED_MAX_KMH);
 		splitLabelOpacity = bundle.getInt(SPLIT_LABEL_OPACITY_KEY, DEFAULT_SPLIT_LABEL_OPACITY);
+		consumptionSplitShowKmCircles = bundle.getBoolean(CONSUMPTION_SPLIT_SHOW_KM_CIRCLES_KEY, true);
+		consumptionSplitKmCircleScalePercent = bundle.getInt(CONSUMPTION_SPLIT_KM_CIRCLE_SCALE_KEY,
+				DEFAULT_CONSUMPTION_SPLIT_KM_CIRCLE_SCALE_PERCENT);
 	}
 
 	public void saveToBundle(@NonNull Bundle bundle) {
@@ -502,6 +532,8 @@ public class TrackDrawInfo {
 		bundle.putDouble(SPEED_MIN_KEY, speedMinKmh);
 		bundle.putDouble(SPEED_MAX_KEY, speedMaxKmh);
 		bundle.putInt(SPLIT_LABEL_OPACITY_KEY, splitLabelOpacity);
+		bundle.putBoolean(CONSUMPTION_SPLIT_SHOW_KM_CIRCLES_KEY, consumptionSplitShowKmCircles);
+		bundle.putInt(CONSUMPTION_SPLIT_KM_CIRCLE_SCALE_KEY, consumptionSplitKmCircleScalePercent);
 
 		if (color != null) {
 			bundle.putInt(TRACK_COLOR, color);

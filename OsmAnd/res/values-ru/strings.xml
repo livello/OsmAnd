@@ -4722,6 +4722,8 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
     <string name="ev_bms_gradient_speed_range">Скорость, км/ч</string>
     <string name="ev_bms_gradient_scale_range">%1$s–%2$s %3$s</string>
     <string name="track_split_label_opacity">Фон подписи отрезков</string>
+    <string name="ev_bms_consumption_split_km_circles">Километровые кругляши</string>
+    <string name="ev_bms_consumption_split_km_circle_size">Размер километровых кругляшей</string>
     <string name="ev_bms_3d_consumption_100m">Вт·ч/км за 100 м</string>
     <string name="ev_bms_telemetry_fields_summary">Выбрано %1$d из %2$d</string>
     <string name="ev_bms_telemetry_fields_empty">Выберите хотя бы одно поле</string>

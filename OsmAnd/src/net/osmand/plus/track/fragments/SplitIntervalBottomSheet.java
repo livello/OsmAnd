@@ -4,6 +4,7 @@ import static net.osmand.plus.utils.OsmAndFormatterParams.NO_TRAILING_ZEROS;
 
 import android.os.Bundle;
 import android.view.View;
+import android.widget.CompoundButton;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -25,6 +26,7 @@ import net.osmand.plus.configmap.tracks.appearance.DefaultAppearanceController;
 import net.osmand.plus.helpers.AndroidUiHelper;
 import net.osmand.plus.track.GpxSplitType;
 import net.osmand.plus.track.TrackDrawInfo;
+import net.osmand.plus.track.cards.ConsumptionSplitKmCircleSizeCard;
 import net.osmand.plus.track.helpers.SelectedGpxFile;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.OsmAndFormatter;
@@ -65,6 +67,10 @@ public class SplitIntervalBottomSheet extends MenuBottomSheetDialogFragment {
 	private TextView splitValueMax;
 	private TextView selectedSplitValue;
 	private TextView splitIntervalNoneDescr;
+	private View consumptionSplitOptions;
+	private CompoundButton consumptionKmCirclesSwitch;
+	private Slider consumptionKmCircleSizeSlider;
+	private TextView consumptionKmCircleSizeSummary;
 
 	@Override
 	public void onCreate(Bundle savedInstanceState) {
@@ -98,6 +104,21 @@ public class SplitIntervalBottomSheet extends MenuBottomSheetDialogFragment {
 		splitValueMax = view.findViewById(R.id.split_value_max);
 		selectedSplitValue = view.findViewById(R.id.split_value_tv);
 		splitIntervalNoneDescr = view.findViewById(R.id.split_interval_none_descr);
+		consumptionSplitOptions = view.findViewById(R.id.consumption_split_options);
+		View kmCirclesSwitchRoot = view.findViewById(R.id.consumption_km_circles_switch);
+		consumptionKmCirclesSwitch = kmCirclesSwitchRoot.findViewById(R.id.compound_button);
+		((TextView) kmCirclesSwitchRoot.findViewById(R.id.title))
+				.setText(R.string.ev_bms_consumption_split_km_circles);
+		View kmCircleSizeRoot = view.findViewById(R.id.consumption_km_circle_size);
+		((TextView) kmCircleSizeRoot.findViewById(android.R.id.title))
+				.setText(R.string.ev_bms_consumption_split_km_circle_size);
+		consumptionKmCircleSizeSlider = kmCircleSizeRoot.findViewById(R.id.slider);
+		consumptionKmCircleSizeSummary = kmCircleSizeRoot.findViewById(android.R.id.summary);
+		UiUtilities.setupSlider(consumptionKmCircleSizeSlider, nightMode, null, true);
+		consumptionKmCircleSizeSlider.setValueFrom(ConsumptionSplitKmCircleSizeCard.MIN_SCALE_PERCENT);
+		consumptionKmCircleSizeSlider.setValueTo(ConsumptionSplitKmCircleSizeCard.MAX_SCALE_PERCENT);
+		consumptionKmCircleSizeSlider.setStepSize(5);
+		setupConsumptionSplitOptions();
 
 		UiUtilities.setupSlider(slider, nightMode, null, true);
 
@@ -212,7 +233,28 @@ public class SplitIntervalBottomSheet extends MenuBottomSheetDialogFragment {
 		updateSlider();
 	}
 
+	private void setupConsumptionSplitOptions() {
+		boolean showKmCircles = app.getSettings().TRACK_CONSUMPTION_SPLIT_SHOW_KM_CIRCLES.get();
+		int scalePercent = app.getSettings().TRACK_CONSUMPTION_SPLIT_KM_CIRCLE_SCALE_PERCENT.get();
+		if (trackDrawInfo != null) {
+			showKmCircles = trackDrawInfo.isConsumptionSplitShowKmCircles();
+			scalePercent = trackDrawInfo.getConsumptionSplitKmCircleScalePercent();
+		}
+		consumptionKmCirclesSwitch.setChecked(showKmCircles);
+		consumptionKmCircleSizeSlider.setValue(scalePercent);
+		consumptionKmCircleSizeSlider.setEnabled(showKmCircles);
+		consumptionKmCircleSizeSummary.setText(scalePercent + "%");
+		consumptionKmCirclesSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+			consumptionKmCircleSizeSlider.setEnabled(isChecked);
+		});
+		consumptionKmCircleSizeSlider.clearOnChangeListeners();
+		consumptionKmCircleSizeSlider.addOnChangeListener((changedSlider, value, fromUser) -> {
+			consumptionKmCircleSizeSummary.setText(Math.round(value) + "%");
+		});
+	}
+
 	private void updateSlider() {
+		AndroidUiHelper.updateVisibility(consumptionSplitOptions, selectedSplitType == GpxSplitType.CONSUMPTION);
 		if (selectedSplitType != GpxSplitType.NO_SPLIT && selectedSplitType != GpxSplitType.UPHILL_DOWNHILL) {
 			slider.clearOnChangeListeners();
 			if (selectedSplitType == GpxSplitType.TIME) {
@@ -276,10 +318,27 @@ public class SplitIntervalBottomSheet extends MenuBottomSheetDialogFragment {
 	protected void onRightBottomButtonClick() {
 		updateSplit();
 		applySelectedSplit();
+		if (selectedSplitType == GpxSplitType.CONSUMPTION && getTargetFragment() instanceof TrackAppearanceFragment fragment) {
+			fragment.refreshMap();
+		}
 		dismiss();
 	}
 
+	private void applyConsumptionSplitOptions() {
+		boolean showKmCircles = consumptionKmCirclesSwitch.isChecked();
+		int scalePercent = Math.round(consumptionKmCircleSizeSlider.getValue());
+		app.getSettings().TRACK_CONSUMPTION_SPLIT_SHOW_KM_CIRCLES.set(showKmCircles);
+		app.getSettings().TRACK_CONSUMPTION_SPLIT_KM_CIRCLE_SCALE_PERCENT.set(scalePercent);
+		if (trackDrawInfo != null) {
+			trackDrawInfo.setConsumptionSplitShowKmCircles(showKmCircles);
+			trackDrawInfo.setConsumptionSplitKmCircleScalePercent(scalePercent);
+		}
+	}
+
 	private void updateSplit() {
+		if (selectedSplitType == GpxSplitType.CONSUMPTION) {
+			applyConsumptionSplitOptions();
+		}
 		if (trackDrawInfo != null) {
 			double splitInterval = 0;
 			if (selectedSplitType == GpxSplitType.NO_SPLIT || selectedSplitType == GpxSplitType.UPHILL_DOWNHILL) {

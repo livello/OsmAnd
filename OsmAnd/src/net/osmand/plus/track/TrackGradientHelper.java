@@ -57,6 +57,8 @@ public final class TrackGradientHelper {
 		settings.TRACK_COLOR_SPEED_MIN_KMH.set((float) drawInfo.getSpeedMinKmh());
 		settings.TRACK_COLOR_SPEED_MAX_KMH.set((float) drawInfo.getSpeedMaxKmh());
 		settings.TRACK_SPLIT_LABEL_OPACITY.set(drawInfo.getSplitLabelOpacity());
+		settings.TRACK_CONSUMPTION_SPLIT_SHOW_KM_CIRCLES.set(drawInfo.isConsumptionSplitShowKmCircles());
+		settings.TRACK_CONSUMPTION_SPLIT_KM_CIRCLE_SCALE_PERCENT.set(drawInfo.getConsumptionSplitKmCircleScalePercent());
 	}
 
 	public static void copyFromSettings(@NonNull OsmandSettings settings, @NonNull TrackDrawInfo drawInfo) {
@@ -66,6 +68,8 @@ public final class TrackGradientHelper {
 		drawInfo.setSpeedMinKmh(settings.TRACK_COLOR_SPEED_MIN_KMH.get());
 		drawInfo.setSpeedMaxKmh(settings.TRACK_COLOR_SPEED_MAX_KMH.get());
 		drawInfo.setSplitLabelOpacity(settings.TRACK_SPLIT_LABEL_OPACITY.get());
+		drawInfo.setConsumptionSplitShowKmCircles(settings.TRACK_CONSUMPTION_SPLIT_SHOW_KM_CIRCLES.get());
+		drawInfo.setConsumptionSplitKmCircleScalePercent(settings.TRACK_CONSUMPTION_SPLIT_KM_CIRCLE_SCALE_PERCENT.get());
 	}
 
 	public static final float[] WINDOW_METERS = {50f, 100f, 200f, 500f, 1000f};

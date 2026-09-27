@@ -6,6 +6,7 @@ import static net.osmand.plus.track.GpxSplitType.NO_SPLIT;
 
 import android.content.Context;
 import android.graphics.*;
+import android.location.Location;
 import android.graphics.Paint.Align;
 import android.graphics.Paint.Style;
 import android.graphics.PointF;
@@ -118,6 +119,9 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 	private static final int INVALID_EXTRA_ID = -1;
 	private static final int GPX_TRACK_ORDER = 1_000;
 	private static final int SPLIT_LABEL_EXTRA_ID_START = 1_000_000_000;
+	private static final float CONSUMPTION_KM_LABEL_MIN_GAP_DP = 28f;
+	private static final float CONSUMPTION_VALUE_LABEL_MIN_GAP_DP = 56f;
+	private static final float CONSUMPTION_MIN_DETAIL_SPACING_M = 500f;
 
 	private Paint paint;
 	private Paint borderPaint;
@@ -181,12 +185,15 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 
 	//OpenGl
 	private List<GpxAdditionalIconsProvider> additionalIconsProviders = new ArrayList<>();
+	private MapMarkersCollection consumptionSquares;
 	private final Map<Integer, SelectedGpxPoint> splitLabelPointsByExtraId = new HashMap<>();
 	private final List<SelectedGpxPoint> clickableSplitLabels = new ArrayList<>();
 	private int nextSplitLabelExtraId = SPLIT_LABEL_EXTRA_ID_START;
 	private int startFinishPointsCountCached;
 	private int splitLabelsCountCached;
 	private int splitLabelAlphaCached = -1;
+	private boolean consumptionKmCirclesVisibleCached = true;
+	private float consumptionKmCircleScaleCached = 1f;
 	private int pointCountCached;
 	private int hiddenGroupsCountCached;
 	private boolean textVisibleCached;
@@ -604,6 +611,12 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 			int splitLabelAlpha = appearanceHelper.getSplitLabelAlpha();
 			changed |= splitLabelAlpha != splitLabelAlphaCached;
 			splitLabelAlphaCached = splitLabelAlpha;
+			boolean consumptionKmCirclesVisible = appearanceHelper.isConsumptionSplitShowKmCircles();
+			float consumptionKmCircleScale = appearanceHelper.getConsumptionSplitKmCircleScale();
+			changed |= consumptionKmCirclesVisible != consumptionKmCirclesVisibleCached;
+			changed |= consumptionKmCircleScale != consumptionKmCircleScaleCached;
+			consumptionKmCirclesVisibleCached = consumptionKmCirclesVisible;
+			consumptionKmCircleScaleCached = consumptionKmCircleScale;
 			for (SelectedGpxFile selectedGpxFile : selectedGPXFiles) {
 				GpxFile gpxFile = selectedGpxFile.getGpxFile();
 				String path = gpxFile.getPath();
@@ -695,30 +708,19 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 				List<GpxDisplayGroup> groups = getSplitGroups(selectedGpxFile);
 				if (!Algorithms.isEmpty(groups)) {
 					int trackColor = appearanceHelper.getTrackColor(gpxFile, cachedColor, gpxItem, dirItem, selected);
-					List<VisibleSplitLabel> visible = buildAdaptiveSplitLabels(tileBox, groups.get(0).getDisplayItems(), trackColor);
-					for (VisibleSplitLabel label : visible) {
-						WptPt point = label.item.getLabelPoint();
-						if (point == null || label.name == null) {
-							continue;
+					GpxDisplayGroup splitGroup = groups.get(0);
+					List<GpxDisplayItem> displayItems = splitGroup.getDisplayItems();
+					if (isConsumptionSplitGroup(splitGroup)) {
+						addConsumptionSplitLabelsOpenGl(mapRenderer, tileBox, selectedGpxFile, displayItems, trackColor,
+								splitLabels, splitLabelAlpha, visualizationType, trackLinePosition, track3DStyle,
+								heightmapsActive);
+					} else {
+						List<VisibleSplitLabel> visible = buildAdaptiveSplitLabels(tileBox, displayItems, trackColor);
+						for (VisibleSplitLabel label : visible) {
+							addDistanceSplitLabelOpenGl(mapRenderer, tileBox, tileBox.getDensity(), selectedGpxFile, label,
+									splitLabels, splitLabelAlpha, visualizationType, trackLinePosition, track3DStyle,
+									heightmapsActive, null, null);
 						}
-						int extraId = registerSplitLabel(selectedGpxFile, label.item);
-						PointI point31 = new PointI(Utilities.get31TileNumberX(point.getLon()), Utilities.get31TileNumberY(point.getLat()));
-						// Kilometer circles stay on the OpenGL track. Consumption squares are canvas,
-						// shifted off the circle, and redrawn while the map coasts.
-						String nativeName = label.name;
-						String kmName = consumptionDistanceLabel(label.item);
-						if (kmName != null) {
-							nativeName = kmName;
-						}
-						ColorARGB nativeColor = NativeUtilities.createColorARGB(label.color, splitLabelAlpha);
-						SplitLabel splitLabel;
-						if (visualizationType == Gpx3DVisualizationType.NONE || trackLinePosition != Gpx3DLinePositionType.TOP) {
-							splitLabel = new SplitLabel(point31, nativeName, nativeColor, extraId);
-						} else {
-							float labelHeight = (float) Gpx3DVisualizationType.getPointElevation(point, track3DStyle, heightmapsActive);
-							splitLabel = new SplitLabel(point31, nativeName, nativeColor, extraId, labelHeight);
-						}
-						splitLabels.add(splitLabel);
 					}
 				}
 				if (!startFinishPoints.isEmpty() || !splitLabels.isEmpty()) {
@@ -776,6 +778,7 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 		splitLabelPointsByExtraId.clear();
 		clickableSplitLabels.clear();
 		nextSplitLabelExtraId = SPLIT_LABEL_EXTRA_ID_START;
+		clearConsumptionSquares();
 
 		MapRendererView mapRenderer = getMapRenderer();
 		if (mapRenderer != null && !Algorithms.isEmpty(additionalIconsProviders)) {
@@ -841,64 +844,292 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 	                            @NonNull List<GpxDisplayItem> items, @ColorInt int trackColor) {
 		int r = (int) (12 * tileBox.getDensity());
 		paintTextIcon.setTextSize(r);
-		List<VisibleSplitLabel> visible = buildAdaptiveSplitLabels(tileBox, items, trackColor);
 		MapRendererView mapRenderer = getMapRenderer();
-		for (VisibleSplitLabel label : visible) {
-			WptPt point = label.item.getLabelPoint();
-			if (point == null || !NativeUtilities.containsLatLon(mapRenderer, tileBox, point.getLat(), point.getLon())) {
-				continue;
-			}
-			String name = label.name;
-			if (name == null) {
-				continue;
-			}
-			boolean consumption = isConsumptionSplit(label.item);
-			if (mapRenderer != null && !consumption) {
-				continue;
-			}
-			clickableSplitLabels.add(SelectedGpxPoint.createSplitLabel(selectedGpxFile, point));
-			PointF screen = NativeUtilities.getPixelFromLatLon(mapRenderer, tileBox, point.getLat(), point.getLon());
-			float x = screen.x;
-			float y = screen.y;
-			Rect bounds = new Rect();
-			paintTextIcon.getTextBounds(name, 0, name.length(), bounds);
-
-			float nameHalfWidth = bounds.width() / 2f;
-			float nameHalfHeight = bounds.height() / 2f;
-			float density = (float) Math.ceil(tileBox.getDensity());
-			if (mapRenderer != null) {
-				y -= nameHalfHeight + 14f * density + 6f * density;
-			}
-			RectF rect = new RectF(x - nameHalfWidth - 2 * density,
-					y + nameHalfHeight + 3 * density,
-					x + nameHalfWidth + 3 * density,
-					y - nameHalfHeight - 2 * density);
-
-			int splitLabelAlpha = appearanceHelper.getSplitLabelAlpha();
-			paintInnerRect.setColor(label.color);
-			paintInnerRect.setAlpha(splitLabelAlpha);
-			int contrastColor = ColorUtilities.getContrastColor(app, label.color, false);
-			paintTextIcon.setColor(contrastColor);
-			paintTextIcon.setAlpha(255);
-			paintOuterRect.setColor(contrastColor);
-			paintOuterRect.setAlpha(splitLabelAlpha);
-
-			canvas.drawRoundRect(rect, 0, 0, paintInnerRect);
-			canvas.drawRoundRect(rect, 0, 0, paintOuterRect);
-			canvas.drawText(name, x, y + nameHalfHeight, paintTextIcon);
+		if (mapRenderer != null) {
+			return;
 		}
+		float density = (float) Math.ceil(tileBox.getDensity());
+		TrackDisplayGroup trackGroup = !items.isEmpty()
+				? GpxDisplayGroup.getTrackDisplayGroup(items.get(0).group) : null;
+		if (trackGroup != null && trackGroup.isSplitConsumption()) {
+			drawConsumptionSplitItems(canvas, tileBox, selectedGpxFile, items, trackColor, density, mapRenderer);
+			return;
+		}
+		List<VisibleSplitLabel> visible = buildAdaptiveSplitLabels(tileBox, items, trackColor);
+		for (VisibleSplitLabel label : visible) {
+			drawStandardSplitLabelOnCanvas(canvas, tileBox, selectedGpxFile, label, mapRenderer, density, false);
+		}
+	}
+
+	private void drawConsumptionSplitItems(@NonNull Canvas canvas, @NonNull RotatedTileBox tileBox,
+	                                       @NonNull SelectedGpxFile selectedGpxFile,
+	                                       @NonNull List<GpxDisplayItem> items, @ColorInt int trackColor,
+	                                       float density, @Nullable MapRendererView mapRenderer) {
+		List<VisibleSplitLabel> kmLabels = buildConsumptionDistanceLabels(tileBox, items, trackColor, density);
+		List<VisibleSplitLabel> valueLabels = buildAdaptiveSplitLabels(tileBox, items, trackColor,
+				consumptionValueLabelMinGap(tileBox, mapRenderer));
+		Map<String, VisibleSplitLabel> valuesAtAnchor = new LinkedHashMap<>();
+		for (VisibleSplitLabel label : valueLabels) {
+			WptPt point = label.item.getLabelPoint();
+			if (point != null) {
+				valuesAtAnchor.put(anchorKey(point), label);
+			}
+		}
+		for (VisibleSplitLabel kmLabel : kmLabels) {
+			WptPt anchor = kmLabel.item.getLabelPoint();
+			if (anchor == null) {
+				continue;
+			}
+			VisibleSplitLabel valueLabel = valuesAtAnchor.remove(anchorKey(anchor));
+			drawConsumptionSplitPairOnCanvas(canvas, tileBox, selectedGpxFile, anchor, kmLabel, valueLabel, density, mapRenderer);
+		}
+		for (VisibleSplitLabel valueLabel : valuesAtAnchor.values()) {
+			WptPt anchor = valueLabel.item.getLabelPoint();
+			if (anchor == null) {
+				continue;
+			}
+			drawConsumptionSplitPairOnCanvas(canvas, tileBox, selectedGpxFile, anchor, null, valueLabel, density, mapRenderer);
+		}
+	}
+
+	private void drawConsumptionSplitPairOnCanvas(@NonNull Canvas canvas, @NonNull RotatedTileBox tileBox,
+	                                            @NonNull SelectedGpxFile selectedGpxFile, @NonNull WptPt anchor,
+	                                            @Nullable VisibleSplitLabel kmLabel,
+	                                            @Nullable VisibleSplitLabel valueLabel, float density,
+	                                            @Nullable MapRendererView mapRenderer) {
+		if (!NativeUtilities.containsLatLon(mapRenderer, tileBox, anchor.getLat(), anchor.getLon())) {
+			return;
+		}
+		clickableSplitLabels.add(SelectedGpxPoint.createSplitLabel(selectedGpxFile, anchor));
+		PointF anchorScreen = NativeUtilities.getPixelFromLatLon(mapRenderer, tileBox, anchor.getLat(), anchor.getLon());
+		String kmName = kmLabel != null ? kmLabel.name : consumptionDistanceLabel(valueLabel.item);
+		int color = valueLabel != null ? valueLabel.color
+				: kmLabel != null ? kmLabel.color : cachedColor;
+		boolean showKmCircles = appearanceHelper.isConsumptionSplitShowKmCircles();
+		float circleScale = appearanceHelper.getConsumptionSplitKmCircleScale();
+		if (kmName != null && showKmCircles) {
+			drawDistanceOverSquare(canvas, anchorScreen.x, anchorScreen.y, density, kmName, color, circleScale);
+		}
+		if (valueLabel != null && valueLabel.name != null) {
+			WptPt squarePoint = anchor;
+			if (kmName != null && showKmCircles) {
+				double offsetM = consumptionSquareOffsetMeters(tileBox, mapRenderer, anchor.getLat(), anchor.getLon(),
+						kmName, valueLabel.name, density, circleScale);
+				if (offsetM > 0) {
+					squarePoint = offsetAlongTrack(anchor, valueLabel.item, offsetM);
+				}
+			}
+			PointF squareScreen = NativeUtilities.getPixelFromLatLon(mapRenderer, tileBox,
+					squarePoint.getLat(), squarePoint.getLon());
+			drawConsumptionSquareOnCanvas(canvas, squareScreen.x, squareScreen.y, valueLabel.name, color, density);
+		}
+	}
+
+	private void drawStandardSplitLabelOnCanvas(@NonNull Canvas canvas, @NonNull RotatedTileBox tileBox,
+	                                            @NonNull SelectedGpxFile selectedGpxFile, @NonNull VisibleSplitLabel label,
+	                                            @Nullable MapRendererView mapRenderer, float density, boolean consumption) {
+		WptPt point = label.item.getLabelPoint();
+		if (point == null || !NativeUtilities.containsLatLon(mapRenderer, tileBox, point.getLat(), point.getLon())) {
+			return;
+		}
+		String name = label.name;
+		if (name == null) {
+			return;
+		}
+		clickableSplitLabels.add(SelectedGpxPoint.createSplitLabel(selectedGpxFile, point));
+		PointF screen = NativeUtilities.getPixelFromLatLon(mapRenderer, tileBox, point.getLat(), point.getLon());
+		float x = screen.x;
+		float y = screen.y;
+		Rect bounds = new Rect();
+		paintTextIcon.getTextBounds(name, 0, name.length(), bounds);
+
+		float nameHalfWidth = bounds.width() / 2f;
+		float nameHalfHeight = bounds.height() / 2f;
+		RectF rect = new RectF(x - nameHalfWidth - 2 * density,
+				y + nameHalfHeight + 3 * density,
+				x + nameHalfWidth + 3 * density,
+				y - nameHalfHeight - 2 * density);
+
+		int splitLabelAlpha = consumption ? 255 : appearanceHelper.getSplitLabelAlpha();
+		paintInnerRect.setColor(label.color);
+		paintInnerRect.setAlpha(splitLabelAlpha);
+		int contrastColor = ColorUtilities.getContrastColor(app, label.color, false);
+		paintTextIcon.setColor(contrastColor);
+		paintTextIcon.setAlpha(255);
+		paintOuterRect.setColor(contrastColor);
+		paintOuterRect.setAlpha(splitLabelAlpha);
+
+		canvas.drawRoundRect(rect, 0, 0, paintInnerRect);
+		canvas.drawRoundRect(rect, 0, 0, paintOuterRect);
+		canvas.drawText(name, x, y + nameHalfHeight, paintTextIcon);
+	}
+
+	private void drawConsumptionSquareOnCanvas(@NonNull Canvas canvas, float x, float y,
+	                                           @NonNull String name, @ColorInt int color, float density) {
+		Rect bounds = new Rect();
+		paintTextIcon.getTextBounds(name, 0, name.length(), bounds);
+		float nameHalfWidth = bounds.width() / 2f;
+		float nameHalfHeight = bounds.height() / 2f;
+		RectF rect = new RectF(x - nameHalfWidth - 2 * density,
+				y + nameHalfHeight + 3 * density,
+				x + nameHalfWidth + 3 * density,
+				y - nameHalfHeight - 2 * density);
+		paintInnerRect.setColor(color);
+		paintInnerRect.setAlpha(255);
+		int contrastColor = ColorUtilities.getContrastColor(app, color, false);
+		paintTextIcon.setColor(contrastColor);
+		paintTextIcon.setAlpha(255);
+		paintOuterRect.setColor(contrastColor);
+		paintOuterRect.setAlpha(255);
+		canvas.drawRoundRect(rect, 0, 0, paintInnerRect);
+		canvas.drawRoundRect(rect, 0, 0, paintOuterRect);
+		canvas.drawText(name, x, y + nameHalfHeight, paintTextIcon);
+	}
+
+	private void drawDistanceOverSquare(@NonNull Canvas canvas, float x, float y, float density,
+	                                    @Nullable String distance, @ColorInt int color, float scale) {
+		if (distance == null) {
+			return;
+		}
+		Rect bounds = new Rect();
+		paintTextIcon.getTextBounds(distance, 0, distance.length(), bounds);
+		float radius = consumptionKmCircleRadiusPx(bounds, density, scale);
+		int contrast = ColorUtilities.getContrastColor(app, color, false);
+		paintInnerRect.setColor(color);
+		paintInnerRect.setAlpha(255);
+		paintOuterRect.setColor(contrast);
+		paintOuterRect.setAlpha(255);
+		paintTextIcon.setColor(contrast);
+		canvas.drawCircle(x, y, radius, paintInnerRect);
+		canvas.drawCircle(x, y, radius, paintOuterRect);
+		canvas.drawText(distance, x, y + bounds.height() / 2f, paintTextIcon);
+	}
+
+	private void addConsumptionKmCircle(@NonNull MapRendererView mapRenderer, @NonNull WptPt point,
+	                                    @NonNull String name, @ColorInt int color, float density, float scale) {
+		Bitmap bitmap = consumptionKmCircleBitmap(name, color, density, scale);
+		if (bitmap == null) {
+			return;
+		}
+		if (consumptionSquares == null) {
+			consumptionSquares = new MapMarkersCollection();
+			mapRenderer.addSymbolsProvider(consumptionSquares);
+		}
+		int order = getPointsOrder() - 550;
+		new MapMarkerBuilder()
+				.setIsAccuracyCircleSupported(false)
+				.setBaseOrder(order)
+				.setPinIcon(NativeUtilities.createSkImageFromBitmap(bitmap))
+				.setPinIconVerticalAlignment(net.osmand.core.jni.MapMarker.PinIconVerticalAlignment.CenterVertical)
+				.setPinIconHorisontalAlignment(net.osmand.core.jni.MapMarker.PinIconHorisontalAlignment.CenterHorizontal)
+				.setPosition(new PointI(Utilities.get31TileNumberX(point.getLon()), Utilities.get31TileNumberY(point.getLat())))
+				.buildAndAddToCollection(consumptionSquares);
+	}
+
+	private void addConsumptionSquare(@NonNull MapRendererView mapRenderer, @NonNull WptPt point,
+	                                  @NonNull String name, @ColorInt int color, float density) {
+		Bitmap bitmap = consumptionSquareBitmap(name, color, density);
+		if (bitmap == null) {
+			return;
+		}
+		if (consumptionSquares == null) {
+			consumptionSquares = new MapMarkersCollection();
+			mapRenderer.addSymbolsProvider(consumptionSquares);
+		}
+		int order = getPointsOrder() - 550;
+		new MapMarkerBuilder()
+				.setIsAccuracyCircleSupported(false)
+				.setBaseOrder(order)
+				.setPinIcon(NativeUtilities.createSkImageFromBitmap(bitmap))
+				.setPinIconVerticalAlignment(net.osmand.core.jni.MapMarker.PinIconVerticalAlignment.CenterVertical)
+				.setPinIconHorisontalAlignment(net.osmand.core.jni.MapMarker.PinIconHorisontalAlignment.CenterHorizontal)
+				.setPosition(new PointI(Utilities.get31TileNumberX(point.getLon()), Utilities.get31TileNumberY(point.getLat())))
+				.buildAndAddToCollection(consumptionSquares);
+	}
+
+	@Nullable
+	private Bitmap consumptionKmCircleBitmap(@NonNull String name, @ColorInt int color, float density, float scale) {
+		Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
+		text.setTextAlign(Align.CENTER);
+		text.setTextSize(12f * density);
+		text.setColor(ColorUtilities.getContrastColor(app, color, false));
+		Rect bounds = new Rect();
+		text.getTextBounds(name, 0, name.length(), bounds);
+		float radius = consumptionKmCircleRadiusPx(bounds, density, scale);
+		int size = Math.max(Math.round(radius * 2f), 1);
+		Bitmap bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+		Canvas canvas = new Canvas(bitmap);
+		float cx = size / 2f;
+		float cy = size / 2f;
+		Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
+		fill.setStyle(Style.FILL);
+		fill.setColor(color);
+		fill.setAlpha(255);
+		canvas.drawCircle(cx, cy, radius, fill);
+		Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
+		stroke.setStyle(Style.STROKE);
+		stroke.setStrokeWidth(Math.max(1f, density));
+		stroke.setColor(text.getColor());
+		canvas.drawCircle(cx, cy, radius, stroke);
+		canvas.drawText(name, cx, cy + bounds.height() / 2f - bounds.bottom, text);
+		return bitmap;
+	}
+
+	private float consumptionKmCircleRadiusPx(@NonNull Rect textBounds, float density, float scale) {
+		return (Math.max(textBounds.width(), textBounds.height()) / 2f + 3f * density) * scale;
+	}
+
+	@Nullable
+	private Bitmap consumptionSquareBitmap(@NonNull String name, @ColorInt int color, float density) {
+		Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
+		text.setTextAlign(Align.CENTER);
+		text.setTextSize(12f * density);
+		text.setColor(ColorUtilities.getContrastColor(app, color, false));
+		Rect bounds = new Rect();
+		text.getTextBounds(name, 0, name.length(), bounds);
+		int pad = Math.max(2, Math.round(2f * density));
+		int width = Math.max(bounds.width() + pad * 4, 1);
+		int height = Math.max(bounds.height() + pad * 4, 1);
+		Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+		Canvas canvas = new Canvas(bitmap);
+		Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
+		fill.setStyle(Style.FILL);
+		fill.setColor(color);
+		fill.setAlpha(255);
+		canvas.drawRect(0, 0, width, height, fill);
+		Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
+		stroke.setStyle(Style.STROKE);
+		stroke.setStrokeWidth(Math.max(1f, density));
+		stroke.setColor(text.getColor());
+		canvas.drawRect(0, 0, width - 1, height - 1, stroke);
+		canvas.drawText(name, width / 2f, height / 2f + bounds.height() / 2f - bounds.bottom, text);
+		return bitmap;
+	}
+
+	private void clearConsumptionSquares() {
+		MapRendererView mapRenderer = getMapRenderer();
+		if (mapRenderer != null && consumptionSquares != null) {
+			mapRenderer.removeSymbolsProvider(consumptionSquares);
+		}
+		consumptionSquares = null;
 	}
 
 	@NonNull
 	private List<VisibleSplitLabel> buildAdaptiveSplitLabels(@NonNull RotatedTileBox tileBox,
 	                                                         @NonNull List<GpxDisplayItem> items,
 	                                                         @ColorInt int trackColor) {
+		return buildAdaptiveSplitLabels(tileBox, items, trackColor, CONSUMPTION_VALUE_LABEL_MIN_GAP_DP * tileBox.getDensity());
+	}
+
+	@NonNull
+	private List<VisibleSplitLabel> buildAdaptiveSplitLabels(@NonNull RotatedTileBox tileBox,
+	                                                         @NonNull List<GpxDisplayItem> items,
+	                                                         @ColorInt int trackColor, float minGap) {
 		List<VisibleSplitLabel> result = new ArrayList<>();
 		if (items.isEmpty()) {
 			return result;
 		}
 		MapRendererView mapRenderer = getMapRenderer();
-		float minGap = 56f * tileBox.getDensity();
 		int groupStart = -1;
 		float startX = Float.NaN;
 		float startY = Float.NaN;
@@ -944,6 +1175,236 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 		result.add(new VisibleSplitLabel(last, name, color));
 	}
 
+	private boolean isConsumptionSplitGroup(@NonNull GpxDisplayGroup group) {
+		TrackDisplayGroup trackGroup = GpxDisplayGroup.getTrackDisplayGroup(group);
+		return trackGroup != null && trackGroup.isSplitConsumption();
+	}
+
+	private void addConsumptionSplitLabelsOpenGl(@NonNull MapRendererView mapRenderer,
+	                                             @NonNull RotatedTileBox tileBox,
+	                                             @NonNull SelectedGpxFile selectedGpxFile,
+	                                             @NonNull List<GpxDisplayItem> items, @ColorInt int trackColor,
+	                                             @NonNull SplitLabelList splitLabels, int splitLabelAlpha,
+	                                             @NonNull Gpx3DVisualizationType visualizationType,
+	                                             @NonNull Gpx3DLinePositionType trackLinePosition,
+	                                             @NonNull Track3DStyle track3DStyle, boolean heightmapsActive) {
+		float density = tileBox.getDensity();
+		List<VisibleSplitLabel> kmLabels = buildConsumptionDistanceLabels(tileBox, items, trackColor, density);
+		List<VisibleSplitLabel> valueLabels = buildAdaptiveSplitLabels(tileBox, items, trackColor,
+				consumptionValueLabelMinGap(tileBox, mapRenderer));
+		Map<String, VisibleSplitLabel> valuesAtAnchor = new LinkedHashMap<>();
+		for (VisibleSplitLabel label : valueLabels) {
+			WptPt point = label.item.getLabelPoint();
+			if (point != null) {
+				valuesAtAnchor.put(anchorKey(point), label);
+			}
+		}
+		for (VisibleSplitLabel kmLabel : kmLabels) {
+			WptPt anchor = kmLabel.item.getLabelPoint();
+			if (anchor == null) {
+				continue;
+			}
+			VisibleSplitLabel valueLabel = valuesAtAnchor.remove(anchorKey(anchor));
+			addConsumptionSplitPairOpenGl(mapRenderer, tileBox, density, selectedGpxFile, anchor, kmLabel, valueLabel,
+					splitLabels, splitLabelAlpha, visualizationType, trackLinePosition, track3DStyle, heightmapsActive);
+		}
+		for (VisibleSplitLabel valueLabel : valuesAtAnchor.values()) {
+			WptPt anchor = valueLabel.item.getLabelPoint();
+			if (anchor == null) {
+				continue;
+			}
+			VisibleSplitLabel kmLabel = null;
+			String kmName = consumptionDistanceLabel(valueLabel.item);
+			if (kmName != null) {
+				kmLabel = new VisibleSplitLabel(valueLabel.item, kmName, valueLabel.color);
+			}
+			addConsumptionSplitPairOpenGl(mapRenderer, tileBox, density, selectedGpxFile, anchor, kmLabel, valueLabel,
+					splitLabels, splitLabelAlpha, visualizationType, trackLinePosition, track3DStyle, heightmapsActive);
+		}
+	}
+
+	private void addConsumptionSplitPairOpenGl(@NonNull MapRendererView mapRenderer, @NonNull RotatedTileBox tileBox,
+	                                           float density, @NonNull SelectedGpxFile selectedGpxFile,
+	                                           @NonNull WptPt anchor, @Nullable VisibleSplitLabel kmLabel,
+	                                           @Nullable VisibleSplitLabel valueLabel, @NonNull SplitLabelList splitLabels,
+	                                           int splitLabelAlpha, @NonNull Gpx3DVisualizationType visualizationType,
+	                                           @NonNull Gpx3DLinePositionType trackLinePosition,
+	                                           @NonNull Track3DStyle track3DStyle, boolean heightmapsActive) {
+		boolean showKmCircles = appearanceHelper.isConsumptionSplitShowKmCircles();
+		float circleScale = appearanceHelper.getConsumptionSplitKmCircleScale();
+		String kmName = kmLabel != null ? kmLabel.name : null;
+		GpxDisplayItem clickItem = valueLabel != null ? valueLabel.item : kmLabel != null ? kmLabel.item : null;
+		if (showKmCircles && kmLabel != null && kmName != null) {
+			if (Math.abs(circleScale - 1f) < 0.01f) {
+				addDistanceSplitLabelOpenGl(mapRenderer, tileBox, density, selectedGpxFile,
+						new VisibleSplitLabel(kmLabel.item, kmName, kmLabel.color), splitLabels, splitLabelAlpha,
+						visualizationType, trackLinePosition, track3DStyle, heightmapsActive, clickItem, null);
+			} else {
+				registerSplitLabel(selectedGpxFile, clickItem != null ? clickItem : kmLabel.item);
+				addConsumptionKmCircle(mapRenderer, anchor, kmName, kmLabel.color, density, circleScale);
+			}
+		}
+		if (valueLabel != null && valueLabel.name != null) {
+			WptPt squarePoint = anchor;
+			if (kmName != null && showKmCircles) {
+				double offsetM = consumptionSquareOffsetMeters(tileBox, mapRenderer, anchor.getLat(), anchor.getLon(),
+						kmName, valueLabel.name, density, circleScale);
+				if (offsetM > 0) {
+					squarePoint = offsetAlongTrack(anchor, valueLabel.item, offsetM);
+				}
+			}
+			addConsumptionSquare(mapRenderer, squarePoint, valueLabel.name, valueLabel.color, density);
+		} else if (!showKmCircles && clickItem != null) {
+			registerSplitLabel(selectedGpxFile, clickItem);
+		}
+	}
+
+	private void addDistanceSplitLabelOpenGl(@NonNull MapRendererView mapRenderer, @NonNull RotatedTileBox tileBox,
+	                                         float density, @NonNull SelectedGpxFile selectedGpxFile,
+	                                         @NonNull VisibleSplitLabel label, @NonNull SplitLabelList splitLabels,
+	                                         int splitLabelAlpha, @NonNull Gpx3DVisualizationType visualizationType,
+	                                         @NonNull Gpx3DLinePositionType trackLinePosition,
+	                                         @NonNull Track3DStyle track3DStyle, boolean heightmapsActive,
+	                                         @Nullable GpxDisplayItem clickItem,
+	                                         @Nullable VisibleSplitLabel consumptionValueLabel) {
+		WptPt anchor = label.item.getLabelPoint();
+		if (anchor == null || label.name == null) {
+			return;
+		}
+		GpxDisplayItem registerItem = clickItem != null ? clickItem : label.item;
+		int extraId = registerSplitLabel(selectedGpxFile, registerItem);
+		PointI point31 = new PointI(Utilities.get31TileNumberX(anchor.getLon()), Utilities.get31TileNumberY(anchor.getLat()));
+		ColorARGB nativeColor = NativeUtilities.createColorARGB(label.color, splitLabelAlpha);
+		SplitLabel splitLabel;
+		if (visualizationType == Gpx3DVisualizationType.NONE || trackLinePosition != Gpx3DLinePositionType.TOP) {
+			splitLabel = new SplitLabel(point31, label.name, nativeColor, extraId);
+		} else {
+			float labelHeight = (float) Gpx3DVisualizationType.getPointElevation(anchor, track3DStyle, heightmapsActive);
+			splitLabel = new SplitLabel(point31, label.name, nativeColor, extraId, labelHeight);
+		}
+		splitLabels.add(splitLabel);
+		if (consumptionValueLabel != null && consumptionValueLabel.name != null) {
+			String kmName = label.name;
+			WptPt squarePoint = anchor;
+			if (kmName != null) {
+				double offsetM = consumptionSquareOffsetMeters(tileBox, mapRenderer, anchor.getLat(), anchor.getLon(),
+						kmName, consumptionValueLabel.name, density,
+						appearanceHelper.getConsumptionSplitKmCircleScale());
+				if (offsetM > 0) {
+					squarePoint = offsetAlongTrack(anchor, consumptionValueLabel.item, offsetM);
+				}
+			}
+			addConsumptionSquare(mapRenderer, squarePoint, consumptionValueLabel.name, consumptionValueLabel.color, density);
+		}
+	}
+
+	@NonNull
+	private List<VisibleSplitLabel> buildConsumptionDistanceLabels(@NonNull RotatedTileBox tileBox,
+	                                                               @NonNull List<GpxDisplayItem> items,
+	                                                               @ColorInt int trackColor, float density) {
+		List<VisibleSplitLabel> result = new ArrayList<>();
+		if (items.isEmpty()) {
+			return result;
+		}
+		MapRendererView mapRenderer = getMapRenderer();
+		float minGap = CONSUMPTION_KM_LABEL_MIN_GAP_DP * density;
+		float lastX = Float.NaN;
+		float lastY = Float.NaN;
+		for (GpxDisplayItem item : items) {
+			WptPt point = item.getLabelPoint();
+			if (point == null) {
+				continue;
+			}
+			String km = consumptionDistanceLabel(item);
+			if (km == null) {
+				continue;
+			}
+			PointF screen = NativeUtilities.getPixelFromLatLon(mapRenderer, tileBox, point.getLat(), point.getLon());
+			if (Float.isNaN(lastX) || Math.hypot(screen.x - lastX, screen.y - lastY) >= minGap) {
+				int color = item.getLabelColor(trackColor, altitudeAscColor, altitudeDescColor);
+				result.add(new VisibleSplitLabel(item, km, color));
+				lastX = screen.x;
+				lastY = screen.y;
+			}
+		}
+		return result;
+	}
+
+	private float consumptionValueLabelMinGap(@NonNull RotatedTileBox tileBox,
+	                                          @Nullable MapRendererView mapRenderer) {
+		float density = tileBox.getDensity();
+		float minGap = CONSUMPTION_VALUE_LABEL_MIN_GAP_DP * density;
+		int zoom = tileBox.getZoom();
+		if (zoom > 15) {
+			minGap = Math.max(CONSUMPTION_KM_LABEL_MIN_GAP_DP * density, minGap * 15f / zoom);
+		}
+		LatLon origin = new LatLon(tileBox.getLatitude(), tileBox.getLongitude());
+		LatLon spaced = MapUtils.rhumbDestinationPoint(origin, CONSUMPTION_MIN_DETAIL_SPACING_M, 90);
+		PointF p0 = NativeUtilities.getPixelFromLatLon(mapRenderer, tileBox, origin.getLatitude(), origin.getLongitude());
+		PointF p1 = NativeUtilities.getPixelFromLatLon(mapRenderer, tileBox, spaced.getLatitude(), spaced.getLongitude());
+		float spacingPx = (float) Math.hypot(p1.x - p0.x, p1.y - p0.y);
+		if (spacingPx > CONSUMPTION_KM_LABEL_MIN_GAP_DP * density) {
+			minGap = Math.min(minGap, spacingPx * 0.9f);
+		}
+		return minGap;
+	}
+
+	@NonNull
+	private static String anchorKey(@NonNull WptPt point) {
+		return String.format(Locale.US, "%.6f,%.6f", point.getLat(), point.getLon());
+	}
+
+	private double bearingAlongSegment(@NonNull GpxDisplayItem item) {
+		if (item.locationStart == null || item.locationEnd == null) {
+			return 0;
+		}
+		Location start = new Location("");
+		start.setLatitude(item.locationStart.getLat());
+		start.setLongitude(item.locationStart.getLon());
+		Location end = new Location("");
+		end.setLatitude(item.locationEnd.getLat());
+		end.setLongitude(item.locationEnd.getLon());
+		if (start.distanceTo(end) <= 0) {
+			return 0;
+		}
+		return start.bearingTo(end);
+	}
+
+	@NonNull
+	private WptPt offsetAlongTrack(@NonNull WptPt anchor, @NonNull GpxDisplayItem item, double offsetMeters) {
+		LatLon dest = MapUtils.rhumbDestinationPoint(
+				new LatLon(anchor.getLat(), anchor.getLon()), offsetMeters, bearingAlongSegment(item));
+		return new WptPt(dest.getLatitude(), dest.getLongitude());
+	}
+
+	private double consumptionSquareOffsetMeters(@NonNull RotatedTileBox tileBox,
+	                                             @Nullable MapRendererView mapRenderer, double lat, double lon,
+	                                             @NonNull String kmLabel, @NonNull String whLabel, float density,
+	                                             float circleScale) {
+		Paint measure = new Paint(Paint.ANTI_ALIAS_FLAG);
+		measure.setTextSize(12f * density);
+		Rect bounds = new Rect();
+		measure.getTextBounds(kmLabel, 0, kmLabel.length(), bounds);
+		float circleRadiusPx = consumptionKmCircleRadiusPx(bounds, density, circleScale);
+		measure.getTextBounds(whLabel, 0, whLabel.length(), bounds);
+		int pad = Math.max(2, Math.round(2f * density));
+		float squareHalfWidthPx = Math.max(bounds.width() + pad * 4, 1) / 2f;
+		float offsetPx = circleRadiusPx + 2f * density + squareHalfWidthPx;
+		return pixelsToMeters(tileBox, mapRenderer, lat, lon, offsetPx);
+	}
+
+	private double pixelsToMeters(@NonNull RotatedTileBox tileBox, @Nullable MapRendererView mapRenderer,
+	                              double lat, double lon, float pixels) {
+		LatLon east = MapUtils.rhumbDestinationPoint(new LatLon(lat, lon), 1, 90);
+		PointF p0 = NativeUtilities.getPixelFromLatLon(mapRenderer, tileBox, lat, lon);
+		PointF p1 = NativeUtilities.getPixelFromLatLon(mapRenderer, tileBox, east.getLatitude(), east.getLongitude());
+		double pxPerMeter = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+		if (pxPerMeter <= 0) {
+			return pixels;
+		}
+		return pixels / pxPerMeter;
+	}
+
 	private boolean isConsumptionSplit(@NonNull GpxDisplayItem item) {
 		TrackDisplayGroup group = GpxDisplayGroup.getTrackDisplayGroup(item.group);
 		return group != null && group.isSplitConsumption();
@@ -954,8 +1415,11 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 		if (!isConsumptionSplit(item) || item.splitMetric < 0) {
 			return null;
 		}
-		int digits = item.splitMetric >= 10000 ? 0 : 1;
-		return OsmAndFormatter.getFormattedRoundDistanceKm((float) item.splitMetric, digits, app);
+		float km = (float) item.splitMetric / 1000f;
+		if (item.splitMetric >= 10000) {
+			return String.valueOf(Math.round(km));
+		}
+		return String.format(java.util.Locale.US, "%.1f", km);
 	}
 
 	@Nullable

@@ -68,6 +68,8 @@ import net.osmand.plus.track.cards.DirectionArrowsCard;
 import net.osmand.plus.track.cards.GradientScaleCard;
 import net.osmand.plus.track.cards.ShowStartFinishCard;
 import net.osmand.plus.track.cards.SplitIntervalCard;
+import net.osmand.plus.track.cards.ConsumptionSplitKmCircleSizeCard;
+import net.osmand.plus.track.cards.ConsumptionSplitKmCirclesCard;
 import net.osmand.plus.track.cards.SplitLabelOpacityCard;
 import net.osmand.plus.track.cards.Track3DCard;
 import net.osmand.plus.track.TrackGradientHelper;
@@ -431,6 +433,9 @@ public class TrackAppearanceFragment extends ContextMenuScrollFragment implement
 				GradientScaleBottomSheet.showInstance(manager, this);
 			} else if (card instanceof DirectionArrowsCard || card instanceof SplitLabelOpacityCard) {
 				refreshMap();
+			} else if (card instanceof ConsumptionSplitKmCirclesCard || card instanceof ConsumptionSplitKmCircleSizeCard) {
+				updateContent();
+				refreshMap();
 				if (card instanceof DirectionArrowsCard) {
 					updateAppearanceIcon();
 				}
@@ -767,6 +772,7 @@ public class TrackAppearanceFragment extends ContextMenuScrollFragment implement
 		if (splitIntervalCard != null) {
 			splitIntervalCard.updateContent();
 		}
+		updateContent();
 		List<GpxDisplayGroup> groups = getGpxDisplayGroups();
 		SplitTrackListener listener = getSplitTrackListener();
 
@@ -810,6 +816,8 @@ public class TrackAppearanceFragment extends ContextMenuScrollFragment implement
 				splitIntervalCard = new SplitIntervalCard(mapActivity, trackDrawInfo);
 				addCard(container, splitIntervalCard);
 				addCard(container, new SplitLabelOpacityCard(mapActivity, trackDrawInfo));
+				addCard(container, new ConsumptionSplitKmCirclesCard(mapActivity, trackDrawInfo));
+				addCard(container, new ConsumptionSplitKmCircleSizeCard(mapActivity, trackDrawInfo));
 			}
 			addCard(container, new DirectionArrowsCard(mapActivity, trackDrawInfo));
 			addCard(container, new ShowStartFinishCard(mapActivity, trackDrawInfo));
