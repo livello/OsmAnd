@@ -13,6 +13,8 @@ import android.graphics.PointF;
 import android.graphics.PorterDuff.Mode;
 import android.graphics.drawable.Drawable;
 import android.os.AsyncTask;
+import android.os.SystemClock;
+import android.util.LruCache;
 import android.util.Pair;
 
 import androidx.annotation.ColorInt;
@@ -122,6 +124,9 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 	private static final float CONSUMPTION_KM_LABEL_MIN_GAP_DP = 28f;
 	private static final float CONSUMPTION_VALUE_LABEL_MIN_GAP_DP = 56f;
 	private static final float CONSUMPTION_MIN_DETAIL_SPACING_M = 500f;
+	private static final int CONSUMPTION_BITMAP_CACHE_MAX_ENTRIES = 128;
+	private static final int CONSUMPTION_LAYOUT_CACHE_MAX_ENTRIES = 24;
+	private static final long CONSUMPTION_ZOOM_REBUILD_THROTTLE_MS = 120L;
 
 	private Paint paint;
 	private Paint borderPaint;
@@ -186,6 +191,13 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 	//OpenGl
 	private List<GpxAdditionalIconsProvider> additionalIconsProviders = new ArrayList<>();
 	private MapMarkersCollection consumptionSquares;
+	@Nullable
+	private MapMarkersCollection pendingConsumptionSquares;
+	private final LruCache<String, Bitmap> consumptionIndicatorBitmapCache =
+			new LruCache<>(CONSUMPTION_BITMAP_CACHE_MAX_ENTRIES);
+	private final LruCache<String, ConsumptionLayoutEntry> consumptionLayoutCache =
+			new LruCache<>(CONSUMPTION_LAYOUT_CACHE_MAX_ENTRIES);
+	private long lastConsumptionZoomRebuildMs;
 	private final Map<Integer, SelectedGpxPoint> splitLabelPointsByExtraId = new HashMap<>();
 	private final List<SelectedGpxPoint> clickableSplitLabels = new ArrayList<>();
 	private int nextSplitLabelExtraId = SPLIT_LABEL_EXTRA_ID_START;
@@ -195,8 +207,6 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 	private boolean consumptionKmCirclesVisibleCached = true;
 	private float consumptionKmCircleScaleCached = 1f;
 	private int splitLabelsViewportZoomCached = -1;
-	private double splitLabelsViewportLatCached = Double.NaN;
-	private double splitLabelsViewportLonCached = Double.NaN;
 	private float splitLabelsViewportRotateCached = Float.NaN;
 	private int pointCountCached;
 	private int hiddenGroupsCountCached;
@@ -675,6 +685,7 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 			startFinishPointsCountCached = startFinishPointsCount;
 			splitLabelsCountCached = splitLabelsCount;
 			clearSelectedFilesSplits();
+			beginConsumptionSquaresBuild(mapRenderer);
 
 			QListFloat startFinishHeights = new QListFloat();
 			for (SelectedGpxFile selectedGpxFile : selectedGPXFiles) {
@@ -740,10 +751,11 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 					additionalIconsProviders.add(additionalIconsProvider);
 				}
 			}
+			commitConsumptionSquaresBuild(mapRenderer);
 		} else {
 			startFinishPointsCountCached = 0;
 			splitLabelsCountCached = 0;
-			clearSelectedFilesSplits();
+			clearAllSplitOpenGlSymbols();
 		}
 	}
 
@@ -758,6 +770,8 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 			float textScale = getTextScale();
 			if (this.textScale != textScale || startPointImage == null || mapRendererChanged) {
 				this.textScale = textScale;
+				consumptionIndicatorBitmapCache.evictAll();
+				consumptionLayoutCache.evictAll();
 				recreateBitmaps();
 				return true;
 			}
@@ -783,7 +797,6 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 		splitLabelPointsByExtraId.clear();
 		clickableSplitLabels.clear();
 		nextSplitLabelExtraId = SPLIT_LABEL_EXTRA_ID_START;
-		clearConsumptionSquares();
 
 		MapRendererView mapRenderer = getMapRenderer();
 		if (mapRenderer != null && !Algorithms.isEmpty(additionalIconsProviders)) {
@@ -793,6 +806,46 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 				mapRenderer.removeSymbolsProvider(provider);
 			}
 		}
+	}
+
+	private void clearAllSplitOpenGlSymbols() {
+		clearSelectedFilesSplits();
+		discardPendingConsumptionSquares();
+		removeCommittedConsumptionSquares();
+		consumptionLayoutCache.evictAll();
+	}
+
+	private void beginConsumptionSquaresBuild(@NonNull MapRendererView mapRenderer) {
+		discardPendingConsumptionSquares();
+		pendingConsumptionSquares = new MapMarkersCollection();
+		mapRenderer.addSymbolsProvider(pendingConsumptionSquares);
+	}
+
+	private void commitConsumptionSquaresBuild(@NonNull MapRendererView mapRenderer) {
+		if (pendingConsumptionSquares == null) {
+			return;
+		}
+		if (consumptionSquares != null) {
+			mapRenderer.removeSymbolsProvider(consumptionSquares);
+		}
+		consumptionSquares = pendingConsumptionSquares;
+		pendingConsumptionSquares = null;
+	}
+
+	private void discardPendingConsumptionSquares() {
+		MapRendererView mapRenderer = getMapRenderer();
+		if (mapRenderer != null && pendingConsumptionSquares != null) {
+			mapRenderer.removeSymbolsProvider(pendingConsumptionSquares);
+		}
+		pendingConsumptionSquares = null;
+	}
+
+	private void removeCommittedConsumptionSquares() {
+		MapRendererView mapRenderer = getMapRenderer();
+		if (mapRenderer != null && consumptionSquares != null) {
+			mapRenderer.removeSymbolsProvider(consumptionSquares);
+		}
+		consumptionSquares = null;
 	}
 
 	@Override
@@ -1023,13 +1076,13 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 
 	private void addConsumptionKmCircle(@NonNull MapRendererView mapRenderer, @NonNull WptPt point,
 	                                    @NonNull String name, @ColorInt int color, float density, float scale) {
-		Bitmap bitmap = consumptionKmCircleBitmap(name, color, density, scale);
+		Bitmap bitmap = getCachedConsumptionKmCircleBitmap(name, color, density, scale);
 		if (bitmap == null) {
 			return;
 		}
-		if (consumptionSquares == null) {
-			consumptionSquares = new MapMarkersCollection();
-			mapRenderer.addSymbolsProvider(consumptionSquares);
+		MapMarkersCollection target = getConsumptionSquaresTarget();
+		if (target == null) {
+			return;
 		}
 		int order = getPointsOrder() - 550;
 		new MapMarkerBuilder()
@@ -1039,18 +1092,18 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 				.setPinIconVerticalAlignment(net.osmand.core.jni.MapMarker.PinIconVerticalAlignment.CenterVertical)
 				.setPinIconHorisontalAlignment(net.osmand.core.jni.MapMarker.PinIconHorisontalAlignment.CenterHorizontal)
 				.setPosition(new PointI(Utilities.get31TileNumberX(point.getLon()), Utilities.get31TileNumberY(point.getLat())))
-				.buildAndAddToCollection(consumptionSquares);
+				.buildAndAddToCollection(target);
 	}
 
 	private void addConsumptionSquare(@NonNull MapRendererView mapRenderer, @NonNull WptPt point,
 	                                  @NonNull String name, @ColorInt int color, float density) {
-		Bitmap bitmap = consumptionSquareBitmap(name, color, density);
+		Bitmap bitmap = getCachedConsumptionSquareBitmap(name, color, density);
 		if (bitmap == null) {
 			return;
 		}
-		if (consumptionSquares == null) {
-			consumptionSquares = new MapMarkersCollection();
-			mapRenderer.addSymbolsProvider(consumptionSquares);
+		MapMarkersCollection target = getConsumptionSquaresTarget();
+		if (target == null) {
+			return;
 		}
 		int order = getPointsOrder() - 550;
 		new MapMarkerBuilder()
@@ -1060,7 +1113,40 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 				.setPinIconVerticalAlignment(net.osmand.core.jni.MapMarker.PinIconVerticalAlignment.CenterVertical)
 				.setPinIconHorisontalAlignment(net.osmand.core.jni.MapMarker.PinIconHorisontalAlignment.CenterHorizontal)
 				.setPosition(new PointI(Utilities.get31TileNumberX(point.getLon()), Utilities.get31TileNumberY(point.getLat())))
-				.buildAndAddToCollection(consumptionSquares);
+				.buildAndAddToCollection(target);
+	}
+
+	@Nullable
+	private MapMarkersCollection getConsumptionSquaresTarget() {
+		return pendingConsumptionSquares != null ? pendingConsumptionSquares : consumptionSquares;
+	}
+
+	@Nullable
+	private Bitmap getCachedConsumptionSquareBitmap(@NonNull String name, @ColorInt int color, float density) {
+		String key = "sq:" + name + ":" + color + ":" + density;
+		Bitmap cached = consumptionIndicatorBitmapCache.get(key);
+		if (cached != null && !cached.isRecycled()) {
+			return cached;
+		}
+		Bitmap bitmap = consumptionSquareBitmap(name, color, density);
+		if (bitmap != null) {
+			consumptionIndicatorBitmapCache.put(key, bitmap);
+		}
+		return bitmap;
+	}
+
+	@Nullable
+	private Bitmap getCachedConsumptionKmCircleBitmap(@NonNull String name, @ColorInt int color, float density, float scale) {
+		String key = "km:" + name + ":" + color + ":" + density + ":" + scale;
+		Bitmap cached = consumptionIndicatorBitmapCache.get(key);
+		if (cached != null && !cached.isRecycled()) {
+			return cached;
+		}
+		Bitmap bitmap = consumptionKmCircleBitmap(name, color, density, scale);
+		if (bitmap != null) {
+			consumptionIndicatorBitmapCache.put(key, bitmap);
+		}
+		return bitmap;
 	}
 
 	@Nullable
@@ -1120,14 +1206,6 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 		canvas.drawRect(0, 0, width - 1, height - 1, stroke);
 		canvas.drawText(name, width / 2f, height / 2f + bounds.height() / 2f - bounds.bottom, text);
 		return bitmap;
-	}
-
-	private void clearConsumptionSquares() {
-		MapRendererView mapRenderer = getMapRenderer();
-		if (mapRenderer != null && consumptionSquares != null) {
-			mapRenderer.removeSymbolsProvider(consumptionSquares);
-		}
-		consumptionSquares = null;
 	}
 
 	@NonNull
@@ -1205,16 +1283,15 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 	                                             @NonNull Gpx3DLinePositionType trackLinePosition,
 	                                             @NonNull Track3DStyle track3DStyle, boolean heightmapsActive) {
 		float density = tileBox.getDensity();
-		float splitIntervalM = consumptionSplitIntervalMeters(selectedGpxFile);
-		float minGap = consumptionValueLabelMinGap(tileBox, mapRenderer, splitIntervalM);
-		List<VisibleSplitLabel> valueLabels = buildAdaptiveSplitLabels(tileBox, items, trackColor, minGap);
-		if (!appearanceHelper.isConsumptionSplitShowKmCircles()) {
+		boolean showKmCircles = appearanceHelper.isConsumptionSplitShowKmCircles();
+		float circleScale = appearanceHelper.getConsumptionSplitKmCircleScale();
+		ConsumptionLayoutEntry layoutEntry = getConsumptionLayoutEntry(tileBox, mapRenderer, selectedGpxFile, items,
+				trackColor, showKmCircles, circleScale);
+		List<VisibleSplitLabel> valueLabels = layoutEntry.valueLabels;
+		if (!showKmCircles) {
 			for (VisibleSplitLabel valueLabel : valueLabels) {
 				WptPt anchor = valueLabel.item.getLabelPoint();
 				if (anchor == null || valueLabel.name == null) {
-					continue;
-				}
-				if (!NativeUtilities.containsLatLon(mapRenderer, tileBox, anchor.getLat(), anchor.getLon())) {
 					continue;
 				}
 				registerSplitLabel(selectedGpxFile, valueLabel.item);
@@ -1222,7 +1299,10 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 			}
 			return;
 		}
-		List<VisibleSplitLabel> kmLabels = buildConsumptionDistanceLabels(tileBox, items, trackColor, density);
+		List<VisibleSplitLabel> kmLabels = layoutEntry.kmLabels;
+		if (kmLabels == null) {
+			return;
+		}
 		Map<String, VisibleSplitLabel> valuesAtAnchor = new LinkedHashMap<>();
 		for (VisibleSplitLabel label : valueLabels) {
 			WptPt point = label.item.getLabelPoint();
@@ -1399,20 +1479,62 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 
 	private boolean isSplitLabelsViewportChanged(@NonNull RotatedTileBox tileBox) {
 		int zoom = tileBox.getZoom();
-		double lat = tileBox.getLatitude();
-		double lon = tileBox.getLongitude();
 		float rotate = tileBox.getRotate();
-		if (zoom != splitLabelsViewportZoomCached
-				|| Double.compare(lat, splitLabelsViewportLatCached) != 0
-				|| Double.compare(lon, splitLabelsViewportLonCached) != 0
-				|| rotate != splitLabelsViewportRotateCached) {
+		// Pan does not change screen-space gaps between track labels; rebuilding on every center
+		// move clears OpenGL providers each frame during inertial scroll (flicker + lag).
+		if (rotate != splitLabelsViewportRotateCached) {
 			splitLabelsViewportZoomCached = zoom;
-			splitLabelsViewportLatCached = lat;
-			splitLabelsViewportLonCached = lon;
 			splitLabelsViewportRotateCached = rotate;
+			lastConsumptionZoomRebuildMs = SystemClock.uptimeMillis();
+			return true;
+		}
+		if (zoom != splitLabelsViewportZoomCached) {
+			long now = SystemClock.uptimeMillis();
+			boolean haveConsumptionMarkers = consumptionSquares != null || pendingConsumptionSquares != null;
+			if (haveConsumptionMarkers
+					&& now - lastConsumptionZoomRebuildMs < CONSUMPTION_ZOOM_REBUILD_THROTTLE_MS) {
+				return false;
+			}
+			splitLabelsViewportZoomCached = zoom;
+			lastConsumptionZoomRebuildMs = now;
 			return true;
 		}
 		return false;
+	}
+
+	@NonNull
+	private ConsumptionLayoutEntry getConsumptionLayoutEntry(@NonNull RotatedTileBox tileBox,
+	                                                         @Nullable MapRendererView mapRenderer,
+	                                                         @NonNull SelectedGpxFile selectedGpxFile,
+	                                                         @NonNull List<GpxDisplayItem> items,
+	                                                         @ColorInt int trackColor, boolean showKmCircles,
+	                                                         float circleScale) {
+		GpxSplitParams splitParams = gpxDisplayHelper.getGpxSplitParams(selectedGpxFile);
+		String layoutKey = consumptionLayoutCacheKey(selectedGpxFile.getGpxFile().getPath(), splitParams, tileBox,
+				trackColor, showKmCircles, circleScale, selectedGpxFile.getPointsModifiedTime(), items.size());
+		ConsumptionLayoutEntry cached = consumptionLayoutCache.get(layoutKey);
+		if (cached != null) {
+			return cached;
+		}
+		float splitIntervalM = consumptionSplitIntervalMeters(selectedGpxFile);
+		float minGap = consumptionValueLabelMinGap(tileBox, mapRenderer, splitIntervalM);
+		List<VisibleSplitLabel> valueLabels = buildAdaptiveSplitLabels(tileBox, items, trackColor, minGap);
+		List<VisibleSplitLabel> kmLabels = showKmCircles
+				? buildConsumptionDistanceLabels(tileBox, items, trackColor, tileBox.getDensity()) : null;
+		ConsumptionLayoutEntry entry = new ConsumptionLayoutEntry(valueLabels, kmLabels);
+		consumptionLayoutCache.put(layoutKey, entry);
+		return entry;
+	}
+
+	@NonNull
+	private static String consumptionLayoutCacheKey(@NonNull String path, @Nullable GpxSplitParams splitParams,
+	                                                @NonNull RotatedTileBox tileBox, @ColorInt int trackColor,
+	                                                boolean showKmCircles, float circleScale, long pointsModifiedTime,
+	                                                int itemCount) {
+		int paramsHash = splitParams != null
+				? Objects.hash(splitParams.splitType(), splitParams.splitInterval(), splitParams.joinSegments()) : 0;
+		return path + "|" + paramsHash + "|" + tileBox.getZoom() + "|" + Math.round(tileBox.getRotate())
+				+ "|" + trackColor + "|" + showKmCircles + "|" + circleScale + "|" + pointsModifiedTime + "|" + itemCount;
 	}
 
 	@NonNull
@@ -1537,6 +1659,19 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 			return app.getString(R.string.ev_bms_value_none);
 		}
 		return String.valueOf(Math.round(whKm));
+	}
+
+	private static final class ConsumptionLayoutEntry {
+		@NonNull
+		final List<VisibleSplitLabel> valueLabels;
+		@Nullable
+		final List<VisibleSplitLabel> kmLabels;
+
+		ConsumptionLayoutEntry(@NonNull List<VisibleSplitLabel> valueLabels,
+		                       @Nullable List<VisibleSplitLabel> kmLabels) {
+			this.valueLabels = valueLabels;
+			this.kmLabels = kmLabels;
+		}
 	}
 
 	private static class VisibleSplitLabel {
@@ -2613,7 +2748,8 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 		clearSelectedFilesSegments();
 		clearXAxisPoints();
 		clearPoints();
-		clearSelectedFilesSplits();
+		clearAllSplitOpenGlSymbols();
+		consumptionIndicatorBitmapCache.evictAll();
 	}
 
 	private void cleanupOldRenderedSegments(@NonNull List<SelectedGpxFile> selectedGPXFiles) {
