@@ -55,6 +55,7 @@ import java.util.Date
 import java.util.Locale
 import java.util.UUID
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.roundToInt
 
@@ -1122,7 +1123,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 
 	private fun finishCharge(now: Long, remainingAh: Double?, tempC: Double?, loc: Location?) {
 		val startAh = chargeStartAh
-		val chargedAh = if (startAh != null && remainingAh != null) {
+		val bmsDelta = if (startAh != null && remainingAh != null) {
 			(remainingAh - startAh).coerceAtLeast(0.0)
 		} else {
 			null
@@ -1134,6 +1135,12 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		} else {
 			chargeFrozenCurrentA
 		}
+		val integralAh = if (chargeCurrentDurationMs > 0L) {
+			chargeCurrentIntegralAms / 3_600_000.0
+		} else {
+			0.0
+		}
+		val chargedAh = EvChargeEnergy.consistentChargedAh(bmsDelta, integralAh)
 		val energyWh = resolveChargeEnergyWh(chargedAh, lastBms?.voltageV ?: ctrlVoltageV())
 		val record = EvHistoryStore.ChargeRecord(
 			startMs = if (chargeStartMs > 0L) chargeStartMs else now,
@@ -1689,11 +1696,23 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		val startMs = json.optLong("startMs")
 		val startAh = json.optNullableDouble("startAh")
 		val lastAh = json.optNullableDouble("lastAh")
-		val chargedAh = if (startAh != null && lastAh != null) {
+		val bmsDelta = if (startAh != null && lastAh != null) {
 			(lastAh - startAh).coerceAtLeast(0.0)
 		} else {
-			json.optNullableDouble("chargedAh")
+			null
 		}
+		val energyWh = json.optNullableDouble("energyWh")
+		val durationMs = (endMs - startMs).coerceAtLeast(1L)
+		val avgFromJson = json.optNullableDouble("currentA")
+		val integralAh = if (avgFromJson != null && durationMs > 0L) {
+			avgFromJson * (durationMs / 3_600_000.0)
+		} else if (energyWh != null && energyWh > 1.0) {
+			energyWh / 98.0
+		} else {
+			0.0
+		}
+		val chargedAh = EvChargeEnergy.consistentChargedAh(bmsDelta, integralAh)
+			?: json.optNullableDouble("chargedAh")
 		return EvHistoryStore.ChargeRecord(
 			startMs = startMs,
 			endMs = endMs,
@@ -2381,7 +2400,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		open: Boolean
 	): EvHistoryStore.ChargeRecord {
 		val startAh = chargeStartAh
-		val chargedAh = if (startAh != null && remainingAh != null) {
+		val bmsDelta = if (startAh != null && remainingAh != null) {
 			(remainingAh - startAh).coerceAtLeast(0.0)
 		} else {
 			null
@@ -2392,6 +2411,12 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		} else {
 			chargeFrozenCurrentA
 		}
+		val integralAh = if (chargeCurrentDurationMs > 0L) {
+			chargeCurrentIntegralAms / 3_600_000.0
+		} else {
+			0.0
+		}
+		val chargedAh = EvChargeEnergy.consistentChargedAh(bmsDelta, integralAh)
 		return EvHistoryStore.ChargeRecord(
 			startMs = if (chargeStartMs > 0L) chargeStartMs else now,
 			endMs = if (open) 0L else now,
@@ -2577,7 +2602,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	}
 
 	fun recomputeTodayChargeEnergy(onDone: (Boolean) -> Unit) {
-		val key = todayChargeWhKey()
+		val key = chargeMetricsRepairKey()
 		if (key == null || key == CHARGE_WH_REPAIR.get()) {
 			onDone(false)
 			return
@@ -2610,84 +2635,102 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		}.start()
 	}
 
-	private fun todayChargeWhKey(): String? {
-		val now = System.currentTimeMillis()
-		val dayStart = historyStore.dayStartMs(now)
-		val files = todayChargeLogs(dayStart, historyStore.nextDayStartMs(now))
+	private fun chargeMetricsRepairKey(): String? {
+		val charges = chargeHistory().filter { !it.isOpen() && it.endMs > it.startMs }
+		if (charges.isEmpty()) {
+			return null
+		}
+		val from = charges.minOf { it.startMs }
+		val to = charges.maxOf { it.endMs }
+		val files = telemetryLogsOverlapping(from, to)
 		if (files.isEmpty()) {
 			return null
 		}
-		val day = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(now))
 		val sizes = files.joinToString(",") { "${it.name}:${it.sizeBytes}" }
-		return "gap-ah-v1|$day|$sizes"
+		return "metrics-v2|$sizes|${charges.size}"
 	}
 
-	private fun todayChargeLogs(dayStart: Long, dayEnd: Long): List<TelemetryRecorder.CsvEntry> {
+	private fun telemetryLogsOverlapping(fromMs: Long, toMs: Long): List<TelemetryRecorder.CsvEntry> {
 		return recorder.listFiles().filter { file ->
 			if (!file.name.endsWith(".csv", true)) {
 				return@filter false
 			}
 			val stamp = csvStampMs(file.name) ?: return@filter false
-			stamp < dayEnd && stamp >= dayStart - 18L * 3_600_000L
+			stamp <= toMs + 18L * 3_600_000L && stamp >= fromMs - 18L * 3_600_000L
 		}
 	}
 
 	private fun applyTodayChargeWattHours(): Boolean {
+		return applyChargeTelemetryMetrics()
+	}
+
+	private fun applyChargeTelemetryMetrics(): Boolean {
 		val now = System.currentTimeMillis()
-		val dayStart = historyStore.dayStartMs(now)
-		val dayEnd = historyStore.nextDayStartMs(now)
 		val charges = chargeHistory()
 		val targets = charges.filter { row ->
-			val end = if (row.endMs > 0L) row.endMs else now
-			row.startMs < dayEnd && end > dayStart
+			!row.isOpen() && row.endMs > row.startMs
 		}
 		if (targets.isEmpty()) {
 			return false
 		}
 		val from = targets.minOf { it.startMs }
-		val to = targets.maxOf { if (it.endMs > 0L) it.endMs else now }
-		val accumulators = LinkedHashMap<Long, EvChargeEnergy.Accumulator>()
+		val to = targets.maxOf { it.endMs }
+		val metricsByStart = LinkedHashMap<Long, EvChargeEnergy.SessionMetrics>()
 		for (row in targets) {
-			accumulators[row.startMs] = EvChargeEnergy.Accumulator()
+			metricsByStart[row.startMs] = EvChargeEnergy.SessionMetrics(null, 0.0, 0.0, null, 0L)
 		}
-		for (file in todayChargeLogs(dayStart, dayEnd).sortedBy { csvStampMs(it.name) ?: 0L }) {
+		for (file in telemetryLogsOverlapping(from, to).sortedBy { csvStampMs(it.name) ?: 0L }) {
 			val input = recorder.openLog(file.spec) ?: continue
-			input.use { stream ->
-				EvChargeEnergy.scan(stream, from, to) { sample ->
-					for (row in targets) {
-						val end = if (row.endMs > 0L) row.endMs else now
-						if (sample.timeMs in row.startMs..end) {
-							accumulators[row.startMs]?.add(sample)
-						}
+			for (row in targets) {
+				input.use { stream ->
+					val m = EvChargeEnergy.scanSessionMetrics(stream, row.startMs, row.endMs)
+					val prev = metricsByStart[row.startMs] ?: return@use
+					if (m.integralAh > prev.integralAh || m.energyWh > prev.energyWh) {
+						metricsByStart[row.startMs] = m
 					}
 				}
 			}
 		}
 		var changed = false
+		val repairedRows = ArrayList<EvHistoryStore.ChargeRecord>()
 		val updated = charges.map { row ->
-			val acc = accumulators[row.startMs] ?: return@map row
-			if (!acc.hasEnergy()) {
+			val m = metricsByStart[row.startMs] ?: return@map row
+			if (m.integralAh < 0.05 && m.energyWh < 1.0) {
 				return@map row
 			}
-			val wh = acc.wattHours
-			val previous = row.energyWh ?: 0.0
-			if (wh <= previous + 1.0) {
+			val charged = EvChargeEnergy.consistentChargedAh(m.bmsDeltaAh, m.integralAh)
+			val wh = m.energyWh.takeIf { it >= 1.0 }
+			val avg = m.avgCurrentA
+			val sameAh = charged != null && row.chargedAh != null &&
+				abs(charged - row.chargedAh) < 0.15
+			val sameWh = wh != null && row.energyWh != null && abs(wh - row.energyWh) < 2.0
+			val sameAvg = avg != null && row.avgCurrentA != null && abs(avg - row.avgCurrentA) < 0.2
+			if (sameAh && sameWh && sameAvg) {
 				return@map row
 			}
 			changed = true
-			if (row.startMs == chargeStartMs && chargeSessionOpen && wh > chargeEnergyWhAcc + 1.0) {
-				chargeEnergyWhAcc = wh
-				chargeEnergyLastMs = now
-				persistChargeSession(force = true)
+			val fixed = row.copy(
+				chargedAh = charged ?: row.chargedAh,
+				energyWh = wh ?: row.energyWh,
+				avgCurrentA = avg ?: row.avgCurrentA
+			)
+			if (!row.isOpen()) {
+				repairedRows.add(fixed)
 			}
-			journal.i("charge", "energy ${row.startMs} ${previous.roundToInt()} -> ${wh.roundToInt()} Wh")
-			row.copy(energyWh = wh)
+			journal.i(
+				"charge",
+				"telemetry metrics ${row.startMs} Ah ${row.chargedAh} -> ${fixed.chargedAh} " +
+					"Wh ${row.energyWh?.roundToInt()} -> ${fixed.energyWh?.roundToInt()} " +
+					"I ${row.avgCurrentA} -> ${fixed.avgCurrentA}"
+			)
+			fixed
 		}
 		if (!changed) {
 			return false
 		}
 		CHARGE_HISTORY.set(historyStore.encodeCharges(updated))
 		historyStore.rewriteChargeCsv(updated.filter { !it.isOpen() })
+		syncChargeWaypointsFromRecords(repairedRows)
 		return true
 	}
 
@@ -4622,6 +4665,77 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			.flatMap { it.listFiles()?.toList().orEmpty() }
 			.filter { it.isFile && it.name.endsWith(".gpx", true) && it.name.startsWith(day) }
 			.maxByOrNull { it.lastModified() }
+	}
+
+	private fun syncChargeWaypointsFromRecords(rows: List<EvHistoryStore.ChargeRecord>) {
+		for (row in rows) {
+			if (row.isOpen()) {
+				continue
+			}
+			val lat = row.startLat ?: row.endLat ?: continue
+			val lon = row.startLon ?: row.endLon ?: continue
+			val name = chargeWaypointName(row.startMs, row.energyWh)
+			val desc = chargeRecordWaypointDescription(row)
+			val file = latestRecordedGpxFile(row.startMs) ?: continue
+			try {
+				val gpx = SharedUtil.loadGpxFile(file)
+				if (gpx.error != null) {
+					continue
+				}
+				var touched = false
+				for (pt in gpx.getPointsList()) {
+					if (!isChargeWaypointCandidate(pt, row.startMs)) {
+						continue
+					}
+					val near = kotlin.math.abs(pt.lat - lat) < 2e-3 &&
+						kotlin.math.abs(pt.lon - lon) < 2e-3
+					val timeNear = kotlin.math.abs(pt.time - row.startMs) < 3_600_000L
+					if (near || timeNear) {
+						pt.name = name
+						pt.desc = desc
+						touched = true
+					}
+				}
+				if (!touched) {
+					appendChargeWaypointToLatestGpx(
+						lat,
+						lon,
+						GpxEvent(name, desc, lat, lon, row.startMs, true),
+						0xFF43A047.toInt()
+					)
+				} else {
+					SharedUtil.writeGpxFile(file, gpx)
+					journal.i("gpx", "updated charge wpt ${file.name} start=${row.startMs}")
+				}
+			} catch (e: Exception) {
+				journal.w("gpx", "sync charge wpt failed: ${e.message}")
+			}
+		}
+	}
+
+	private fun isChargeWaypointCandidate(pt: WptPt, startMs: Long): Boolean {
+		val n = pt.name ?: return false
+		if (n.contains("Wh", true) || n.contains("Вт", true)) {
+			return true
+		}
+		if (pt.getIconName() == "charging_station") {
+			return true
+		}
+		return kotlin.math.abs(pt.time - startMs) < 3_600_000L &&
+			(n.contains(app.getString(R.string.ev_bms_gpx_charge_end), true))
+	}
+
+	private fun chargeRecordWaypointDescription(row: EvHistoryStore.ChargeRecord): String {
+		return chargeEventDescription(
+			start = false,
+			remainingAh = null,
+			tempC = row.endTempC,
+			chargedAh = row.chargedAh,
+			durationMs = row.durationMs(),
+			energyWh = row.energyWh,
+			startMs = row.startMs,
+			endMs = row.endMs
+		)
 	}
 
 	fun selectedTelemetryFields(): List<TelemetryField> = TelemetryField.parse(TELEMETRY_FIELDS.get())

@@ -321,18 +321,21 @@ object EvTelemetryHistory {
 				return null
 			}
 			val dur = (endMs - startMs).coerceAtLeast(1L)
-			val chargedAh = if (startAh != null && endAh != null) {
+			val bmsDelta = if (startAh != null && endAh != null) {
 				(endAh!! - startAh!!).coerceAtLeast(0.0)
 			} else {
 				null
 			}
+			val integralAh = if (currentIntegralAms > 0.0) currentIntegralAms / 3_600_000.0 else 0.0
+			val chargedAh = EvChargeEnergy.consistentChargedAh(bmsDelta, integralAh)
+			val avgFromIntegral = if (dur > 0L && integralAh > 0.01) integralAh / (dur / 3_600_000.0) else null
 			return EvHistoryStore.ChargeRecord(
 				startMs = startMs,
 				endMs = endMs,
 				startTempC = startTemp,
 				endTempC = endTemp,
 				chargedAh = chargedAh,
-				avgCurrentA = if (currentIntegralAms > 0.0) currentIntegralAms / dur else null,
+				avgCurrentA = avgFromIntegral,
 				startMinCellV = startMinCell,
 				endMinCellV = endMinCell,
 				stopMs = 0L,

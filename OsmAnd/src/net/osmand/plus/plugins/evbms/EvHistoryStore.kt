@@ -671,7 +671,14 @@ class EvHistoryStore(private val app: OsmandApplication) {
 			else -> last.avgCurrentA ?: first.avgCurrentA
 		}
 		val energy = sumNullable(a.energyWh, b.energyWh)
-		val charged = sumNullable(a.chargedAh, b.chargedAh)
+		val mergedDurMs = maxOf(first.endMs, last.endMs).coerceAtLeast(first.startMs + 1L) - first.startMs
+		val charged = when {
+			avg != null && mergedDurMs > 0L ->
+				avg * (mergedDurMs / 3_600_000.0)
+			a.chargedAh != null && b.chargedAh != null ->
+				maxOf(a.chargedAh, b.chargedAh)
+			else -> last.chargedAh ?: first.chargedAh
+		}
 		val open = first.isOpen() || last.isOpen()
 		return ChargeRecord(
 			startMs = first.startMs,
