@@ -81,20 +81,52 @@
 			</LinearLayout>
 		</ScrollView>
 
-		<ScrollView
+		<LinearLayout
 			android:id="@+id/ev_bms_history_scroll"
 			android:layout_width="match_parent"
 			android:layout_height="match_parent"
-			android:fillViewport="true"
+			android:orientation="vertical"
 			android:visibility="gone">
 
 			<LinearLayout
-				android:id="@+id/ev_bms_history_list"
+				android:id="@+id/ev_bms_history_toolbar"
 				android:layout_width="match_parent"
 				android:layout_height="wrap_content"
-				android:orientation="vertical"
-				android:paddingBottom="16dp" />
-		</ScrollView>
+				android:gravity="center_vertical|end"
+				android:orientation="horizontal"
+				android:paddingStart="@dimen/content_padding"
+				android:paddingEnd="@dimen/content_padding"
+				android:paddingTop="4dp">
+
+				<TextView
+					android:id="@+id/history_rebuild_btn"
+					android:layout_width="wrap_content"
+					android:layout_height="40dp"
+					android:background="?attr/selectableItemBackgroundBorderless"
+					android:contentDescription="@string/ev_bms_history_rebuild"
+					android:gravity="center"
+					android:includeFontPadding="false"
+					android:minWidth="40dp"
+					android:paddingStart="8dp"
+					android:paddingEnd="8dp"
+					android:text="🔄"
+					android:textSize="20sp" />
+			</LinearLayout>
+
+			<ScrollView
+				android:layout_width="match_parent"
+				android:layout_height="0dp"
+				android:layout_weight="1"
+				android:fillViewport="true">
+
+				<LinearLayout
+					android:id="@+id/ev_bms_history_list"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:orientation="vertical"
+					android:paddingBottom="16dp" />
+			</ScrollView>
+		</LinearLayout>
 
 		<FrameLayout
 			android:id="@+id/ev_bms_journal_container"

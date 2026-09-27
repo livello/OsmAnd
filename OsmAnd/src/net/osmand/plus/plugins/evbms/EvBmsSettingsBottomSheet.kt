@@ -88,6 +88,8 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	private val expandedHistoryDays = HashSet<String>()
 	private var historyLegendExpanded = false
 	private var historyBindGeneration = 0
+	private var historyRebuildBtn: TextView? = null
+	private var historyRebuildRunning = false
 
 	private data class ChartRow(
 		val field: TelemetryField,
@@ -147,6 +149,7 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
 		super.onViewCreated(view, savedInstanceState)
 		bindTabs(view)
+		setupHistoryRebuildButton(view)
 		if (childFragmentManager.findFragmentByTag(SETTINGS_TAG) == null) {
 			val fragment = EvBmsSettingsFragment()
 			fragment.arguments = Bundle().apply {
@@ -790,22 +793,48 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		}
 	}
 
-	private fun bindHistory() {
-		val list = view?.findViewById<LinearLayout>(R.id.ev_bms_history_list) ?: return
+	private fun setupHistoryRebuildButton(root: View) {
+		val btn = root.findViewById<TextView>(R.id.history_rebuild_btn)
+		historyRebuildBtn = btn
+		val hint = getString(R.string.ev_bms_history_rebuild)
+		btn.contentDescription = hint
+		TooltipCompat.setTooltipText(btn, hint)
+		btn.setOnClickListener { runManualHistoryRebuild() }
+		updateHistoryRebuildButton()
+	}
+
+	private fun updateHistoryRebuildButton() {
+		val btn = historyRebuildBtn ?: return
+		btn.isEnabled = !historyRebuildRunning
+		btn.alpha = if (historyRebuildRunning) 0.35f else 1f
+	}
+
+	private fun runManualHistoryRebuild() {
+		if (historyRebuildRunning) {
+			return
+		}
+		historyRebuildRunning = true
+		updateHistoryRebuildButton()
+		app.showToastMessage(R.string.ev_bms_history_rebuilding)
 		val gen = ++historyBindGeneration
-		list.removeAllViews()
-		list.addView(emptyHint(getString(R.string.shared_string_loading)))
-		plugin.repairChargeHistoryAsync {
+		plugin.rebuildDisplayHistoryAsync {
 			if (gen != historyBindGeneration || view == null) {
-				return@repairChargeHistoryAsync
+				historyRebuildRunning = false
+				updateHistoryRebuildButton()
+				return@rebuildDisplayHistoryAsync
 			}
-			plugin.recomputeTodayChargeEnergy {
-				if (gen != historyBindGeneration || view == null) {
-					return@recomputeTodayChargeEnergy
-				}
+			historyRebuildRunning = false
+			updateHistoryRebuildButton()
+			settingsFragment()?.refreshHistoryPrefs()
+			if (currentTab == EvBmsSheetTab.HISTORY) {
 				populateHistoryList()
 			}
+			app.showToastMessage(R.string.ev_bms_history_rebuilt)
 		}
+	}
+
+	private fun bindHistory() {
+		populateHistoryList()
 	}
 
 	private fun populateHistoryList() {

@@ -499,7 +499,6 @@ class EvBmsSyncController(
 		}
 		plugin.mergeIncomingHistory(incomingCharges, incomingTrips)
 		plugin.forgetTelemetryHistoryDone(downloadedCsv)
-		plugin.repairChargeHistory()
 		if (errors == 0 && !cancelPull.get()) {
 			lastPeerRev[revKey] = remoteRev
 		}

@@ -631,7 +631,6 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		migratePollPreferences()
 		migrateCadenceTelemetryField()
 		restoreSessions()
-		repairChargeHistoryAsync()
 		profileStore.ensureDefault()
 		publishTracksToMyPlaces()
 		restoreTelemetrySession()
@@ -1902,6 +1901,14 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				}
 			}
 		}.start()
+	}
+
+	fun rebuildDisplayHistoryAsync(onDone: () -> Unit = {}) {
+		repairChargeHistoryAsync {
+			recomputeTodayChargeEnergy { _ ->
+				onDone()
+			}
+		}
 	}
 
 	private fun collapseStoredDuplicates() {

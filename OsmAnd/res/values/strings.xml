@@ -63,6 +63,9 @@
 	<string name="ev_bms_voice_alerts_on">Voice alerts enabled</string>
 	<string name="ev_bms_ride_modes">Ride modes</string>
 	<string name="ev_bms_history_group">History</string>
+	<string name="ev_bms_history_rebuild">Rebuild charge and trip history from telemetry</string>
+	<string name="ev_bms_history_rebuilding">Rebuilding history…</string>
+	<string name="ev_bms_history_rebuilt">History updated</string>
 	<string name="ev_bms_history_day_trip">Trip · %1$s</string>
 	<string name="ev_bms_history_today">today</string>
 	<string name="ev_bms_history_charge_time">Charging time %1$s</string>

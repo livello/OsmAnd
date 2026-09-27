@@ -52,6 +52,9 @@
     <string name="ev_bms_voice_alerts_on">голосовые оповещения включены</string>
     <string name="ev_bms_ride_modes">Режимы поездки</string>
     <string name="ev_bms_history_group">История</string>
+    <string name="ev_bms_history_rebuild">Пересчитать историю зарядок и пробегов из телеметрии</string>
+    <string name="ev_bms_history_rebuilding">Пересчёт истории…</string>
+    <string name="ev_bms_history_rebuilt">История обновлена</string>
     <string name="ev_bms_history_day_trip">Поездка · %1$s</string>
     <string name="ev_bms_history_today">сегодня</string>
     <string name="ev_bms_history_charge_time">Время зарядки %1$s</string>
