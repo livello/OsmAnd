@@ -16,6 +16,18 @@
 		android:title="@string/voice_gps_listen_background" />
 
 	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
+		android:key="voice_gps_pause_when_moving"
+		android:layout="@layout/preference_with_descr"
+		android:summaryOff="@string/shared_string_disabled"
+		android:summaryOn="@string/shared_string_enabled"
+		android:title="@string/voice_gps_pause_when_moving" />
+
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="voice_gps_moving_speed_threshold_kmh"
+		android:layout="@layout/preference_with_descr"
+		android:title="@string/voice_gps_moving_speed_threshold" />
+
+	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
 		android:key="voice_gps_partial_wake"
 		android:layout="@layout/preference_with_descr"
 		android:summaryOff="@string/shared_string_disabled"

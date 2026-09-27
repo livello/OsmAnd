@@ -675,8 +675,11 @@ class EvHistoryStore(private val app: OsmandApplication) {
 		val charged = when {
 			avg != null && mergedDurMs > 0L ->
 				avg * (mergedDurMs / 3_600_000.0)
-			a.chargedAh != null && b.chargedAh != null ->
-				maxOf(a.chargedAh, b.chargedAh)
+			a.chargedAh != null && b.chargedAh != null -> {
+				val hi = maxOf(a.chargedAh, b.chargedAh)
+				val lo = minOf(a.chargedAh, b.chargedAh)
+				EvChargeEnergy.consistentChargedAh(hi, lo) ?: hi
+			}
 			else -> last.chargedAh ?: first.chargedAh
 		}
 		val open = first.isOpen() || last.isOpen()

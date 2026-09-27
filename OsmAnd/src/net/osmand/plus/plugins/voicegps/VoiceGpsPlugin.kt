@@ -28,7 +28,12 @@ class VoiceGpsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 		const val REQUEST_RECORD_AUDIO = 88501
 		private const val DEFAULT_WAKE_PAUSE_MS = 4000L
 		private const val DEFAULT_LISTEN_WINDOW_MS = 8000L
+		private const val DEFAULT_COMMAND_LISTEN_MS = 12_000L
+		private const val DEFAULT_DICTATION_LISTEN_MS = 45_000L
 		private const val FOREGROUND_SYNC_MS = 2500L
+		const val DEFAULT_MOVING_SPEED_THRESHOLD_KMH = 8
+		private const val MIN_MOVING_SPEED_THRESHOLD_KMH = 2
+		private const val MAX_MOVING_SPEED_THRESHOLD_KMH = 40
 	}
 
 	val LISTEN_IN_BACKGROUND: CommonPreference<Boolean> =
@@ -41,6 +46,13 @@ class VoiceGpsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 		registerBooleanPreference("voice_gps_partial_wake", true).makeGlobal().makeShared()
 	val SHOW_VOICE_GPX_ON_MAP: CommonPreference<Boolean> =
 		registerBooleanPreference("ev_voice_gpx_show_on_map", true).makeGlobal().makeShared()
+	val PAUSE_WHEN_MOVING: CommonPreference<Boolean> =
+		registerBooleanPreference("voice_gps_pause_when_moving", true).makeGlobal().makeShared()
+	val MOVING_SPEED_THRESHOLD_KMH: CommonPreference<Int> =
+		registerIntPreference(
+			"voice_gps_moving_speed_threshold_kmh",
+			DEFAULT_MOVING_SPEED_THRESHOLD_KMH
+		).makeGlobal().makeShared()
 
 	private val mainHandler = Handler(Looper.getMainLooper())
 	private val foregroundSyncRunnable = object : Runnable {
@@ -117,15 +129,40 @@ class VoiceGpsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 		if (!isActive || !hasRecordAudioPermission()) {
 			return false
 		}
+		if (isListeningPausedByMotion()) {
+			return false
+		}
 		if (LISTEN_IN_BACKGROUND.get()) {
 			return true
 		}
 		return app.isAppInForeground
 	}
 
+	/** True when GPS speed is at or above [movingSpeedThresholdKmh] and pause-when-moving is on. */
+	fun isListeningPausedByMotion(): Boolean {
+		if (!PAUSE_WHEN_MOVING.get()) {
+			return false
+		}
+		val loc = app.locationProvider.lastKnownLocation ?: return false
+		if (!loc.hasSpeed()) {
+			return false
+		}
+		val speedKmh = loc.speed * 3.6
+		return speedKmh >= movingSpeedThresholdKmh()
+	}
+
+	fun movingSpeedThresholdKmh(): Int =
+		MOVING_SPEED_THRESHOLD_KMH.get().coerceIn(MIN_MOVING_SPEED_THRESHOLD_KMH, MAX_MOVING_SPEED_THRESHOLD_KMH)
+
 	fun wakePauseMs(): Long = WAKE_PAUSE_MS.get().toLong().coerceIn(1500L, 30_000L)
 
 	fun listenWindowMs(): Long = LISTEN_WINDOW_MS.get().toLong().coerceIn(3000L, 30_000L)
+
+	fun commandListenWindowMs(): Long =
+		(DEFAULT_COMMAND_LISTEN_MS).coerceIn(listenWindowMs(), 30_000L)
+
+	fun dictationListenWindowMs(): Long =
+		maxOf(DEFAULT_DICTATION_LISTEN_MS, listenWindowMs() * 4L).coerceAtMost(120_000L)
 
 	fun partialWakeEnabled(): Boolean = PARTIAL_WAKE.get()
 

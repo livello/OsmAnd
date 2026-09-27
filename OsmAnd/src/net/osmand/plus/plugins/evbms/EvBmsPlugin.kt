@@ -1893,6 +1893,17 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		mergeSplitChargeHistory()
 		dropEmptyTrips()
 		collapseStoredDuplicates()
+		applyChargeTelemetryMetricsAfterRepair()
+	}
+
+	private fun applyChargeTelemetryMetricsAfterRepair() {
+		try {
+			applyChargeTelemetryMetrics()
+		} catch (e: Exception) {
+			Log.e(TAG, "charge telemetry metrics after repair failed", e)
+			journal.e("charge", "telemetry metrics after repair failed: ${e.message}")
+		}
+		chargeMetricsRepairKey()?.let { CHARGE_WH_REPAIR.set(it) }
 	}
 
 	fun repairChargeHistoryAsync(onDone: () -> Unit = {}) {
@@ -1924,9 +1935,10 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 
 	fun rebuildDisplayHistoryAsync(onDone: () -> Unit = {}) {
 		repairChargeHistoryAsync {
-			recomputeTodayChargeEnergy { _ ->
-				onDone()
-			}
+			recomputeTodayChargeEnergy(
+				onDone = { _ -> onDone() },
+				force = true,
+			)
 		}
 	}
 
@@ -2601,9 +2613,9 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		}
 	}
 
-	fun recomputeTodayChargeEnergy(onDone: (Boolean) -> Unit) {
+	fun recomputeTodayChargeEnergy(onDone: (Boolean) -> Unit, force: Boolean = false) {
 		val key = chargeMetricsRepairKey()
-		if (key == null || key == CHARGE_WH_REPAIR.get()) {
+		if (!force && (key == null || key == CHARGE_WH_REPAIR.get())) {
 			onDone(false)
 			return
 		}
@@ -2647,7 +2659,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			return null
 		}
 		val sizes = files.joinToString(",") { "${it.name}:${it.sizeBytes}" }
-		return "metrics-v2|$sizes|${charges.size}"
+		return "metrics-v3|$sizes|${charges.size}"
 	}
 
 	private fun telemetryLogsOverlapping(fromMs: Long, toMs: Long): List<TelemetryRecorder.CsvEntry> {

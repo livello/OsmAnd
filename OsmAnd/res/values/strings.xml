@@ -6510,6 +6510,10 @@ Download tile maps directly, or copy them as SQLite database files to OsmAnd\'s 
     <string name="voice_gps_mic_denied">Tap to allow microphone access</string>
     <string name="voice_gps_listen_background">Listen when app in background</string>
     <string name="voice_gps_listen_background_desc">Off by default to save battery. When off, listening stops when OsmAnd is not on screen.</string>
+    <string name="voice_gps_pause_when_moving">Pause listening while moving</string>
+    <string name="voice_gps_pause_when_moving_desc">When on, the microphone is not used while GPS speed is at or above the movement threshold (saves battery while riding).</string>
+    <string name="voice_gps_moving_speed_threshold">Movement speed threshold</string>
+    <string name="voice_gps_moving_speed_threshold_desc">Listening stays off at this speed and above when pause while moving is enabled.</string>
     <string name="voice_gps_partial_wake">Partial results for wake word</string>
     <string name="voice_gps_partial_wake_desc">Detect «OsmAnd» faster (uses slightly more CPU during listen windows).</string>
     <string name="voice_gps_activated">Voice control active — say «note»</string>

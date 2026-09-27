@@ -6,6 +6,7 @@ import androidx.preference.Preference
 import net.osmand.plus.R
 import net.osmand.plus.plugins.PluginsHelper
 import net.osmand.plus.settings.fragments.BaseSettingsFragment
+import net.osmand.plus.settings.preferences.ListPreferenceEx
 import net.osmand.plus.settings.preferences.SwitchPreferenceEx
 
 class VoiceGpsSettingsFragment : BaseSettingsFragment() {
@@ -16,8 +17,25 @@ class VoiceGpsSettingsFragment : BaseSettingsFragment() {
 	override fun setupPreferences() {
 		updatePermissionSummary()
 		setupSwitch(plugin.LISTEN_IN_BACKGROUND.id, R.string.voice_gps_listen_background_desc)
+		setupSwitch(plugin.PAUSE_WHEN_MOVING.id, R.string.voice_gps_pause_when_moving_desc)
+		setupMovingSpeedThreshold()
 		setupSwitch(plugin.PARTIAL_WAKE.id, R.string.voice_gps_partial_wake_desc)
 		setupSwitch(plugin.SHOW_VOICE_GPX_ON_MAP.id, R.string.ev_voice_gpx_show_on_map_desc)
+	}
+
+	private fun setupMovingSpeedThreshold() {
+		val pref = findPreference<ListPreferenceEx>(plugin.MOVING_SPEED_THRESHOLD_KMH.id) ?: return
+		val values = intArrayOf(5, 8, 10, 15, 20)
+		pref.setEntries(values.map { getString(R.string.ev_bms_n_kmh, it) }.toTypedArray())
+		pref.setEntryValues(values.map { it as Any }.toTypedArray())
+		pref.setValue(plugin.MOVING_SPEED_THRESHOLD_KMH.get())
+		pref.setDescription(R.string.voice_gps_moving_speed_threshold_desc)
+		updateMovingSpeedThresholdEnabled()
+	}
+
+	private fun updateMovingSpeedThresholdEnabled() {
+		findPreference<ListPreferenceEx>(plugin.MOVING_SPEED_THRESHOLD_KMH.id)?.isEnabled =
+			plugin.PAUSE_WHEN_MOVING.get()
 	}
 
 	private fun setupSwitch(key: String, desc: Int) {
@@ -36,8 +54,15 @@ class VoiceGpsSettingsFragment : BaseSettingsFragment() {
 		val result = super.onPreferenceChange(preference, newValue)
 		when (preference.key) {
 			plugin.LISTEN_IN_BACKGROUND.id,
+			plugin.PAUSE_WHEN_MOVING.id,
+			plugin.MOVING_SPEED_THRESHOLD_KMH.id,
 			plugin.PARTIAL_WAKE.id,
-			plugin.SHOW_VOICE_GPX_ON_MAP.id -> plugin.syncListeningService()
+			plugin.SHOW_VOICE_GPX_ON_MAP.id -> {
+				if (preference.key == plugin.PAUSE_WHEN_MOVING.id) {
+					updateMovingSpeedThresholdEnabled()
+				}
+				plugin.syncListeningService()
+			}
 		}
 		return result
 	}

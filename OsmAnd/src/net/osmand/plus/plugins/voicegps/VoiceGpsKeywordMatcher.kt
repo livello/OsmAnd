@@ -31,7 +31,15 @@ object VoiceGpsKeywordMatcher {
 		if (n.isEmpty()) {
 			return false
 		}
-		return WAKE.any { n.contains(it) }
+		return WAKE.any { matchesWakeToken(n, it) }
+	}
+
+	/** Avoid substring false positives (e.g. «росманд») on partial STT noise. */
+	private fun matchesWakeToken(normalized: String, keyword: String): Boolean {
+		if (normalized == keyword) {
+			return true
+		}
+		return Regex("(^|\\s)$keyword(\\s|$)").containsMatchIn(normalized)
 	}
 
 	fun containsNoteCommand(text: String): Boolean {

@@ -37,7 +37,7 @@ class VoiceGpsSpeechController(
 	private var lastPartial = ""
 
 	private val restartRunnable = Runnable { startListenCycle() }
-	private val listenTimeoutRunnable = Runnable { stopActiveSession("listen_timeout") }
+	private val listenTimeoutRunnable = Runnable { onListenWindowElapsed() }
 
 	companion object {
 		private const val TAG = "VoiceGpsSpeech"
@@ -94,6 +94,37 @@ class VoiceGpsSpeechController(
 		mainHandler.postDelayed(restartRunnable, delayMs)
 	}
 
+	private fun armListenTimeout() {
+		if (!running) {
+			return
+		}
+		mainHandler.removeCallbacks(listenTimeoutRunnable)
+		val windowMs = when (mode) {
+			Mode.DICTATE -> plugin.dictationListenWindowMs()
+			Mode.AWAIT_COMMAND -> plugin.commandListenWindowMs()
+			Mode.WAKE_LISTEN -> plugin.listenWindowMs()
+		}
+		mainHandler.postDelayed(listenTimeoutRunnable, windowMs)
+	}
+
+	private fun onListenWindowElapsed() {
+		if (!running) {
+			return
+		}
+		when (mode) {
+			Mode.DICTATE -> {
+				appendPartialToDictation()
+				Log.d(TAG, "dictation listen window elapsed — restarting STT")
+				try {
+					speechRecognizer?.cancel()
+				} catch (_: Exception) {
+				}
+				scheduleNextCycle(150L)
+			}
+			else -> stopActiveSession("listen_timeout")
+		}
+	}
+
 	private fun startListenCycle() {
 		if (!running || !plugin.shouldListenNow()) {
 			scheduleNextCycle(plugin.wakePauseMs())
@@ -104,8 +135,7 @@ class VoiceGpsSpeechController(
 		try {
 			recognizer.cancel()
 			recognizer.startListening(buildIntent())
-			mainHandler.removeCallbacks(listenTimeoutRunnable)
-			mainHandler.postDelayed(listenTimeoutRunnable, plugin.listenWindowMs())
+			armListenTimeout()
 		} catch (e: Exception) {
 			Log.w(TAG, "startListening failed: ${e.message}")
 			scheduleNextCycle(plugin.wakePauseMs())
@@ -131,6 +161,8 @@ class VoiceGpsSpeechController(
 		}
 		if (mode == Mode.WAKE_LISTEN) {
 			scheduleNextCycle(plugin.wakePauseMs())
+		} else if (mode == Mode.DICTATE) {
+			scheduleNextCycle(200L)
 		} else {
 			scheduleNextCycle(400L)
 		}
@@ -163,17 +195,35 @@ class VoiceGpsSpeechController(
 			resetNoteSession()
 			return
 		}
-		val body = VoiceGpsKeywordMatcher.stripEndKeyword(spoken)
+		appendPartialToDictation()
+		val body = VoiceGpsKeywordMatcher.stripEndKeyword(
+			if (spoken.isNotBlank()) spoken else dictationFinal.toString()
+		)
 		if (body.isNotEmpty()) {
 			noteWriter.saveTextNote(lat, lon, body, noteStartedMs)
+			Log.i(TAG, "saved voice note len=${body.length}")
 		}
 		resetNoteSession()
 		scheduleNextCycle(plugin.wakePauseMs())
 	}
 
+	private fun appendPartialToDictation() {
+		val chunk = VoiceGpsKeywordMatcher.normalize(lastPartial)
+		if (chunk.isEmpty()) {
+			return
+		}
+		if (!dictationFinal.contains(chunk)) {
+			if (dictationFinal.isNotEmpty()) {
+				dictationFinal.append(' ')
+			}
+			dictationFinal.append(chunk)
+		}
+		lastPartial = ""
+	}
+
 	private fun onWakeDetected() {
 		mode = Mode.AWAIT_COMMAND
-		app.showShortToastMessage(app.getString(R.string.voice_gps_activated))
+		Log.i(TAG, "wake word detected")
 		mainHandler.removeCallbacks(listenTimeoutRunnable)
 		scheduleNextCycle(200L)
 	}
@@ -184,7 +234,7 @@ class VoiceGpsSpeechController(
 		lastPartial = ""
 		captureLocationForNote()
 		if (mode == Mode.DICTATE) {
-			app.showShortToastMessage(app.getString(R.string.voice_gps_dictating))
+			Log.i(TAG, "dictation started")
 			scheduleNextCycle(200L)
 		}
 	}
@@ -192,15 +242,13 @@ class VoiceGpsSpeechController(
 	private fun handleText(raw: String, isFinal: Boolean) {
 		when (mode) {
 			Mode.WAKE_LISTEN -> {
-				if (VoiceGpsKeywordMatcher.containsWakeWord(raw)) {
+				if (isFinal && VoiceGpsKeywordMatcher.containsWakeWord(raw)) {
 					onWakeDetected()
 				}
 			}
 			Mode.AWAIT_COMMAND -> {
 				if (VoiceGpsKeywordMatcher.containsNoteCommand(raw)) {
 					onNoteCommandDetected()
-				} else if (VoiceGpsKeywordMatcher.containsWakeWord(raw)) {
-					// stay in await
 				}
 			}
 			Mode.DICTATE -> {
@@ -218,8 +266,10 @@ class VoiceGpsSpeechController(
 						dictationFinal.append(chunk)
 					}
 					lastPartial = ""
+					armListenTimeout()
 				} else {
 					lastPartial = raw
+					armListenTimeout()
 				}
 			}
 		}
@@ -228,7 +278,11 @@ class VoiceGpsSpeechController(
 	private val recognitionListener = object : RecognitionListener {
 		override fun onReadyForSpeech(params: android.os.Bundle?) {}
 
-		override fun onBeginningOfSpeech() {}
+		override fun onBeginningOfSpeech() {
+			if (mode == Mode.DICTATE || mode == Mode.AWAIT_COMMAND) {
+				armListenTimeout()
+			}
+		}
 
 		override fun onRmsChanged(rmsdB: Float) {}
 
@@ -245,7 +299,12 @@ class VoiceGpsSpeechController(
 				stop()
 				return
 			}
-			scheduleNextCycle(if (mode == Mode.WAKE_LISTEN) plugin.wakePauseMs() else 600L)
+			if (mode == Mode.DICTATE) {
+				appendPartialToDictation()
+				scheduleNextCycle(600L)
+				return
+			}
+			scheduleNextCycle(if (mode == Mode.WAKE_LISTEN) plugin.wakePauseMs() else 800L)
 		}
 
 		override fun onResults(results: android.os.Bundle?) {
@@ -254,11 +313,18 @@ class VoiceGpsSpeechController(
 			}
 			val list = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
 			list?.forEach { handleText(it, true) }
-			stopActiveSession("results")
+			if (mode == Mode.DICTATE) {
+				scheduleNextCycle(200L)
+			} else {
+				stopActiveSession("results")
+			}
 		}
 
 		override fun onPartialResults(partialResults: android.os.Bundle?) {
 			if (!running) {
+				return
+			}
+			if (mode == Mode.WAKE_LISTEN && !plugin.partialWakeEnabled()) {
 				return
 			}
 			val list = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
