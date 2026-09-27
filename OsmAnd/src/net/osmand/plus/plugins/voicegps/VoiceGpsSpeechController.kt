@@ -52,7 +52,7 @@ class VoiceGpsSpeechController(
 	private var sessionDeadlineElapsed = 0L
 	private var recognizerSessionOpen = false
 	private var manualErrorRetries = 0
-	private var listenEpoch = 0
+	private var stopCleanupPosted = false
 
 	var onStopped: VoiceGpsControllerStopListener? = null
 
@@ -86,9 +86,9 @@ class VoiceGpsSpeechController(
 
 	fun stop() {
 		if (Looper.myLooper() == Looper.getMainLooper()) {
-			stopOnMain()
+			requestStopOnMain()
 		} else {
-			mainHandler.post { stopOnMain() }
+			mainHandler.post { requestStopOnMain() }
 		}
 	}
 
@@ -105,14 +105,13 @@ class VoiceGpsSpeechController(
 			Log.i(TAG, "manual session already active")
 			return
 		}
-		listenEpoch++
 		mainHandler.removeCallbacks(restartRunnable)
 		mainHandler.removeCallbacks(listenTimeoutRunnable)
 		if (!plugin.shouldListenNow() || !SpeechRecognizer.isRecognitionAvailable(app)) {
 			Log.w(TAG, "manual activation unavailable")
 			running = true
 			manualOneShot = true
-			stopOnMain()
+			requestStopOnMain()
 			return
 		}
 		running = true
@@ -126,18 +125,27 @@ class VoiceGpsSpeechController(
 		startListenCycle()
 	}
 
-	private fun stopOnMain() {
+	/** Flags drop immediately so a callback cannot schedule another cycle. Destroy runs after the callback. */
+	private fun requestStopOnMain() {
 		val notify = running || manualOneShot || speechRecognizer != null
-		listenEpoch++
 		running = false
 		manualOneShot = false
 		manualErrorRetries = 0
+		recognizerSessionOpen = false
 		mainHandler.removeCallbacks(restartRunnable)
 		mainHandler.removeCallbacks(listenTimeoutRunnable)
-		quietEndRecognizerSession()
-		destroyRecognizer()
-		resetNoteSession()
-		if (notify) {
+		if (!notify || stopCleanupPosted) {
+			return
+		}
+		stopCleanupPosted = true
+		mainHandler.post {
+			stopCleanupPosted = false
+			if (running) {
+				return@post
+			}
+			quietEndRecognizerSession()
+			destroyRecognizer()
+			resetNoteSession()
 			onStopped?.invoke()
 		}
 	}
@@ -549,9 +557,16 @@ class VoiceGpsSpeechController(
 				return
 			}
 			val hadText = list?.any { it.isNotBlank() } == true
-			manualErrorRetries = 0
 			if (manualOneShot || plugin.manualWakeEnabled()) {
-				if (mode == Mode.DICTATE && hadText && sessionTimeLeftMs() > 400L) {
+				val canContinueDictation = mode == Mode.DICTATE &&
+					sessionTimeLeftMs() > 400L &&
+					(hadText || manualErrorRetries < MANUAL_ERROR_RETRIES)
+				if (canContinueDictation) {
+					if (!hadText) {
+						manualErrorRetries++
+					} else {
+						manualErrorRetries = 0
+					}
 					scheduleNextCycle(200L)
 				} else if (mode == Mode.DICTATE) {
 					appendPartialToDictation()
