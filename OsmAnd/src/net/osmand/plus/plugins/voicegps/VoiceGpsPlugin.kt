@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.KeyEvent
 import android.view.View
 import androidx.core.app.ActivityCompat
@@ -16,9 +17,17 @@ import net.osmand.plus.OsmandApplication
 import net.osmand.plus.R
 import net.osmand.plus.activities.MapActivity
 import net.osmand.plus.plugins.OsmandPlugin
+import net.osmand.plus.settings.backend.ApplicationMode
+import net.osmand.plus.settings.backend.WidgetsAvailabilityHelper
 import net.osmand.plus.settings.backend.preferences.CommonPreference
+import net.osmand.plus.settings.enums.ScreenLayoutMode
 import net.osmand.plus.settings.fragments.BaseSettingsFragment
 import net.osmand.plus.settings.fragments.SettingsScreenType
+import net.osmand.plus.views.mapwidgets.MapWidgetInfo
+import net.osmand.plus.views.mapwidgets.WidgetInfoCreator
+import net.osmand.plus.views.mapwidgets.WidgetType
+import net.osmand.plus.views.mapwidgets.WidgetsPanel
+import net.osmand.plus.views.mapwidgets.widgets.MapWidget
 import net.osmand.plus.widgets.ctxmenu.ContextMenuAdapter
 import net.osmand.plus.widgets.ctxmenu.callback.OnDataChangeUiAdapter
 import net.osmand.plus.widgets.ctxmenu.data.ContextMenuItem
@@ -33,6 +42,7 @@ class VoiceGpsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 		const val MANUAL_WAKE_KEY_VOLUME_UP = "volume_up"
 		const val MANUAL_WAKE_KEY_VOLUME_DOWN = "volume_down"
 		const val MANUAL_WAKE_KEY_SIDE = "side"
+		private const val TAG = "VoiceGps"
 		private const val DEFAULT_COMMAND_LISTEN_MS = 12_000L
 		private const val DEFAULT_DICTATION_LISTEN_MS = 45_000L
 		private const val FOREGROUND_SYNC_MS = 2500L
@@ -63,6 +73,11 @@ class VoiceGpsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 	val MANUAL_WAKE_KEY: CommonPreference<String> =
 		registerStringPreference("voice_gps_manual_wake_key", MANUAL_WAKE_KEY_SIDE).makeGlobal().makeShared()
 
+	init {
+		// Not shown until the user adds it from Configure screen. Available for every profile.
+		WidgetsAvailabilityHelper.regWidgetVisibility(WidgetType.VOICE_GPS_NOTE)
+	}
+
 	private val mainHandler = Handler(Looper.getMainLooper())
 	private var manualWakeKeyCallbackInstalled = false
 	private val manualWakeKeyCallback = object : KeyEvent.Callback {
@@ -76,6 +91,7 @@ class VoiceGpsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 			if (keyCode != manualWakeKeyCode()) {
 				return false
 			}
+			Log.i(TAG, "keyDown code=$keyCode matched manual key ${MANUAL_WAKE_KEY.get()}")
 			onManualWakeKeyPressed()
 			return true
 		}
@@ -212,21 +228,49 @@ class VoiceGpsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 
 	fun showVoiceGpxOnMap(): Boolean = SHOW_VOICE_GPX_ON_MAP.get()
 
-	fun onManualWakeKeyPressed() {
-		if (!isActive || !manualWakeEnabled() || !hasRecordAudioPermission()) {
+	/**
+	 * Same session as the wake / side key: listen for «заметка», then dictate until «конец».
+	 * The map widget calls this even when manual mode is off. The hardware key still requires
+	 * manual mode (default key is the side / headset button, [KEYCODE_HEADSETHOOK]).
+	 */
+	fun beginManualSession(activity: Activity?) {
+		if (!isActive) {
+			Log.i(TAG, "beginManualSession ignored: plugin inactive")
+			return
+		}
+		if (!hasRecordAudioPermission()) {
+			Log.i(TAG, "beginManualSession: microphone permission missing")
+			val host = activity ?: app.keyEventHelper?.mapActivity
+			if (host != null) {
+				requestRecordAudio(host)
+			} else {
+				app.showShortToastMessage(app.getString(R.string.voice_gps_mic_denied))
+			}
 			return
 		}
 		if (!shouldListenNow()) {
+			Log.i(TAG, "beginManualSession unavailable motion=${isListeningPausedByMotion()} foreground=${app.isAppInForeground}")
 			app.showShortToastMessage(app.getString(R.string.voice_gps_manual_wake_unavailable))
 			return
 		}
+		Log.i(TAG, "beginManualSession")
 		VoiceGpsListenService.startManualSession(app)
+	}
+
+	fun onManualWakeKeyPressed() {
+		if (!isActive || !manualWakeEnabled()) {
+			Log.i(TAG, "manual key ignored active=$isActive manual=${manualWakeEnabled()}")
+			return
+		}
+		beginManualSession(app.keyEventHelper?.mapActivity)
 	}
 
 	fun syncListeningService() {
 		updateManualWakeKeyInterceptor()
 		if (manualWakeEnabled()) {
-			VoiceGpsListenService.sync(app, false)
+			if (!VoiceGpsListenService.manualSessionRunning) {
+				VoiceGpsListenService.sync(app, false)
+			}
 			return
 		}
 		val start = shouldListenNow()
@@ -238,10 +282,40 @@ class VoiceGpsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 		if (want && !manualWakeKeyCallbackInstalled) {
 			app.getKeyEventHelper().setExternalCallback(manualWakeKeyCallback)
 			manualWakeKeyCallbackInstalled = true
+			Log.i(TAG, "key interceptor on key=${MANUAL_WAKE_KEY.get()} code=${manualWakeKeyCode()}")
 		} else if (!want && manualWakeKeyCallbackInstalled) {
 			app.getKeyEventHelper().setExternalCallback(null)
 			manualWakeKeyCallbackInstalled = false
+			Log.i(TAG, "key interceptor off")
 		}
+	}
+
+	override fun createWidgets(
+		mapActivity: MapActivity,
+		widgetInfos: MutableList<MapWidgetInfo>,
+		appMode: ApplicationMode,
+		layoutMode: ScreenLayoutMode?,
+	) {
+		val creator = WidgetInfoCreator(app, appMode, layoutMode)
+		val widget = createMapWidgetForParams(mapActivity, WidgetType.VOICE_GPS_NOTE)
+		if (widget != null) {
+			val info = creator.createWidgetInfo(widget)
+			if (info != null) {
+				widgetInfos.add(info)
+			}
+		}
+	}
+
+	override fun createMapWidgetForParams(
+		mapActivity: MapActivity,
+		widgetType: WidgetType,
+		customId: String?,
+		widgetsPanel: WidgetsPanel?,
+	): MapWidget? {
+		if (widgetType == WidgetType.VOICE_GPS_NOTE) {
+			return VoiceGpsNoteWidget(mapActivity, customId, widgetsPanel)
+		}
+		return null
 	}
 
 	override fun mapActivityResume(activity: MapActivity) {

@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import net.osmand.plus.OsmandApplication
@@ -21,14 +22,25 @@ class VoiceGpsListenService : Service() {
 	companion object {
 		const val NOTIFICATION_ID = 8755
 		const val ACTION_MANUAL_SESSION = "net.osmand.plus.plugins.voicegps.MANUAL_SESSION"
+		private const val TAG = "VoiceGps"
+
+		/**
+		 * True while a key/widget session is running. The plugin's periodic sync must not
+		 * [stopService] it — in manual mode that sync otherwise stops the service every few seconds.
+		 */
+		@Volatile
+		var manualSessionRunning: Boolean = false
+			private set
 
 		fun startManualSession(context: Context) {
+			manualSessionRunning = true
 			val intent = Intent(context, VoiceGpsListenService::class.java).apply {
 				action = ACTION_MANUAL_SESSION
 			}
 			try {
 				ContextCompat.startForegroundService(context, intent)
 			} catch (_: Exception) {
+				manualSessionRunning = false
 			}
 		}
 
@@ -70,11 +82,8 @@ class VoiceGpsListenService : Service() {
 		val p = plugin
 		val manualSession = intent?.action == ACTION_MANUAL_SESSION
 		if (p == null || !p.isActive || !p.shouldListenNow()) {
+			Log.i(TAG, "listen service stop manual=$manualSession active=${p?.isActive == true} listen=${p?.shouldListenNow() == true}")
 			controller?.stop()
-			stopSelf()
-			return START_NOT_STICKY
-		}
-		if (manualSession && !p.manualWakeEnabled()) {
 			stopSelf()
 			return START_NOT_STICKY
 		}
@@ -95,9 +104,12 @@ class VoiceGpsListenService : Service() {
 			return START_NOT_STICKY
 		}
 		if (manualSession) {
+			Log.i(TAG, "manual session starting manualWake=${p.manualWakeEnabled()}")
+			manualSessionRunning = true
 			controller?.startManualActivation()
-			return START_NOT_STICKY
+			return if (p.manualWakeEnabled()) START_NOT_STICKY else START_STICKY
 		}
+		manualSessionRunning = false
 		if (p.manualWakeEnabled()) {
 			stopSelf()
 			return START_NOT_STICKY
@@ -107,6 +119,7 @@ class VoiceGpsListenService : Service() {
 	}
 
 	override fun onDestroy() {
+		manualSessionRunning = false
 		controller?.onStopped = null
 		controller?.stop()
 		controller = null

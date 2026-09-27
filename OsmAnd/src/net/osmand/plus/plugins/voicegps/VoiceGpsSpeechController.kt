@@ -93,6 +93,7 @@ class VoiceGpsSpeechController(
 			}
 			running = true
 			ensureRecognizer()
+			Log.i(TAG, "manual activation — await note")
 			app.showShortToastMessage(app.getString(R.string.voice_gps_activated))
 			onWakeDetected()
 			startListenCycle()

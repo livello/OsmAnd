@@ -5943,9 +5943,9 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
     <string name="voice_gps_partial_wake">Частичные результаты для wake-слова</string>
     <string name="voice_gps_partial_wake_desc">Быстрее распознать «Османд» (чуть больше нагрузки в окнах прослушивания).</string>
     <string name="voice_gps_manual_wake">Ручной режим</string>
-    <string name="voice_gps_manual_wake_desc">Не слушать «Османд». На экране карты нажмите выбранную аппаратную кнопку для активации (далее «заметка», как обычно).</string>
+    <string name="voice_gps_manual_wake_desc">Не слушать «Османд». На экране карты нажмите выбранную аппаратную кнопку для активации (далее «заметка», как обычно). По умолчанию — боковая / гарнитурная кнопка. Кнопка-виджет на карте запускает ту же сессию и при выключенном ручном режиме.</string>
     <string name="voice_gps_manual_wake_key">Кнопка активации</string>
-    <string name="voice_gps_manual_wake_key_desc">Обрабатывается только при включённом ручном режиме и активном плагине. Громкость не перехватывается, когда ручной режим выключен.</string>
+    <string name="voice_gps_manual_wake_key_desc">Обрабатывается только при включённом ручном режиме и активном плагине. По умолчанию — боковая / гарнитурная кнопка. Громкость не перехватывается, когда ручной режим выключен.</string>
     <string name="voice_gps_manual_wake_key_side">Боковая / гарнитурная кнопка</string>
     <string name="voice_gps_manual_wake_key_volume_up">Громкость вверх</string>
     <string name="voice_gps_manual_wake_key_volume_down">Громкость вниз</string>
@@ -5955,6 +5955,9 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
     <string name="voice_gps_no_location">Нет GPS — включите геолокацию</string>
     <string name="voice_gps_note_saved">Заметка сохранена: %1$s</string>
     <string name="voice_gps_note_default_title">Заметка %1$s</string>
+    <string name="voice_gps_widget_name">Голосовая заметка</string>
+    <string name="voice_gps_widget_desc">Короткое нажатие активирует голосовой ввод: скажите «заметка», диктуйте, затем «конец». Долгое нажатие открывает настройки EV-Голос GPX. Боковая кнопка делает то же самое только при включённом ручном режиме (по умолчанию — боковая / гарнитура).</string>
+    <string name="voice_gps_widget_label">Заметка</string>
     <string name="ev_voice_gpx_show_on_map">Показывать GPX заметок на карте</string>
     <string name="ev_voice_gpx_show_on_map_desc">Каждая заметка добавляется в суточный GPX `ev-voice-notes` и трек показывается на карте.</string>
 

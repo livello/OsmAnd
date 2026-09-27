@@ -21,6 +21,7 @@ import net.osmand.plus.inapp.InAppPurchaseUtils;
 import net.osmand.plus.plugins.PluginsHelper;
 import net.osmand.plus.plugins.development.OsmandDevelopmentPlugin;
 import net.osmand.plus.plugins.mapillary.MapillaryPlugin;
+import net.osmand.plus.plugins.voicegps.VoiceGpsPlugin;
 import net.osmand.plus.plugins.monitoring.widgets.TripRecordingAvgSpeedWidgetInfoFragment;
 import net.osmand.plus.plugins.monitoring.widgets.TripRecordingMovingTimeWidgetInfoFragment;
 import net.osmand.plus.plugins.monitoring.widgets.TripRecordingSlopeInfoFragment;
@@ -103,6 +104,8 @@ public enum WidgetType {
 	AV_NOTES_RECORD_AUDIO("av_notes_record_audio", R.string.av_def_action_audio, R.string.av_notes_audio_widget_desc, R.drawable.widget_av_audio_day, R.drawable.widget_av_audio_night, 0, WidgetGroup.AUDIO_VIDEO_NOTES, RIGHT),
 	AV_NOTES_RECORD_VIDEO("av_notes_record_video", R.string.av_def_action_video, R.string.av_notes_video_widget_desc, R.drawable.widget_av_video_day, R.drawable.widget_av_video_night, 0, WidgetGroup.AUDIO_VIDEO_NOTES, RIGHT),
 	AV_NOTES_TAKE_PHOTO("av_notes_take_photo", R.string.av_def_action_picture, R.string.av_notes_photo_widget_desc, R.drawable.widget_av_photo_day, R.drawable.widget_av_photo_night, 0, WidgetGroup.AUDIO_VIDEO_NOTES, RIGHT),
+
+	VOICE_GPS_NOTE("voice_gps_note", R.string.voice_gps_widget_name, R.string.voice_gps_widget_desc, R.drawable.widget_av_audio_day, R.drawable.widget_av_audio_night, 0, null, RIGHT),
 
 	MAPILLARY("mapillary", R.string.mapillary, R.string.mapillary_widget_desc, R.drawable.widget_mapillary_day, R.drawable.widget_mapillary_night, R.string.docs_widget_mapillary, null, RIGHT),
 
@@ -326,6 +329,8 @@ public enum WidgetType {
 			return WidgetGroup.getPartOfPluginDesc(context, MapillaryPlugin.class);
 		} else if (this == PARKING) {
 			return WidgetGroup.getPartOfPluginDesc(context, ParkingPositionPlugin.class);
+		} else if (this == VOICE_GPS_NOTE) {
+			return WidgetGroup.getPartOfPluginDesc(context, VoiceGpsPlugin.class);
 		} else if (group != null) {
 			if (group == WEATHER) {
 				return context.getString(R.string.weather_widgets_secondary_desc);
@@ -340,7 +345,7 @@ public enum WidgetType {
 	public int getSecondaryIconId() {
 		if (this == COORDINATES_CURRENT_LOCATION || this == COORDINATES_MAP_CENTER) {
 			return R.drawable.ic_action_help;
-		} else if (this == DEV_FPS || this == DEV_MEMORY || this == MAPILLARY || this == PARKING) {
+		} else if (this == DEV_FPS || this == DEV_MEMORY || this == MAPILLARY || this == PARKING || this == VOICE_GPS_NOTE) {
 			return R.drawable.ic_extension_dark;
 		} else if (group != null) {
 			return group.getSecondaryIconId();

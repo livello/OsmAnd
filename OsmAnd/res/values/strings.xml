@@ -6517,9 +6517,9 @@ Download tile maps directly, or copy them as SQLite database files to OsmAnd\'s 
     <string name="voice_gps_partial_wake">Partial results for wake word</string>
     <string name="voice_gps_partial_wake_desc">Detect «OsmAnd» faster (uses slightly more CPU during listen windows).</string>
     <string name="voice_gps_manual_wake">Manual mode</string>
-    <string name="voice_gps_manual_wake_desc">Do not listen for «OsmAnd». Press the chosen hardware key on the map screen to activate voice control (then say «note» as usual).</string>
+    <string name="voice_gps_manual_wake_desc">Do not listen for «OsmAnd». Press the chosen hardware key on the map screen to activate (then say «note» as usual). Default key is the side / headset button. The map voice-note button starts the same session even when this mode is off.</string>
     <string name="voice_gps_manual_wake_key">Activation key</string>
-    <string name="voice_gps_manual_wake_key_desc">Only handled while manual mode is on and this plugin is active. Volume keys are not changed when manual mode is off.</string>
+    <string name="voice_gps_manual_wake_key_desc">Only handled while manual mode is on and this plugin is active. Default is the side / headset button (KEYCODE_HEADSETHOOK). Volume keys are not changed when manual mode is off.</string>
     <string name="voice_gps_manual_wake_key_side">Side / headset button</string>
     <string name="voice_gps_manual_wake_key_volume_up">Volume up</string>
     <string name="voice_gps_manual_wake_key_volume_down">Volume down</string>
@@ -6529,6 +6529,9 @@ Download tile maps directly, or copy them as SQLite database files to OsmAnd\'s 
     <string name="voice_gps_no_location">No GPS fix — enable location and try again</string>
     <string name="voice_gps_note_saved">Note saved: %1$s</string>
     <string name="voice_gps_note_default_title">Note %1$s</string>
+    <string name="voice_gps_widget_name">Voice note</string>
+    <string name="voice_gps_widget_desc">Short tap activates voice input: say «note», dictate, then «end». Long press opens EV Voice GPX settings. The side button does the same only when manual mode is on (default key: side / headset).</string>
+    <string name="voice_gps_widget_label">Note</string>
     <string name="ev_voice_gpx_show_on_map">Show voice GPX on map</string>
     <string name="ev_voice_gpx_show_on_map_desc">When on, each saved note is added to the daily `ev-voice-notes` GPX and the track is shown on the map.</string>
 

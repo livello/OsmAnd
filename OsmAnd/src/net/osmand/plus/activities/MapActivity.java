@@ -1227,6 +1227,26 @@ public class MapActivity extends OsmandActionBarActivity implements DownloadEven
 	}
 
 	@Override
+	public boolean dispatchKeyEvent(KeyEvent event) {
+		// Headset / side button often never reaches onKeyDown if a child view eats it.
+		if (event.getKeyCode() == KeyEvent.KEYCODE_HEADSETHOOK && keyEventHelper != null) {
+			if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+				LOG.info("VoiceGps dispatch HEADSETHOOK");
+			}
+			boolean handled = false;
+			if (event.getAction() == KeyEvent.ACTION_DOWN) {
+				handled = keyEventHelper.onKeyDown(event.getKeyCode(), event);
+			} else if (event.getAction() == KeyEvent.ACTION_UP) {
+				handled = keyEventHelper.onKeyUp(event.getKeyCode(), event);
+			}
+			if (handled) {
+				return true;
+			}
+		}
+		return super.dispatchKeyEvent(event);
+	}
+
+	@Override
 	public boolean onKeyDown(int keyCode, KeyEvent event) {
 		if (keyEventHelper != null && keyEventHelper.onKeyDown(keyCode, event)) {
 			return true;

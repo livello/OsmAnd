@@ -78,6 +78,9 @@ public abstract class SimpleWidget extends TextInfoWidget implements ISupportWid
 		UiUtilities.getInflater(mapActivity, nightMode).inflate(layoutId, container);
 		findViews();
 		container.setOnLongClickListener(v -> {
+			if (handleLongClick(v)) {
+				return true;
+			}
 			List<PopUpMenuItem> actions = getWidgetActions();
 			ScreenLayoutMode layoutMode = ScreenLayoutMode.getDefault(v.getContext());
 			WidgetsContextMenu.showMenu(v, mapActivity, widgetType, customId, actions, layoutMode, panel, nightMode, true);
@@ -358,6 +361,13 @@ public abstract class SimpleWidget extends TextInfoWidget implements ISupportWid
 
 	protected View.OnClickListener getOnClickListener() {
 		return null;
+	}
+
+	/**
+	 * @return true when the widget consumed the long press (for example to open plugin settings).
+	 */
+	protected boolean handleLongClick(@NonNull View view) {
+		return false;
 	}
 
 	public void setImageDrawable(@NonNull ImageView imageView, @Nullable Drawable drawable, int visibility) {
