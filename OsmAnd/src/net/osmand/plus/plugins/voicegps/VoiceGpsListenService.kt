@@ -109,11 +109,18 @@ class VoiceGpsListenService : Service() {
 			controller?.startManualActivation()
 			return if (p.manualWakeEnabled()) START_NOT_STICKY else START_STICKY
 		}
-		manualSessionRunning = false
 		if (p.manualWakeEnabled()) {
+			// Duty-cycled wake listening must not run while «Ручной режим» is on.
+			if (manualSessionRunning) {
+				Log.i(TAG, "manual session already running — ignore wake start")
+				return START_NOT_STICKY
+			}
+			Log.i(TAG, "manual mode idle — recognizer stays stopped")
+			controller?.stop()
 			stopSelf()
 			return START_NOT_STICKY
 		}
+		manualSessionRunning = false
 		controller?.start()
 		return START_STICKY
 	}

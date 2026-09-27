@@ -3,6 +3,7 @@ package net.osmand.plus.plugins.voicegps
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -42,12 +43,24 @@ class VoiceGpsSpeechController(
 	private val restartRunnable = Runnable { startListenCycle() }
 	private val listenTimeoutRunnable = Runnable { onListenWindowElapsed() }
 
+	/**
+	 * Manual mode ([VoiceGpsPlugin.manualWakeEnabled]): one widget/key session, then idle.
+	 * Wake-word mode keeps the duty cycle and clears this flag when the note ends.
+	 */
+	private var manualOneShot = false
+	/** Absolute [SystemClock.elapsedRealtime] deadline. Manual mode must not slide this. */
+	private var sessionDeadlineElapsed = 0L
+	private var recognizerSessionOpen = false
+	private var manualErrorRetries = 0
+	private var listenEpoch = 0
+
 	var onStopped: VoiceGpsControllerStopListener? = null
 
 	companion object {
 		private const val TAG = "VoiceGpsSpeech"
 		/** Keep wake-mode STT alive longer to cut start/stop system beeps. */
 		private const val WAKE_MIN_SPEECH_MS = 15_000L
+		private const val MANUAL_ERROR_RETRIES = 1
 	}
 
 	fun start() {
@@ -55,11 +68,16 @@ class VoiceGpsSpeechController(
 			if (running) {
 				return@post
 			}
+			if (plugin.manualWakeEnabled()) {
+				Log.i(TAG, "start ignored: manual mode stays idle")
+				return@post
+			}
 			if (!SpeechRecognizer.isRecognitionAvailable(app)) {
 				Log.w(TAG, "Speech recognition not available")
 				return@post
 			}
 			running = true
+			manualOneShot = false
 			mode = Mode.WAKE_LISTEN
 			ensureRecognizer()
 			scheduleNextCycle(300L)
@@ -67,36 +85,60 @@ class VoiceGpsSpeechController(
 	}
 
 	fun stop() {
-		mainHandler.post {
-			if (!running) {
-				return@post
-			}
-			running = false
-			mainHandler.removeCallbacks(restartRunnable)
-			mainHandler.removeCallbacks(listenTimeoutRunnable)
-			quietEndRecognizerSession()
-			destroyRecognizer()
-			resetNoteSession()
-			onStopped?.invoke()
+		if (Looper.myLooper() == Looper.getMainLooper()) {
+			stopOnMain()
+		} else {
+			mainHandler.post { stopOnMain() }
 		}
 	}
 
-	/** Manual wake key: same as wake word «Османд» — await «заметка», no continuous wake listening. */
+	/**
+	 * Widget or hardware key: one session (await «заметка», then dictate until «конец»).
+	 * In manual mode this does not return to the wake-word listen cycle.
+	 */
 	fun startManualActivation() {
-		mainHandler.post {
-			if (!plugin.shouldListenNow()) {
-				return@post
-			}
-			if (!SpeechRecognizer.isRecognitionAvailable(app)) {
-				Log.w(TAG, "Speech recognition not available")
-				return@post
-			}
+		mainHandler.post { startManualOnMain() }
+	}
+
+	private fun startManualOnMain() {
+		if (running && manualOneShot && mode != Mode.WAKE_LISTEN) {
+			Log.i(TAG, "manual session already active")
+			return
+		}
+		listenEpoch++
+		mainHandler.removeCallbacks(restartRunnable)
+		mainHandler.removeCallbacks(listenTimeoutRunnable)
+		if (!plugin.shouldListenNow() || !SpeechRecognizer.isRecognitionAvailable(app)) {
+			Log.w(TAG, "manual activation unavailable")
 			running = true
-			ensureRecognizer()
-			Log.i(TAG, "manual activation — await note")
-			app.showShortToastMessage(app.getString(R.string.voice_gps_activated))
-			onWakeDetected()
-			startListenCycle()
+			manualOneShot = true
+			stopOnMain()
+			return
+		}
+		running = true
+		manualOneShot = plugin.manualWakeEnabled()
+		manualErrorRetries = 0
+		ensureRecognizer()
+		Log.i(TAG, "manual activation — one session manual=$manualOneShot")
+		app.showShortToastMessage(app.getString(R.string.voice_gps_activated))
+		mode = Mode.AWAIT_COMMAND
+		sessionDeadlineElapsed = SystemClock.elapsedRealtime() + plugin.commandListenWindowMs()
+		startListenCycle()
+	}
+
+	private fun stopOnMain() {
+		val notify = running || manualOneShot || speechRecognizer != null
+		listenEpoch++
+		running = false
+		manualOneShot = false
+		manualErrorRetries = 0
+		mainHandler.removeCallbacks(restartRunnable)
+		mainHandler.removeCallbacks(listenTimeoutRunnable)
+		quietEndRecognizerSession()
+		destroyRecognizer()
+		resetNoteSession()
+		if (notify) {
+			onStopped?.invoke()
 		}
 	}
 
@@ -110,6 +152,7 @@ class VoiceGpsSpeechController(
 	}
 
 	private fun destroyRecognizer() {
+		recognizerSessionOpen = false
 		try {
 			speechRecognizer?.destroy()
 		} catch (_: Exception) {
@@ -121,6 +164,14 @@ class VoiceGpsSpeechController(
 		if (!running) {
 			return
 		}
+		if (manualOneShot && mode == Mode.WAKE_LISTEN) {
+			endManualSession("manual_no_wake_cycle")
+			return
+		}
+		if (plugin.manualWakeEnabled() && !manualOneShot) {
+			endManualSession("manual_idle")
+			return
+		}
 		mainHandler.removeCallbacks(restartRunnable)
 		mainHandler.postDelayed(restartRunnable, delayMs)
 	}
@@ -130,16 +181,35 @@ class VoiceGpsSpeechController(
 			return
 		}
 		mainHandler.removeCallbacks(listenTimeoutRunnable)
-		val windowMs = when (mode) {
-			Mode.DICTATE -> plugin.dictationListenWindowMs()
-			Mode.AWAIT_COMMAND -> plugin.commandListenWindowMs()
-			Mode.WAKE_LISTEN -> plugin.listenWindowMs()
+		val windowMs = if (manualOneShot) {
+			(sessionDeadlineElapsed - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
+		} else {
+			when (mode) {
+				Mode.DICTATE -> plugin.dictationListenWindowMs()
+				Mode.AWAIT_COMMAND -> plugin.commandListenWindowMs()
+				Mode.WAKE_LISTEN -> plugin.listenWindowMs()
+			}
 		}
 		mainHandler.postDelayed(listenTimeoutRunnable, windowMs)
 	}
 
 	private fun onListenWindowElapsed() {
 		if (!running) {
+			return
+		}
+		if (manualOneShot) {
+			when (mode) {
+				Mode.DICTATE -> {
+					appendPartialToDictation()
+					val spoken = dictationFinal.toString()
+					if (spoken.isNotBlank()) {
+						finishNote(spoken)
+					} else {
+						endManualSession("dictation_timeout")
+					}
+				}
+				else -> endManualSession("manual_timeout")
+			}
 			return
 		}
 		when (mode) {
@@ -164,19 +234,42 @@ class VoiceGpsSpeechController(
 	}
 
 	private fun startListenCycle() {
-		if (!running || !plugin.shouldListenNow()) {
-			scheduleNextCycle(plugin.wakePauseMs())
+		if (!running) {
+			return
+		}
+		if (plugin.manualWakeEnabled() && !manualOneShot) {
+			endManualSession("manual_idle")
+			return
+		}
+		if (!plugin.shouldListenNow()) {
+			if (manualOneShot) {
+				endManualSession("listen_unavailable")
+			} else {
+				scheduleNextCycle(plugin.wakePauseMs())
+			}
 			return
 		}
 		ensureRecognizer()
 		val recognizer = speechRecognizer ?: return
 		try {
-			quietEndRecognizerSession()
+			if (manualOneShot && recognizerSessionOpen) {
+				// A live session is already up. Cancelling here and starting again is the beep loop.
+				return
+			}
+			if (!manualOneShot) {
+				quietEndRecognizerSession()
+			}
 			recognizer.startListening(buildIntent())
+			recognizerSessionOpen = true
 			armListenTimeout()
 		} catch (e: Exception) {
 			Log.w(TAG, "startListening failed: ${e.message}")
-			scheduleNextCycle(plugin.wakePauseMs())
+			recognizerSessionOpen = false
+			if (manualOneShot) {
+				endManualSession("start_failed")
+			} else {
+				scheduleNextCycle(plugin.wakePauseMs())
+			}
 		}
 	}
 
@@ -191,12 +284,31 @@ class VoiceGpsSpeechController(
 			putExtra(RecognizerIntent.EXTRA_PROMPT, "")
 			if (mode == Mode.WAKE_LISTEN) {
 				putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, WAKE_MIN_SPEECH_MS)
+			} else if (manualOneShot) {
+				// Hold one recognition for the rest of the session instead of restarting it.
+				val remain = sessionTimeLeftMs().coerceAtLeast(3_000L)
+				putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, remain)
 			}
 		}
 	}
 
+	private fun sessionTimeLeftMs(): Long =
+		sessionDeadlineElapsed - SystemClock.elapsedRealtime()
+
+	private fun isContinuableRecognizerError(error: Int): Boolean {
+		return error == SpeechRecognizer.ERROR_NO_MATCH ||
+			error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+	}
+
+	private fun isStartupRecognizerError(error: Int): Boolean {
+		return isContinuableRecognizerError(error) ||
+			error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY ||
+			error == SpeechRecognizer.ERROR_CLIENT
+	}
+
 	/** cancel() restarts without the end-of-session earcon that stopListening() often plays. */
 	private fun quietEndRecognizerSession() {
+		recognizerSessionOpen = false
 		try {
 			speechRecognizer?.cancel()
 		} catch (_: Exception) {
@@ -204,12 +316,16 @@ class VoiceGpsSpeechController(
 	}
 
 	private fun endManualSession(reason: String) {
-		Log.d(TAG, "manual session end reason=$reason")
+		Log.i(TAG, "manual session end reason=$reason")
 		stop()
 	}
 
 	private fun stopActiveSession(reason: String) {
 		Log.d(TAG, "stop session reason=$reason mode=$mode")
+		if (manualOneShot || (plugin.manualWakeEnabled() && mode != Mode.DICTATE)) {
+			endManualSession(reason)
+			return
+		}
 		mainHandler.removeCallbacks(listenTimeoutRunnable)
 		quietEndRecognizerSession()
 		if (mode == Mode.WAKE_LISTEN) {
@@ -229,23 +345,28 @@ class VoiceGpsSpeechController(
 		mode = Mode.WAKE_LISTEN
 	}
 
-	private fun captureLocationForNote() {
+	private fun captureLocationForNote(): Boolean {
 		val loc = app.locationProvider.lastKnownLocation
 		if (loc != null) {
 			noteLat = loc.latitude
 			noteLon = loc.longitude
 			noteStartedMs = System.currentTimeMillis()
-			return
+			return true
 		}
 		app.showShortToastMessage(app.getString(R.string.voice_gps_no_location))
-		resetNoteSession()
+		return false
 	}
 
 	private fun finishNote(spoken: String) {
 		val lat = noteLat
 		val lon = noteLon
 		if (lat == null || lon == null) {
-			resetNoteSession()
+			if (manualOneShot || plugin.manualWakeEnabled()) {
+				endManualSession("no_location")
+			} else {
+				resetNoteSession()
+				scheduleNextCycle(plugin.wakePauseMs())
+			}
 			return
 		}
 		appendPartialToDictation()
@@ -257,10 +378,11 @@ class VoiceGpsSpeechController(
 			Log.i(TAG, "saved voice note len=${body.length}")
 		}
 		resetNoteSession()
-		if (plugin.manualWakeEnabled()) {
+		if (manualOneShot || plugin.manualWakeEnabled()) {
 			endManualSession("note_saved")
 			return
 		}
+		manualOneShot = false
 		scheduleNextCycle(plugin.wakePauseMs())
 	}
 
@@ -279,6 +401,10 @@ class VoiceGpsSpeechController(
 	}
 
 	private fun onWakeDetected() {
+		if (plugin.manualWakeEnabled()) {
+			endManualSession("wake_while_manual")
+			return
+		}
 		mode = Mode.AWAIT_COMMAND
 		Log.i(TAG, "wake word detected")
 		mainHandler.removeCallbacks(listenTimeoutRunnable)
@@ -289,9 +415,23 @@ class VoiceGpsSpeechController(
 		mode = Mode.DICTATE
 		dictationFinal.clear()
 		lastPartial = ""
-		captureLocationForNote()
-		if (mode == Mode.DICTATE) {
-			Log.i(TAG, "dictation started")
+		manualErrorRetries = 0
+		if (!captureLocationForNote()) {
+			if (manualOneShot || plugin.manualWakeEnabled()) {
+				endManualSession("no_location")
+			} else {
+				resetNoteSession()
+				scheduleNextCycle(plugin.wakePauseMs())
+			}
+			return
+		}
+		Log.i(TAG, "dictation started")
+		if (manualOneShot) {
+			sessionDeadlineElapsed = SystemClock.elapsedRealtime() + plugin.dictationListenWindowMs()
+		}
+		// Current recognition is still the «заметка» utterance. Continue after it closes
+		// (onResults) so we do not cancel+startListening in the same breath.
+		if (!manualOneShot) {
 			scheduleNextCycle(200L)
 		}
 	}
@@ -348,12 +488,46 @@ class VoiceGpsSpeechController(
 		override fun onEndOfSpeech() {}
 
 		override fun onError(error: Int) {
+			recognizerSessionOpen = false
 			if (!running) {
 				return
 			}
 			if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
 				plugin.onMicPermissionMissing()
 				stop()
+				return
+			}
+			if (manualOneShot || plugin.manualWakeEnabled()) {
+				if (mode == Mode.DICTATE &&
+					isContinuableRecognizerError(error) &&
+					sessionTimeLeftMs() > 800L &&
+					manualErrorRetries < MANUAL_ERROR_RETRIES
+				) {
+					manualErrorRetries++
+					appendPartialToDictation()
+					scheduleNextCycle(600L)
+					return
+				}
+				if (mode == Mode.DICTATE) {
+					appendPartialToDictation()
+					val spoken = dictationFinal.toString()
+					if (spoken.isNotBlank()) {
+						finishNote(spoken)
+					} else {
+						endManualSession("dictate_error_$error")
+					}
+					return
+				}
+				if (mode == Mode.AWAIT_COMMAND &&
+					isStartupRecognizerError(error) &&
+					manualErrorRetries < MANUAL_ERROR_RETRIES &&
+					sessionTimeLeftMs() > 800L
+				) {
+					manualErrorRetries++
+					scheduleNextCycle(500L)
+					return
+				}
+				endManualSession("error_$error")
 				return
 			}
 			if (mode == Mode.DICTATE) {
@@ -365,11 +539,33 @@ class VoiceGpsSpeechController(
 		}
 
 		override fun onResults(results: android.os.Bundle?) {
+			recognizerSessionOpen = false
 			if (!running) {
 				return
 			}
 			val list = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
 			list?.forEach { handleText(it, true) }
+			if (!running) {
+				return
+			}
+			val hadText = list?.any { it.isNotBlank() } == true
+			manualErrorRetries = 0
+			if (manualOneShot || plugin.manualWakeEnabled()) {
+				if (mode == Mode.DICTATE && hadText && sessionTimeLeftMs() > 400L) {
+					scheduleNextCycle(200L)
+				} else if (mode == Mode.DICTATE) {
+					appendPartialToDictation()
+					val spoken = dictationFinal.toString()
+					if (spoken.isNotBlank()) {
+						finishNote(spoken)
+					} else {
+						endManualSession("dictation_done")
+					}
+				} else {
+					endManualSession("no_note_command")
+				}
+				return
+			}
 			if (mode == Mode.DICTATE) {
 				scheduleNextCycle(200L)
 			} else {

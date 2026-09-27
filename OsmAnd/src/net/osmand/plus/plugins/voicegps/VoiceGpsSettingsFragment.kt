@@ -1,72 +1,221 @@
 package net.osmand.plus.plugins.voicegps
 
-import android.Manifest
 import android.content.pm.PackageManager
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
+import android.util.TypedValue
+import android.view.Gravity
+import android.widget.LinearLayout
+import android.widget.TextView
+import androidx.appcompat.widget.SwitchCompat
 import androidx.preference.Preference
+import androidx.preference.PreferenceViewHolder
 import net.osmand.plus.R
 import net.osmand.plus.plugins.PluginsHelper
 import net.osmand.plus.settings.fragments.BaseSettingsFragment
-import net.osmand.plus.settings.preferences.ListPreferenceEx
 import net.osmand.plus.settings.preferences.SwitchPreferenceEx
+import net.osmand.plus.utils.AndroidUtils
+import net.osmand.plus.utils.ColorUtilities
 
 class VoiceGpsSettingsFragment : BaseSettingsFragment() {
 
+	private class ChipOption(val value: String, val label: String, val description: String)
+
+	private class ChipRow(
+		val choices: List<ChipOption>,
+		val read: () -> String,
+		val write: (String) -> Unit,
+	)
+
 	private val plugin: VoiceGpsPlugin
 		get() = PluginsHelper.requirePlugin(VoiceGpsPlugin::class.java)
+
+	private val chipRows = HashMap<String, ChipRow>()
 
 	override fun setupPreferences() {
 		updatePermissionSummary()
 		setupSwitch(plugin.LISTEN_IN_BACKGROUND.id, R.string.voice_gps_listen_background_desc)
 		setupSwitch(plugin.PAUSE_WHEN_MOVING.id, R.string.voice_gps_pause_when_moving_desc)
-		setupMovingSpeedThreshold()
+		setupSpeedChips()
 		setupSwitch(plugin.PARTIAL_WAKE.id, R.string.voice_gps_partial_wake_desc)
-		setupManualWake()
-		setupSwitch(plugin.SHOW_VOICE_GPX_ON_MAP.id, R.string.ev_voice_gpx_show_on_map_desc)
-	}
-
-	private fun setupManualWake() {
 		setupSwitch(plugin.MANUAL_WAKE.id, R.string.voice_gps_manual_wake_desc)
-		val pref = findPreference<ListPreferenceEx>(plugin.MANUAL_WAKE_KEY.id) ?: return
-		val keys = arrayOf(
-			VoiceGpsPlugin.MANUAL_WAKE_KEY_SIDE,
-			VoiceGpsPlugin.MANUAL_WAKE_KEY_VOLUME_UP,
-			VoiceGpsPlugin.MANUAL_WAKE_KEY_VOLUME_DOWN,
-		)
-		pref.setEntries(
-			arrayOf(
-				getString(R.string.voice_gps_manual_wake_key_side),
-				getString(R.string.voice_gps_manual_wake_key_volume_up),
-				getString(R.string.voice_gps_manual_wake_key_volume_down),
-			)
-		)
-		pref.setEntryValues(keys.map { it as Any }.toTypedArray())
-		pref.setValue(plugin.MANUAL_WAKE_KEY.get())
-		pref.setDescription(R.string.voice_gps_manual_wake_key_desc)
-		updateManualWakeKeyEnabled()
-	}
-
-	private fun updateManualWakeKeyEnabled() {
-		findPreference<ListPreferenceEx>(plugin.MANUAL_WAKE_KEY.id)?.isEnabled = plugin.manualWakeEnabled()
-		findPreference<SwitchPreferenceEx>(plugin.PARTIAL_WAKE.id)?.isEnabled = !plugin.manualWakeEnabled()
-	}
-
-	private fun setupMovingSpeedThreshold() {
-		val pref = findPreference<ListPreferenceEx>(plugin.MOVING_SPEED_THRESHOLD_KMH.id) ?: return
-		val values = intArrayOf(5, 8, 10, 15, 20)
-		pref.setEntries(values.map { getString(R.string.ev_bms_n_kmh, it) }.toTypedArray())
-		pref.setEntryValues(values.map { it as Any }.toTypedArray())
-		pref.setValue(plugin.MOVING_SPEED_THRESHOLD_KMH.get())
-		pref.setDescription(R.string.voice_gps_moving_speed_threshold_desc)
-		updateMovingSpeedThresholdEnabled()
-	}
-
-	private fun updateMovingSpeedThresholdEnabled() {
-		findPreference<ListPreferenceEx>(plugin.MOVING_SPEED_THRESHOLD_KMH.id)?.isEnabled =
-			plugin.PAUSE_WHEN_MOVING.get()
+		setupWakeKeyChips()
+		setupSwitch(plugin.SHOW_VOICE_GPX_ON_MAP.id, R.string.ev_voice_gpx_show_on_map_desc)
+		decorateRows()
+		updateDependentRows()
 	}
 
 	private fun setupSwitch(key: String, desc: Int) {
-		findPreference<SwitchPreferenceEx>(key)?.setDescription(desc)
+		val pref = findPreference<SwitchPreferenceEx>(key) ?: return
+		val hint = getString(desc)
+		pref.summary = hint
+		pref.setDescription(hint)
+	}
+
+	private fun setupSpeedChips() {
+		val pref = findPreference<Preference>(plugin.MOVING_SPEED_THRESHOLD_KMH.id) ?: return
+		pref.summary = getString(R.string.voice_gps_moving_speed_threshold_desc)
+		val values = intArrayOf(5, 8, 10, 15, 20)
+		chipRows[pref.key] = ChipRow(
+			choices = values.map { kmh ->
+				ChipOption(
+					kmh.toString(),
+					kmh.toString(),
+					getString(R.string.ev_bms_n_kmh, kmh),
+				)
+			},
+			read = { plugin.movingSpeedThresholdKmh().toString() },
+			write = { raw ->
+				raw.toIntOrNull()?.let { plugin.MOVING_SPEED_THRESHOLD_KMH.set(it) }
+			},
+		)
+	}
+
+	private fun setupWakeKeyChips() {
+		val pref = findPreference<Preference>(plugin.MANUAL_WAKE_KEY.id) ?: return
+		pref.summary = getString(R.string.voice_gps_manual_wake_key_desc)
+		chipRows[pref.key] = ChipRow(
+			choices = listOf(
+				ChipOption(
+					VoiceGpsPlugin.MANUAL_WAKE_KEY_SIDE,
+					getString(R.string.voice_gps_chip_side),
+					getString(R.string.voice_gps_manual_wake_key_side),
+				),
+				ChipOption(
+					VoiceGpsPlugin.MANUAL_WAKE_KEY_VOLUME_UP,
+					getString(R.string.voice_gps_chip_vol_up),
+					getString(R.string.voice_gps_manual_wake_key_volume_up),
+				),
+				ChipOption(
+					VoiceGpsPlugin.MANUAL_WAKE_KEY_VOLUME_DOWN,
+					getString(R.string.voice_gps_chip_vol_down),
+					getString(R.string.voice_gps_manual_wake_key_volume_down),
+				),
+			),
+			read = { plugin.MANUAL_WAKE_KEY.get() },
+			write = { plugin.MANUAL_WAKE_KEY.set(it) },
+		)
+	}
+
+	private fun decorateRows() {
+		decorate("voice_gps_request_mic", "🎤", R.drawable.ic_action_micro_dark)
+		decorate(plugin.LISTEN_IN_BACKGROUND.id, "🔋", R.drawable.ic_action_battery)
+		decorate(plugin.PAUSE_WHEN_MOVING.id, "⏸️", R.drawable.ic_action_trip_rec_pause)
+		decorate(plugin.MOVING_SPEED_THRESHOLD_KMH.id, "🚴", R.drawable.ic_action_speed)
+		decorate(plugin.PARTIAL_WAKE.id, "👂", R.drawable.ic_action_micro_dark)
+		decorate(plugin.MANUAL_WAKE.id, "✋", R.drawable.ic_action_keyboard)
+		decorate(plugin.MANUAL_WAKE_KEY.id, "🔘", R.drawable.ic_action_keyboard)
+		decorate(plugin.SHOW_VOICE_GPX_ON_MAP.id, "🗺️", R.drawable.ic_action_waypoint)
+	}
+
+	private fun decorate(key: String, emoji: String, iconRes: Int) {
+		val pref = findPreference<Preference>(key) ?: return
+		val title = pref.title?.toString().orEmpty()
+		if (title.isNotEmpty() && !title.startsWith(emoji)) {
+			pref.title = "$emoji $title"
+		}
+		pref.icon = getContentIcon(iconRes)
+	}
+
+	private fun updateDependentRows() {
+		findPreference<Preference>(plugin.MOVING_SPEED_THRESHOLD_KMH.id)?.isEnabled =
+			plugin.PAUSE_WHEN_MOVING.get()
+		val manual = plugin.manualWakeEnabled()
+		findPreference<Preference>(plugin.MANUAL_WAKE_KEY.id)?.isEnabled = manual
+		findPreference<SwitchPreferenceEx>(plugin.PARTIAL_WAKE.id)?.isEnabled = !manual
+	}
+
+	override fun onBindPreferenceViewHolder(preference: Preference, holder: PreferenceViewHolder) {
+		super.onBindPreferenceViewHolder(preference, holder)
+		if (preference is SwitchPreferenceEx) {
+			val sw = holder.findViewById(R.id.switchWidget) as? SwitchCompat
+			if (sw != null) {
+				sw.setOnCheckedChangeListener(null)
+				sw.isChecked = preference.isChecked
+				sw.isClickable = false
+				sw.isFocusable = false
+			}
+		}
+		bindChips(preference, holder)
+	}
+
+	private fun bindChips(preference: Preference, holder: PreferenceViewHolder) {
+		val row = chipRows[preference.key] ?: return
+		val container = holder.findViewById(R.id.voice_gps_chips) as? LinearLayout ?: return
+		container.removeAllViews()
+		val selected = row.read()
+		val enabled = preference.isEnabled
+		val ctx = preference.context
+		val padH = AndroidUtils.dpToPx(ctx, 10f)
+		val padV = AndroidUtils.dpToPx(ctx, 4f)
+		val gap = AndroidUtils.dpToPx(ctx, 6f)
+		val minH = AndroidUtils.dpToPx(ctx, 28f)
+		for ((index, choice) in row.choices.withIndex()) {
+			val chip = TextView(ctx)
+			chip.text = choice.label
+			chip.contentDescription = choice.description
+			chip.gravity = Gravity.CENTER
+			chip.minHeight = minH
+			chip.setPadding(padH, padV, padH, padV)
+			chip.setTextSize(
+				TypedValue.COMPLEX_UNIT_PX,
+				resources.getDimension(R.dimen.default_desc_text_size)
+			)
+			chip.isEnabled = enabled
+			styleChip(chip, choice.value == selected, enabled)
+			val lp = LinearLayout.LayoutParams(
+				LinearLayout.LayoutParams.WRAP_CONTENT,
+				LinearLayout.LayoutParams.WRAP_CONTENT
+			)
+			if (index > 0) {
+				lp.marginStart = gap
+			}
+			chip.layoutParams = lp
+			chip.setOnClickListener {
+				if (!preference.isEnabled || row.read() == choice.value) {
+					return@setOnClickListener
+				}
+				row.write(choice.value)
+				plugin.syncListeningService()
+				updatePreference(preference)
+			}
+			container.addView(chip)
+		}
+	}
+
+	private fun styleChip(chip: TextView, selected: Boolean, enabled: Boolean) {
+		val night = isNightMode()
+		val active = ColorUtilities.getActiveColor(chip.context, night)
+		val secondary = ColorUtilities.getSecondaryTextColor(chip.context, night)
+		val primary = ColorUtilities.getPrimaryTextColor(chip.context, night)
+		chip.setTextColor(
+			when {
+				!enabled -> secondary
+				selected -> Color.WHITE
+				else -> primary
+			}
+		)
+		val bg = GradientDrawable()
+		bg.cornerRadius = AndroidUtils.dpToPx(chip.context, 8f).toFloat()
+		bg.setColor(
+			if (selected && enabled) {
+				active
+			} else {
+				ColorUtilities.getColorWithAlpha(secondary, 0.18f)
+			}
+		)
+		chip.background = bg
+	}
+
+	override fun onDisplayPreferenceDialog(preference: Preference) {
+		if (preference is SwitchPreferenceEx) {
+			val next = !preference.isChecked
+			if (preference.callChangeListener(next)) {
+				preference.isChecked = next
+			}
+			return
+		}
+		super.onDisplayPreferenceDialog(preference)
 	}
 
 	private fun updatePermissionSummary() {
@@ -80,22 +229,27 @@ class VoiceGpsSettingsFragment : BaseSettingsFragment() {
 	override fun onPreferenceChange(preference: Preference, newValue: Any?): Boolean {
 		val result = super.onPreferenceChange(preference, newValue)
 		when (preference.key) {
-			plugin.LISTEN_IN_BACKGROUND.id,
-			plugin.PAUSE_WHEN_MOVING.id,
-			plugin.MOVING_SPEED_THRESHOLD_KMH.id,
-			plugin.PARTIAL_WAKE.id,
-			plugin.MANUAL_WAKE.id,
-			plugin.MANUAL_WAKE_KEY.id,
-			plugin.SHOW_VOICE_GPX_ON_MAP.id -> {
-				if (preference.key == plugin.PAUSE_WHEN_MOVING.id) {
-					updateMovingSpeedThresholdEnabled()
+			plugin.PAUSE_WHEN_MOVING.id -> {
+				val moving = newValue as? Boolean == true
+				findPreference<Preference>(plugin.MOVING_SPEED_THRESHOLD_KMH.id)?.let {
+					it.isEnabled = moving
+					updatePreference(it)
 				}
-				if (preference.key == plugin.MANUAL_WAKE.id) {
-					updateManualWakeKeyEnabled()
-				}
-				plugin.syncListeningService()
 			}
+			plugin.MANUAL_WAKE.id -> {
+				val manual = newValue as? Boolean == true
+				findPreference<Preference>(plugin.MANUAL_WAKE_KEY.id)?.let {
+					it.isEnabled = manual
+					updatePreference(it)
+				}
+				findPreference<SwitchPreferenceEx>(plugin.PARTIAL_WAKE.id)?.isEnabled = !manual
+			}
+			plugin.LISTEN_IN_BACKGROUND.id,
+			plugin.PARTIAL_WAKE.id,
+			plugin.SHOW_VOICE_GPX_ON_MAP.id -> Unit
+			else -> return result
 		}
+		view?.post { plugin.syncListeningService() }
 		return result
 	}
 
@@ -110,6 +264,8 @@ class VoiceGpsSettingsFragment : BaseSettingsFragment() {
 				}
 				return true
 			}
+			plugin.MOVING_SPEED_THRESHOLD_KMH.id,
+			plugin.MANUAL_WAKE_KEY.id -> return true
 		}
 		return super.onPreferenceClick(preference)
 	}

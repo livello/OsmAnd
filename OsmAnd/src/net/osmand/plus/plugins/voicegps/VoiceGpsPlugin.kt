@@ -268,6 +268,8 @@ class VoiceGpsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 	fun syncListeningService() {
 		updateManualWakeKeyInterceptor()
 		if (manualWakeEnabled()) {
+			// Never start the foreground listen service from the 2.5s sync.
+			// It runs only after a widget tap or the side key (beginManualSession).
 			if (!VoiceGpsListenService.manualSessionRunning) {
 				VoiceGpsListenService.sync(app, false)
 			}
