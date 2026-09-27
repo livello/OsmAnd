@@ -6516,6 +6516,14 @@ Download tile maps directly, or copy them as SQLite database files to OsmAnd\'s 
     <string name="voice_gps_moving_speed_threshold_desc">Listening stays off at this speed and above when pause while moving is enabled.</string>
     <string name="voice_gps_partial_wake">Partial results for wake word</string>
     <string name="voice_gps_partial_wake_desc">Detect «OsmAnd» faster (uses slightly more CPU during listen windows).</string>
+    <string name="voice_gps_manual_wake">Manual mode</string>
+    <string name="voice_gps_manual_wake_desc">Do not listen for «OsmAnd». Press the chosen hardware key on the map screen to activate voice control (then say «note» as usual).</string>
+    <string name="voice_gps_manual_wake_key">Activation key</string>
+    <string name="voice_gps_manual_wake_key_desc">Only handled while manual mode is on and this plugin is active. Volume keys are not changed when manual mode is off.</string>
+    <string name="voice_gps_manual_wake_key_side">Side / headset button</string>
+    <string name="voice_gps_manual_wake_key_volume_up">Volume up</string>
+    <string name="voice_gps_manual_wake_key_volume_down">Volume down</string>
+    <string name="voice_gps_manual_wake_unavailable">Voice control is paused (motion, background, or no microphone).</string>
     <string name="voice_gps_activated">Voice control active — say «note»</string>
     <string name="voice_gps_dictating">Dictating note — say «end» when finished</string>
     <string name="voice_gps_no_location">No GPS fix — enable location and try again</string>

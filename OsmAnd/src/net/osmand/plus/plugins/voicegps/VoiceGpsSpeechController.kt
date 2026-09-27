@@ -10,6 +10,9 @@ import android.util.Log
 import net.osmand.plus.OsmandApplication
 import net.osmand.plus.R
 
+/** Notified when the controller fully stops (e.g. end of a manual key session). */
+typealias VoiceGpsControllerStopListener = () -> Unit
+
 /**
  * Two-stage mic usage for battery: short wake-word listen cycles, then full partial-result
  * dictation only after «заметка». No Porcupine/openWakeWord in the project — platform STT only.
@@ -39,8 +42,12 @@ class VoiceGpsSpeechController(
 	private val restartRunnable = Runnable { startListenCycle() }
 	private val listenTimeoutRunnable = Runnable { onListenWindowElapsed() }
 
+	var onStopped: VoiceGpsControllerStopListener? = null
+
 	companion object {
 		private const val TAG = "VoiceGpsSpeech"
+		/** Keep wake-mode STT alive longer to cut start/stop system beeps. */
+		private const val WAKE_MIN_SPEECH_MS = 15_000L
 	}
 
 	fun start() {
@@ -61,11 +68,34 @@ class VoiceGpsSpeechController(
 
 	fun stop() {
 		mainHandler.post {
+			if (!running) {
+				return@post
+			}
 			running = false
 			mainHandler.removeCallbacks(restartRunnable)
 			mainHandler.removeCallbacks(listenTimeoutRunnable)
+			quietEndRecognizerSession()
 			destroyRecognizer()
 			resetNoteSession()
+			onStopped?.invoke()
+		}
+	}
+
+	/** Manual wake key: same as wake word «Османд» — await «заметка», no continuous wake listening. */
+	fun startManualActivation() {
+		mainHandler.post {
+			if (!plugin.shouldListenNow()) {
+				return@post
+			}
+			if (!SpeechRecognizer.isRecognitionAvailable(app)) {
+				Log.w(TAG, "Speech recognition not available")
+				return@post
+			}
+			running = true
+			ensureRecognizer()
+			app.showShortToastMessage(app.getString(R.string.voice_gps_activated))
+			onWakeDetected()
+			startListenCycle()
 		}
 	}
 
@@ -115,13 +145,20 @@ class VoiceGpsSpeechController(
 			Mode.DICTATE -> {
 				appendPartialToDictation()
 				Log.d(TAG, "dictation listen window elapsed — restarting STT")
-				try {
-					speechRecognizer?.cancel()
-				} catch (_: Exception) {
-				}
+				quietEndRecognizerSession()
 				scheduleNextCycle(150L)
 			}
-			else -> stopActiveSession("listen_timeout")
+			Mode.AWAIT_COMMAND -> {
+				if (plugin.manualWakeEnabled()) {
+					endManualSession("await_command_timeout")
+				} else {
+					stopActiveSession("listen_timeout")
+				}
+			}
+			Mode.WAKE_LISTEN -> {
+				quietEndRecognizerSession()
+				scheduleNextCycle(plugin.wakePauseMs())
+			}
 		}
 	}
 
@@ -133,7 +170,7 @@ class VoiceGpsSpeechController(
 		ensureRecognizer()
 		val recognizer = speechRecognizer ?: return
 		try {
-			recognizer.cancel()
+			quietEndRecognizerSession()
 			recognizer.startListening(buildIntent())
 			armListenTimeout()
 		} catch (e: Exception) {
@@ -149,16 +186,31 @@ class VoiceGpsSpeechController(
 			putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, mode != Mode.WAKE_LISTEN || plugin.partialWakeEnabled())
 			putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
 			putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, app.packageName)
+			// Empty prompt avoids spoken UI feedback from the recognizer service.
+			putExtra(RecognizerIntent.EXTRA_PROMPT, "")
+			if (mode == Mode.WAKE_LISTEN) {
+				putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, WAKE_MIN_SPEECH_MS)
+			}
 		}
+	}
+
+	/** cancel() restarts without the end-of-session earcon that stopListening() often plays. */
+	private fun quietEndRecognizerSession() {
+		try {
+			speechRecognizer?.cancel()
+		} catch (_: Exception) {
+		}
+	}
+
+	private fun endManualSession(reason: String) {
+		Log.d(TAG, "manual session end reason=$reason")
+		stop()
 	}
 
 	private fun stopActiveSession(reason: String) {
 		Log.d(TAG, "stop session reason=$reason mode=$mode")
 		mainHandler.removeCallbacks(listenTimeoutRunnable)
-		try {
-			speechRecognizer?.stopListening()
-		} catch (_: Exception) {
-		}
+		quietEndRecognizerSession()
 		if (mode == Mode.WAKE_LISTEN) {
 			scheduleNextCycle(plugin.wakePauseMs())
 		} else if (mode == Mode.DICTATE) {
@@ -204,6 +256,10 @@ class VoiceGpsSpeechController(
 			Log.i(TAG, "saved voice note len=${body.length}")
 		}
 		resetNoteSession()
+		if (plugin.manualWakeEnabled()) {
+			endManualSession("note_saved")
+			return
+		}
 		scheduleNextCycle(plugin.wakePauseMs())
 	}
 

@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
 import android.os.Handler
 import android.os.Looper
+import android.view.KeyEvent
 import android.view.View
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -26,8 +27,12 @@ class VoiceGpsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 
 	companion object {
 		const val REQUEST_RECORD_AUDIO = 88501
-		private const val DEFAULT_WAKE_PAUSE_MS = 4000L
-		private const val DEFAULT_LISTEN_WINDOW_MS = 8000L
+		private const val DEFAULT_WAKE_PAUSE_MS = 5000L
+		private const val DEFAULT_LISTEN_WINDOW_MS = 25_000L
+
+		const val MANUAL_WAKE_KEY_VOLUME_UP = "volume_up"
+		const val MANUAL_WAKE_KEY_VOLUME_DOWN = "volume_down"
+		const val MANUAL_WAKE_KEY_SIDE = "side"
 		private const val DEFAULT_COMMAND_LISTEN_MS = 12_000L
 		private const val DEFAULT_DICTATION_LISTEN_MS = 45_000L
 		private const val FOREGROUND_SYNC_MS = 2500L
@@ -53,8 +58,39 @@ class VoiceGpsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 			"voice_gps_moving_speed_threshold_kmh",
 			DEFAULT_MOVING_SPEED_THRESHOLD_KMH
 		).makeGlobal().makeShared()
+	val MANUAL_WAKE: CommonPreference<Boolean> =
+		registerBooleanPreference("voice_gps_manual_wake", false).makeGlobal().makeShared()
+	val MANUAL_WAKE_KEY: CommonPreference<String> =
+		registerStringPreference("voice_gps_manual_wake_key", MANUAL_WAKE_KEY_SIDE).makeGlobal().makeShared()
 
 	private val mainHandler = Handler(Looper.getMainLooper())
+	private var manualWakeKeyCallbackInstalled = false
+	private val manualWakeKeyCallback = object : KeyEvent.Callback {
+		override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+			if (event == null || event.repeatCount > 0) {
+				return false
+			}
+			if (!isActive || !manualWakeEnabled()) {
+				return false
+			}
+			if (keyCode != manualWakeKeyCode()) {
+				return false
+			}
+			onManualWakeKeyPressed()
+			return true
+		}
+
+		override fun onKeyLongPress(keyCode: Int, event: KeyEvent?): Boolean = false
+
+		override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
+			if (!isActive || !manualWakeEnabled()) {
+				return false
+			}
+			return keyCode == manualWakeKeyCode()
+		}
+
+		override fun onKeyMultiple(keyCode: Int, count: Int, event: KeyEvent?): Boolean = false
+	}
 	private val foregroundSyncRunnable = object : Runnable {
 		override fun run() {
 			syncListeningService()
@@ -166,11 +202,57 @@ class VoiceGpsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 
 	fun partialWakeEnabled(): Boolean = PARTIAL_WAKE.get()
 
+	fun manualWakeEnabled(): Boolean = MANUAL_WAKE.get()
+
+	fun manualWakeKeyCode(): Int = when (MANUAL_WAKE_KEY.get()) {
+		MANUAL_WAKE_KEY_VOLUME_UP -> KeyEvent.KEYCODE_VOLUME_UP
+		MANUAL_WAKE_KEY_VOLUME_DOWN -> KeyEvent.KEYCODE_VOLUME_DOWN
+		else -> KeyEvent.KEYCODE_HEADSETHOOK
+	}
+
 	fun showVoiceGpxOnMap(): Boolean = SHOW_VOICE_GPX_ON_MAP.get()
 
+	fun onManualWakeKeyPressed() {
+		if (!isActive || !manualWakeEnabled() || !hasRecordAudioPermission()) {
+			return
+		}
+		if (!shouldListenNow()) {
+			app.showShortToastMessage(app.getString(R.string.voice_gps_manual_wake_unavailable))
+			return
+		}
+		VoiceGpsListenService.startManualSession(app)
+	}
+
 	fun syncListeningService() {
+		updateManualWakeKeyInterceptor()
+		if (manualWakeEnabled()) {
+			VoiceGpsListenService.sync(app, false)
+			return
+		}
 		val start = shouldListenNow()
 		VoiceGpsListenService.sync(app, start)
+	}
+
+	private fun updateManualWakeKeyInterceptor() {
+		val want = isActive && manualWakeEnabled()
+		if (want && !manualWakeKeyCallbackInstalled) {
+			app.getKeyEventHelper().setExternalCallback(manualWakeKeyCallback)
+			manualWakeKeyCallbackInstalled = true
+		} else if (!want && manualWakeKeyCallbackInstalled) {
+			app.getKeyEventHelper().setExternalCallback(null)
+			manualWakeKeyCallbackInstalled = false
+		}
+	}
+
+	override fun mapActivityResume(activity: MapActivity) {
+		updateManualWakeKeyInterceptor()
+	}
+
+	override fun mapActivityPause(activity: MapActivity) {
+		if (manualWakeKeyCallbackInstalled) {
+			app.getKeyEventHelper().setExternalCallback(null)
+			manualWakeKeyCallbackInstalled = false
+		}
 	}
 
 	override fun registerOptionsMenuItems(mapActivity: MapActivity, helper: ContextMenuAdapter) {

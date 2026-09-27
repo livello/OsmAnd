@@ -35,6 +35,18 @@
 		android:title="@string/voice_gps_partial_wake" />
 
 	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
+		android:key="voice_gps_manual_wake"
+		android:layout="@layout/preference_with_descr"
+		android:summaryOff="@string/shared_string_disabled"
+		android:summaryOn="@string/shared_string_enabled"
+		android:title="@string/voice_gps_manual_wake" />
+
+	<net.osmand.plus.settings.preferences.ListPreferenceEx
+		android:key="voice_gps_manual_wake_key"
+		android:layout="@layout/preference_with_descr"
+		android:title="@string/voice_gps_manual_wake_key" />
+
+	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
 		android:key="ev_voice_gpx_show_on_map"
 		android:layout="@layout/preference_with_descr"
 		android:summaryOff="@string/shared_string_disabled"

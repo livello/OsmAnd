@@ -20,6 +20,17 @@ class VoiceGpsListenService : Service() {
 
 	companion object {
 		const val NOTIFICATION_ID = 8755
+		const val ACTION_MANUAL_SESSION = "net.osmand.plus.plugins.voicegps.MANUAL_SESSION"
+
+		fun startManualSession(context: Context) {
+			val intent = Intent(context, VoiceGpsListenService::class.java).apply {
+				action = ACTION_MANUAL_SESSION
+			}
+			try {
+				ContextCompat.startForegroundService(context, intent)
+			} catch (_: Exception) {
+			}
+		}
 
 		fun sync(context: Context, start: Boolean) {
 			val intent = Intent(context, VoiceGpsListenService::class.java)
@@ -47,14 +58,23 @@ class VoiceGpsListenService : Service() {
 	override fun onCreate() {
 		super.onCreate()
 		val p = plugin ?: return
-		controller = VoiceGpsSpeechController(app, p)
+		controller = VoiceGpsSpeechController(app, p).also { ctrl ->
+			ctrl.onStopped = {
+				stopSelf()
+			}
+		}
 	}
 
 	override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
 		app.notificationHelper.createNotificationChannel()
 		val p = plugin
+		val manualSession = intent?.action == ACTION_MANUAL_SESSION
 		if (p == null || !p.isActive || !p.shouldListenNow()) {
 			controller?.stop()
+			stopSelf()
+			return START_NOT_STICKY
+		}
+		if (manualSession && !p.manualWakeEnabled()) {
 			stopSelf()
 			return START_NOT_STICKY
 		}
@@ -74,11 +94,20 @@ class VoiceGpsListenService : Service() {
 			stopSelf()
 			return START_NOT_STICKY
 		}
+		if (manualSession) {
+			controller?.startManualActivation()
+			return START_NOT_STICKY
+		}
+		if (p.manualWakeEnabled()) {
+			stopSelf()
+			return START_NOT_STICKY
+		}
 		controller?.start()
 		return START_STICKY
 	}
 
 	override fun onDestroy() {
+		controller?.onStopped = null
 		controller?.stop()
 		controller = null
 		super.onDestroy()

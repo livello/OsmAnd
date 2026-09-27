@@ -20,7 +20,34 @@ class VoiceGpsSettingsFragment : BaseSettingsFragment() {
 		setupSwitch(plugin.PAUSE_WHEN_MOVING.id, R.string.voice_gps_pause_when_moving_desc)
 		setupMovingSpeedThreshold()
 		setupSwitch(plugin.PARTIAL_WAKE.id, R.string.voice_gps_partial_wake_desc)
+		setupManualWake()
 		setupSwitch(plugin.SHOW_VOICE_GPX_ON_MAP.id, R.string.ev_voice_gpx_show_on_map_desc)
+	}
+
+	private fun setupManualWake() {
+		setupSwitch(plugin.MANUAL_WAKE.id, R.string.voice_gps_manual_wake_desc)
+		val pref = findPreference<ListPreferenceEx>(plugin.MANUAL_WAKE_KEY.id) ?: return
+		val keys = arrayOf(
+			VoiceGpsPlugin.MANUAL_WAKE_KEY_SIDE,
+			VoiceGpsPlugin.MANUAL_WAKE_KEY_VOLUME_UP,
+			VoiceGpsPlugin.MANUAL_WAKE_KEY_VOLUME_DOWN,
+		)
+		pref.setEntries(
+			arrayOf(
+				getString(R.string.voice_gps_manual_wake_key_side),
+				getString(R.string.voice_gps_manual_wake_key_volume_up),
+				getString(R.string.voice_gps_manual_wake_key_volume_down),
+			)
+		)
+		pref.setEntryValues(keys.map { it as Any }.toTypedArray())
+		pref.setValue(plugin.MANUAL_WAKE_KEY.get())
+		pref.setDescription(R.string.voice_gps_manual_wake_key_desc)
+		updateManualWakeKeyEnabled()
+	}
+
+	private fun updateManualWakeKeyEnabled() {
+		findPreference<ListPreferenceEx>(plugin.MANUAL_WAKE_KEY.id)?.isEnabled = plugin.manualWakeEnabled()
+		findPreference<SwitchPreferenceEx>(plugin.PARTIAL_WAKE.id)?.isEnabled = !plugin.manualWakeEnabled()
 	}
 
 	private fun setupMovingSpeedThreshold() {
@@ -57,9 +84,14 @@ class VoiceGpsSettingsFragment : BaseSettingsFragment() {
 			plugin.PAUSE_WHEN_MOVING.id,
 			plugin.MOVING_SPEED_THRESHOLD_KMH.id,
 			plugin.PARTIAL_WAKE.id,
+			plugin.MANUAL_WAKE.id,
+			plugin.MANUAL_WAKE_KEY.id,
 			plugin.SHOW_VOICE_GPX_ON_MAP.id -> {
 				if (preference.key == plugin.PAUSE_WHEN_MOVING.id) {
 					updateMovingSpeedThresholdEnabled()
+				}
+				if (preference.key == plugin.MANUAL_WAKE.id) {
+					updateManualWakeKeyEnabled()
 				}
 				plugin.syncListeningService()
 			}
