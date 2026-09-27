@@ -3,13 +3,19 @@ package net.osmand.plus.plugins.voicegps
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.os.Bundle
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.widget.SwitchCompat
 import androidx.preference.Preference
 import androidx.preference.PreferenceViewHolder
+import androidx.recyclerview.widget.RecyclerView
 import net.osmand.plus.R
 import net.osmand.plus.plugins.PluginsHelper
 import net.osmand.plus.settings.fragments.BaseSettingsFragment
@@ -18,6 +24,12 @@ import net.osmand.plus.utils.AndroidUtils
 import net.osmand.plus.utils.ColorUtilities
 
 class VoiceGpsSettingsFragment : BaseSettingsFragment() {
+
+	companion object {
+		const val EMBEDDED_KEY = "voice_gps_settings_embedded"
+	}
+
+	private var localNoteBar: View? = null
 
 	private class ChipOption(val value: String, val label: String, val description: String)
 
@@ -31,6 +43,90 @@ class VoiceGpsSettingsFragment : BaseSettingsFragment() {
 		get() = PluginsHelper.requirePlugin(VoiceGpsPlugin::class.java)
 
 	private val chipRows = HashMap<String, ChipRow>()
+
+	private fun isEmbedded(): Boolean = arguments?.getBoolean(EMBEDDED_KEY) == true
+
+	override fun onCreateView(
+		inflater: LayoutInflater,
+		container: ViewGroup?,
+		savedInstanceState: Bundle?
+	): View {
+		val content = super.onCreateView(inflater, container, savedInstanceState)!!
+		attachScrollListener()
+		if (isEmbedded()) {
+			content.findViewById<View>(R.id.appbar)?.visibility = View.GONE
+			content.setPadding(content.paddingLeft, 0, content.paddingRight, content.paddingBottom)
+			setNoteBarInset(true)
+			return content
+		}
+		val frame = FrameLayout(content.context)
+		frame.layoutParams = ViewGroup.LayoutParams(
+			ViewGroup.LayoutParams.MATCH_PARENT,
+			ViewGroup.LayoutParams.MATCH_PARENT
+		)
+		frame.addView(
+			content,
+			FrameLayout.LayoutParams(
+				ViewGroup.LayoutParams.MATCH_PARENT,
+				ViewGroup.LayoutParams.MATCH_PARENT
+			)
+		)
+		val bar = VoiceGpsNoteBar.create(content.context, isNightMode()) { startVoiceNote() }
+		bar.id = R.id.bottom_buttons_container
+		frame.addView(
+			bar,
+			FrameLayout.LayoutParams(
+				ViewGroup.LayoutParams.MATCH_PARENT,
+				ViewGroup.LayoutParams.WRAP_CONTENT,
+				Gravity.BOTTOM
+			)
+		)
+		localNoteBar = bar
+		setNoteBarInset(true)
+		return frame
+	}
+
+	override fun updateStatusBar() {
+		if (!isEmbedded()) {
+			super.updateStatusBar()
+		}
+	}
+
+	private fun attachScrollListener() {
+		listView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+			override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+				val atTop = !recyclerView.canScrollVertically(-1)
+				if (isEmbedded()) {
+					(parentFragment as? VoiceGpsSettingsBottomSheet)?.setNoteButtonVisible(atTop)
+				} else {
+					showLocalNoteBar(atTop)
+				}
+			}
+		})
+	}
+
+	fun setNoteBarInset(barVisible: Boolean) {
+		val list = listView ?: return
+		val bottom = AndroidUtils.dpToPx(app, if (barVisible) 56f else 12f)
+		list.setPadding(list.paddingLeft, list.paddingTop, list.paddingRight, bottom)
+	}
+
+	private fun showLocalNoteBar(visible: Boolean) {
+		val bar = localNoteBar ?: return
+		val shown = bar.visibility == View.VISIBLE && bar.alpha > 0.5f
+		if (shown == visible) {
+			return
+		}
+		VoiceGpsNoteBar.setVisible(bar, visible, animate = true)
+		setNoteBarInset(visible)
+	}
+
+	private fun startVoiceNote() {
+		val host = activity
+		val sheet = parentFragment as? VoiceGpsSettingsBottomSheet
+		sheet?.dismissAllowingStateLoss()
+		plugin.beginManualSession(host)
+	}
 
 	override fun setupPreferences() {
 		updatePermissionSummary()

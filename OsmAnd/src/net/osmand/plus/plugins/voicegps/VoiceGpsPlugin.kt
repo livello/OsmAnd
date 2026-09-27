@@ -4,14 +4,19 @@ import android.Manifest
 import android.app.Activity
 import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
+import android.media.AudioAttributes
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import android.view.KeyEvent
 import android.view.View
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.text.HtmlCompat
+import androidx.fragment.app.FragmentActivity
 import net.osmand.aidlapi.OsmAndCustomizationConstants
 import net.osmand.plus.OsmandApplication
 import net.osmand.plus.R
@@ -21,8 +26,9 @@ import net.osmand.plus.settings.backend.ApplicationMode
 import net.osmand.plus.settings.backend.WidgetsAvailabilityHelper
 import net.osmand.plus.settings.backend.preferences.CommonPreference
 import net.osmand.plus.settings.enums.ScreenLayoutMode
-import net.osmand.plus.settings.fragments.BaseSettingsFragment
 import net.osmand.plus.settings.fragments.SettingsScreenType
+import net.osmand.plus.voice.JsTtsCommandPlayer
+import java.util.Locale
 import net.osmand.plus.views.mapwidgets.MapWidgetInfo
 import net.osmand.plus.views.mapwidgets.WidgetInfoCreator
 import net.osmand.plus.views.mapwidgets.WidgetType
@@ -79,6 +85,10 @@ class VoiceGpsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 	}
 
 	private val mainHandler = Handler(Looper.getMainLooper())
+	private val promptHandler = Handler(Looper.getMainLooper())
+	private var promptGeneration = 0
+	private var promptTts: TextToSpeech? = null
+	private var promptReady = false
 	private var manualWakeKeyCallbackInstalled = false
 	private val manualWakeKeyCallback = object : KeyEvent.Callback {
 		override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
@@ -144,7 +154,106 @@ class VoiceGpsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 	override fun disable(app: OsmandApplication) {
 		super.disable(app)
 		mainHandler.removeCallbacks(foregroundSyncRunnable)
+		shutdownListenPrompt()
 		VoiceGpsListenService.sync(app, false)
+	}
+
+	fun showSettings(activity: FragmentActivity) {
+		VoiceGpsSettingsBottomSheet.showInstance(activity.supportFragmentManager)
+	}
+
+	/**
+	 * Speaks «слушаю заметку» once. [onFinished] runs after the utterance (or if TTS cannot start)
+	 * so speech recognition does not open the mic over the prompt.
+	 */
+	fun speakListenPrompt(onFinished: () -> Unit) {
+		val generation = ++promptGeneration
+		var ran = false
+		val finished = Runnable {
+			if (ran || generation != promptGeneration) {
+				return@Runnable
+			}
+			ran = true
+			onFinished()
+		}
+		val phrase = app.getString(R.string.voice_gps_listen_prompt)
+		val player = try {
+			app.routingHelper.voiceRouter.player
+		} catch (_: Exception) {
+			null
+		}
+		if (player is JsTtsCommandPlayer && player.speakAdditional(phrase)) {
+			promptHandler.postDelayed(finished, 1800L)
+			return
+		}
+		speakPromptWithEngine(phrase, generation, finished)
+	}
+
+	private fun speakPromptWithEngine(phrase: String, generation: Int, finished: Runnable) {
+		fun deliver(engine: TextToSpeech) {
+			if (generation != promptGeneration) {
+				return
+			}
+			engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+				override fun onStart(utteranceId: String?) {}
+				override fun onDone(utteranceId: String?) {
+					promptHandler.post(finished)
+				}
+
+				@Deprecated("Deprecated in Java")
+				override fun onError(utteranceId: String?) {
+					promptHandler.post(finished)
+				}
+
+				override fun onError(utteranceId: String?, errorCode: Int) {
+					promptHandler.post(finished)
+				}
+			})
+			val code = engine.speak(phrase, TextToSpeech.QUEUE_FLUSH, Bundle(), "voice-gps-listen")
+			if (code == TextToSpeech.ERROR) {
+				promptHandler.post(finished)
+			} else {
+				promptHandler.postDelayed(finished, 4000L)
+			}
+		}
+		val existing = promptTts
+		if (existing != null && promptReady) {
+			deliver(existing)
+			return
+		}
+		if (promptTts != null) {
+			promptHandler.postDelayed(finished, 4000L)
+			return
+		}
+		promptTts = TextToSpeech(app) { status ->
+			promptReady = status == TextToSpeech.SUCCESS
+			val engine = promptTts
+			if (!promptReady || engine == null) {
+				promptHandler.post(finished)
+				return@TextToSpeech
+			}
+			engine.language = Locale.forLanguageTag("ru")
+			engine.setAudioAttributes(
+				AudioAttributes.Builder()
+					.setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+					.setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+					.build()
+			)
+			promptHandler.post {
+				if (generation == promptGeneration) {
+					deliver(engine)
+				}
+			}
+		}
+	}
+
+	private fun shutdownListenPrompt() {
+		promptGeneration++
+		promptHandler.removeCallbacksAndMessages(null)
+		promptReady = false
+		promptTts?.stop()
+		promptTts?.shutdown()
+		promptTts = null
 	}
 
 	fun hasRecordAudioPermission(): Boolean {
@@ -229,9 +338,10 @@ class VoiceGpsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 	fun showVoiceGpxOnMap(): Boolean = SHOW_VOICE_GPX_ON_MAP.get()
 
 	/**
-	 * Same session as the wake / side key: listen for «заметка», then dictate until «конец».
-	 * The map widget calls this even when manual mode is off. The hardware key still requires
-	 * manual mode (default key is the side / headset button, [KEYCODE_HEADSETHOOK]).
+	 * One voice-note session: listen for «заметка», then dictate until «конец».
+	 * Started from the widget long-press, the settings emoji button, or the side key.
+	 * Does not start idle recognizer cycling. The hardware key still requires manual mode
+	 * (default key is the side / headset button, [KEYCODE_HEADSETHOOK]).
 	 */
 	fun beginManualSession(activity: Activity?) {
 		if (!isActive) {
@@ -269,7 +379,7 @@ class VoiceGpsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 		updateManualWakeKeyInterceptor()
 		if (manualWakeEnabled()) {
 			// Never start the foreground listen service from the 2.5s sync.
-			// It runs only after a widget tap or the side key (beginManualSession).
+			// It runs only after an explicit create-note action (beginManualSession).
 			if (!VoiceGpsListenService.manualSessionRunning) {
 				VoiceGpsListenService.sync(app, false)
 			}
@@ -340,7 +450,7 @@ class VoiceGpsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 				.setTitleId(R.string.voice_gps_plugin_name, mapActivity)
 				.setIcon(R.drawable.ic_action_micro_dark)
 				.setListener { _: OnDataChangeUiAdapter?, _: View?, _: ContextMenuItem?, _: Boolean ->
-					BaseSettingsFragment.showInstance(mapActivity, SettingsScreenType.VOICE_GPS_SETTINGS)
+					showSettings(mapActivity)
 					true
 				}
 		)

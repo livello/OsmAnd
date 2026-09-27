@@ -6528,12 +6528,14 @@ Download tile maps directly, or copy them as SQLite database files to OsmAnd\'s 
     <string name="voice_gps_chip_vol_down">Vol −</string>
     <string name="voice_gps_manual_wake_unavailable">Voice control is paused (motion, background, or no microphone).</string>
     <string name="voice_gps_activated">Voice control active — say «note»</string>
+    <string name="voice_gps_create_note">Create a voice note</string>
+    <string name="voice_gps_listen_prompt" translatable="false">слушаю заметку</string>
     <string name="voice_gps_dictating">Dictating note — say «end» when finished</string>
     <string name="voice_gps_no_location">No GPS fix — enable location and try again</string>
     <string name="voice_gps_note_saved">Note saved: %1$s</string>
     <string name="voice_gps_note_default_title">Note %1$s</string>
     <string name="voice_gps_widget_name">ev-voice-gpx → Voice Note</string>
-    <string name="voice_gps_widget_desc">Short tap activates voice input: say «note», dictate, then «end». Long press opens EV Voice GPX settings. The side button does the same only when manual mode is on (default key: side / headset).</string>
+    <string name="voice_gps_widget_desc">Short tap opens EV Voice GPX settings. Long press creates a voice note: say «note», dictate, then «end». The side button starts a note only when manual mode is on (default key: side / headset).</string>
     <string name="voice_gps_widget_label">Note</string>
     <string name="ev_voice_gpx_show_on_map">Show voice GPX on map</string>
     <string name="ev_voice_gpx_show_on_map_desc">Daily ev-voice-notes track on the map</string>

@@ -53,6 +53,8 @@ class VoiceGpsSpeechController(
 	private var recognizerSessionOpen = false
 	private var manualErrorRetries = 0
 	private var stopCleanupPosted = false
+	/** True while the activation prompt is spoken; recognizer stays closed until it finishes. */
+	private var awaitingPrompt = false
 
 	var onStopped: VoiceGpsControllerStopListener? = null
 
@@ -101,6 +103,10 @@ class VoiceGpsSpeechController(
 	}
 
 	private fun startManualOnMain() {
+		if (awaitingPrompt) {
+			Log.i(TAG, "manual prompt already playing")
+			return
+		}
 		if (running && manualOneShot && mode != Mode.WAKE_LISTEN) {
 			Log.i(TAG, "manual session already active")
 			return
@@ -117,12 +123,19 @@ class VoiceGpsSpeechController(
 		running = true
 		manualOneShot = plugin.manualWakeEnabled()
 		manualErrorRetries = 0
-		ensureRecognizer()
+		awaitingPrompt = true
 		Log.i(TAG, "manual activation — one session manual=$manualOneShot")
 		app.showShortToastMessage(app.getString(R.string.voice_gps_activated))
 		mode = Mode.AWAIT_COMMAND
-		sessionDeadlineElapsed = SystemClock.elapsedRealtime() + plugin.commandListenWindowMs()
-		startListenCycle()
+		plugin.speakListenPrompt {
+			if (!running || !awaitingPrompt) {
+				return@speakListenPrompt
+			}
+			awaitingPrompt = false
+			ensureRecognizer()
+			sessionDeadlineElapsed = SystemClock.elapsedRealtime() + plugin.commandListenWindowMs()
+			startListenCycle()
+		}
 	}
 
 	/** Flags drop immediately so a callback cannot schedule another cycle. Destroy runs after the callback. */
@@ -131,6 +144,7 @@ class VoiceGpsSpeechController(
 		running = false
 		manualOneShot = false
 		manualErrorRetries = 0
+		awaitingPrompt = false
 		recognizerSessionOpen = false
 		mainHandler.removeCallbacks(restartRunnable)
 		mainHandler.removeCallbacks(listenTimeoutRunnable)

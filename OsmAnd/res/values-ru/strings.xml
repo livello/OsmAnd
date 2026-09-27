@@ -5954,12 +5954,13 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
     <string name="voice_gps_chip_vol_down">Гр −</string>
     <string name="voice_gps_manual_wake_unavailable">Голос недоступен (движение, фон или нет микрофона).</string>
     <string name="voice_gps_activated">Голос активен — скажите «заметка»</string>
+    <string name="voice_gps_create_note">Создать голосовую заметку</string>
     <string name="voice_gps_dictating">Диктуйте заметку — «конец» для сохранения</string>
     <string name="voice_gps_no_location">Нет GPS — включите геолокацию</string>
     <string name="voice_gps_note_saved">Заметка сохранена: %1$s</string>
     <string name="voice_gps_note_default_title">Заметка %1$s</string>
     <string name="voice_gps_widget_name">ev-voice-gpx → Голосовая Заметка</string>
-    <string name="voice_gps_widget_desc">Короткое нажатие активирует голосовой ввод: скажите «заметка», диктуйте, затем «конец». Долгое нажатие открывает настройки EV-Голос GPX. Боковая кнопка делает то же самое только при включённом ручном режиме (по умолчанию — боковая / гарнитура).</string>
+    <string name="voice_gps_widget_desc">Короткое нажатие открывает настройки EV-Голос GPX. Долгое нажатие создаёт голосовую заметку: скажите «заметка», диктуйте, затем «конец». Боковая кнопка запускает заметку только при включённом ручном режиме (по умолчанию — боковая / гарнитура).</string>
     <string name="voice_gps_widget_label">Заметка</string>
     <string name="ev_voice_gpx_show_on_map">Показывать GPX заметок на карте</string>
     <string name="ev_voice_gpx_show_on_map_desc">Суточный трек ev-voice-notes на карте</string>
