@@ -87,6 +87,7 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	private var sheetTitleView: TextView? = null
 	private val expandedHistoryDays = HashSet<String>()
 	private var historyLegendExpanded = false
+	private var historyBindGeneration = 0
 
 	private data class ChartRow(
 		val field: TelemetryField,
@@ -791,9 +792,26 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 
 	private fun bindHistory() {
 		val list = view?.findViewById<LinearLayout>(R.id.ev_bms_history_list) ?: return
+		val gen = ++historyBindGeneration
+		list.removeAllViews()
+		list.addView(emptyHint(getString(R.string.shared_string_loading)))
+		plugin.repairChargeHistoryAsync {
+			if (gen != historyBindGeneration || view == null) {
+				return@repairChargeHistoryAsync
+			}
+			plugin.recomputeTodayChargeEnergy {
+				if (gen != historyBindGeneration || view == null) {
+					return@recomputeTodayChargeEnergy
+				}
+				populateHistoryList()
+			}
+		}
+	}
+
+	private fun populateHistoryList() {
+		val list = view?.findViewById<LinearLayout>(R.id.ev_bms_history_list) ?: return
 		list.removeAllViews()
 		val inflater = layoutInflater
-		plugin.repairChargeHistory()
 		val (charges, trips) = plugin.displayHistory()
 		list.addView(bindHistoryLegend(inflater, list))
 		if (charges.isEmpty() && trips.isEmpty()) {
@@ -826,6 +844,7 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	): View {
 		val item = inflater.inflate(R.layout.ev_bms_history_row, list, false)
 		item.findViewById<View>(R.id.delete_btn).visibility = View.GONE
+		item.findViewById<View>(R.id.share_btn).visibility = View.GONE
 		item.findViewById<View>(R.id.history_chart).visibility = View.GONE
 		item.findViewById<View>(R.id.history_chart_legend).visibility = View.GONE
 		item.findViewById<TextView>(R.id.title).text =
@@ -910,6 +929,7 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		val children = group.findViewById<LinearLayout>(R.id.history_day_children)
 		val expand = group.findViewById<TextView>(R.id.expand_btn)
 		group.findViewById<View>(R.id.delete_btn).visibility = View.GONE
+		wireDayShare(group, day)
 		group.findViewById<View>(R.id.history_chart).visibility = View.GONE
 		group.findViewById<View>(R.id.history_chart_legend).visibility = View.GONE
 		group.findViewById<TextView>(R.id.title).text =
@@ -1078,7 +1098,82 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			settingsFragment()?.refreshHistoryPrefs()
 			bindHistory()
 		}
+		item.findViewById<View>(R.id.share_btn).visibility = View.GONE
 		return item
+	}
+
+	private fun wireDayShare(item: View, day: DayHistory) {
+		val share = item.findViewById<TextView>(R.id.share_btn)
+		share.visibility = View.VISIBLE
+		share.setOnClickListener {
+			val host = activity ?: return@setOnClickListener
+			val title = "🛵 ${getString(R.string.ev_bms_history_day_trip, historyDayLabel(day))}"
+			EvTripPdf.share(host, title, dayPdfLines(day), "trip-${day.dayKey}.pdf")
+		}
+	}
+
+	private fun dayPdfLines(day: DayHistory): List<String> {
+		val lines = ArrayList<String>()
+		lines.add(SimpleDateFormat("d MMMM yyyy", Locale.getDefault()).format(Date(day.startMs)))
+		lines.add("")
+		daySummaryChips(day).forEach { lines.add(it.hint) }
+		for (row in day.rows) {
+			lines.add("")
+			when (row) {
+				is HistoryRow.Trip -> lines.addAll(tripPdfLines(row.record))
+				is HistoryRow.Charge -> lines.addAll(chargePdfLines(row.record))
+			}
+		}
+		return lines
+	}
+
+	private fun tripPdfLines(row: EvHistoryStore.ChargeTripRecord): List<String> {
+		val stopValue = row.stopMs?.let { fmtDuration(it) } ?: getString(R.string.ev_bms_value_none)
+		return listOf(
+			"🛵 ${fmtTime(row.startMs)} → ${fmtRecordEnd(row.startMs, row.endMs)}",
+			getString(R.string.ev_bms_history_distance, n(row.distanceKm)),
+			getString(R.string.ev_bms_history_ride, fmtDuration(row.movingMs), fmtDuration(row.durationMs())),
+			getString(R.string.ev_bms_history_voltage, n(row.startVoltageV), n(row.endVoltageV)),
+			getString(R.string.ev_bms_history_energy_wh, n0(row.energyWh)),
+			getString(R.string.ev_bms_history_used_ah, n(row.usedAh)),
+			getString(R.string.ev_bms_history_specific_whkm, n0(row.specificWhKm)),
+			getString(R.string.ev_bms_history_avg_speed, n(row.avgMovingKmh)),
+			getString(R.string.ev_bms_history_stop_time, stopValue),
+			getString(R.string.ev_bms_history_temp, nTemp(row.startTempC), nTemp(row.endTempC)),
+			getString(R.string.ev_bms_history_motor_temp, nTemp(row.startMotorTempC), nTemp(row.endMotorTempC))
+		)
+	}
+
+	private fun chargePdfLines(row: EvHistoryStore.ChargeRecord): List<String> {
+		val endLabel = if (row.isOpen()) {
+			getString(R.string.ev_bms_history_charging_now)
+		} else {
+			fmtRecordEnd(row.startMs, row.endMs)
+		}
+		val stopValue = when {
+			plugin.isChargeStopPending(row.startMs) || row.isOpen() ->
+				getString(R.string.ev_bms_history_stop_pending)
+			row.stopMs != null -> fmtDuration(row.stopMs)
+			else -> getString(R.string.ev_bms_value_none)
+		}
+		return listOf(
+			"🔌 ${fmtTime(row.startMs)} → $endLabel",
+			getString(R.string.ev_bms_history_duration, fmtDuration(row.durationMs())),
+			getString(R.string.ev_bms_history_charged_ah, n(row.chargedAh)),
+			getString(R.string.ev_bms_history_charge_energy_wh, n0(row.energyWh)),
+			getString(R.string.ev_bms_history_avg_charge_a, n(row.avgCurrentA)),
+			getString(R.string.ev_bms_history_temp, nTemp(row.startTempC), nTemp(row.endTempC)),
+			getString(R.string.ev_bms_history_min_cell_range, nVolt(row.startMinCellV), nVolt(row.endMinCellV)),
+			getString(R.string.ev_bms_history_stop_time, stopValue)
+		)
+	}
+
+	private fun fmtRecordEnd(startMs: Long, endMs: Long): String {
+		return if (historyDayKey(endMs) == historyDayKey(startMs)) {
+			fmtTime(endMs)
+		} else {
+			fmtDateTime(endMs)
+		}
 	}
 
 	private data class HistoryChip(val emoji: String, val value: String, val hint: String)

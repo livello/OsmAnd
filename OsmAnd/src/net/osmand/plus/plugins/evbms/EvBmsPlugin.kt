@@ -334,6 +334,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerStringPreference("ev_bms_trip_session", "").makeGlobal()
 	private val CHARGE_HISTORY: CommonPreference<String> =
 		registerStringPreference("ev_bms_charge_history", "").makeGlobal().makeShared()
+	private val CHARGE_WH_REPAIR: CommonPreference<String> =
+		registerStringPreference("ev_bms_charge_wh_repair", "").makeGlobal()
 	private val TRIP_HISTORY: CommonPreference<String> =
 		registerStringPreference("ev_bms_trip_history", "").makeGlobal().makeShared()
 	private val TELEMETRY_HISTORY_DONE: CommonPreference<String> =
@@ -430,6 +432,15 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private var chargeLastAhMs = 0L
 	private var chargeEnergyWhAcc = 0.0
 	private var chargeEnergyLastMs = 0L
+	private var chargeLiveVoltageV: Double? = null
+	private var chargeGapOpen = false
+	private var chargeGapVoltageV: Double? = null
+	private var chargeGapAh: Double? = null
+	private var chargeGapSinceMs = 0L
+	private var chargeWhRepairRunning = false
+	private val chargeWhRepairCallbacks = ArrayList<(Boolean) -> Unit>()
+	private var chargeHistoryRepairRunning = false
+	private val chargeHistoryRepairCallbacks = ArrayList<() -> Unit>()
 	private var chargeCurrentIntegralAms = 0.0
 	private var chargeCurrentDurationMs = 0L
 	private var chargeCurrentStoppedMs = 0L
@@ -1007,6 +1018,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			if (chargeStartVoltageV == null && voltageV != null && voltageV > 20.0) {
 				chargeStartVoltageV = voltageV
 			}
+			val prevAh = chargeLastAh
+			val prevVoltage = chargeLiveVoltageV
 			if (bmsFresh) {
 				if (remainingAh != null) {
 					chargeLastAh = remainingAh
@@ -1019,20 +1032,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 					chargeFullAh = fullAh
 				}
 			}
-			val energyA = when {
-				packI != null && packI >= 0.15 -> packI
-				charging && chargeFrozenCurrentA != null && chargeFrozenCurrentA!! >= 0.15 &&
-					(packI == null || packI >= -0.2) -> chargeFrozenCurrentA!!
-				else -> 0.0
-			}
-			if (energyA >= 0.15 && voltageV != null && voltageV > 0 && chargeEnergyLastMs > 0L) {
-				val dtMs = (now - chargeEnergyLastMs).coerceIn(0L, 5_000L)
-				val hours = dtMs / 3_600_000.0
-				chargeEnergyWhAcc += voltageV * energyA * hours
-				chargeCurrentIntegralAms += energyA * dtMs
-				chargeCurrentDurationMs += dtMs
-			}
-			chargeEnergyLastMs = now
+			accumulateChargeEnergy(now, bmsFresh, packI, voltageV, remainingAh, prevAh, prevVoltage)
 			upsertOpenChargeRecord(now, remainingAh, tempC, loc)
 			persistChargeSession()
 		} else {
@@ -1085,6 +1085,11 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		chargeLastAhMs = now
 		chargeEnergyWhAcc = 0.0
 		chargeEnergyLastMs = now
+		chargeLiveVoltageV = null
+		chargeGapOpen = false
+		chargeGapVoltageV = null
+		chargeGapAh = null
+		chargeGapSinceMs = 0L
 		chargeCurrentIntegralAms = 0.0
 		chargeCurrentDurationMs = 0L
 		persistChargeSession(force = true)
@@ -1478,6 +1483,11 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		chargeLastAhMs = 0L
 		chargeEnergyWhAcc = 0.0
 		chargeEnergyLastMs = 0L
+		chargeLiveVoltageV = null
+		chargeGapOpen = false
+		chargeGapVoltageV = null
+		chargeGapAh = null
+		chargeGapSinceMs = 0L
 		chargeCurrentIntegralAms = 0.0
 		chargeCurrentDurationMs = 0L
 		chargeSessionOpen = false
@@ -1517,6 +1527,11 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		json.put("lastAhMs", chargeLastAhMs)
 		json.put("energyWh", chargeEnergyWhAcc)
 		json.put("energyLastMs", chargeEnergyLastMs)
+		json.putD("liveVoltageV", chargeLiveVoltageV)
+		json.put("gapOpen", chargeGapOpen)
+		json.putD("gapVoltageV", chargeGapVoltageV)
+		json.putD("gapAh", chargeGapAh)
+		json.put("gapSinceMs", chargeGapSinceMs)
 		json.put("currentIntegralAms", chargeCurrentIntegralAms)
 		json.put("currentDurationMs", chargeCurrentDurationMs)
 		CHARGE_SESSION.set(json.toString())
@@ -1569,6 +1584,11 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				chargeLastAhMs = json.optLong("lastAhMs")
 				chargeEnergyWhAcc = json.optDouble("energyWh", 0.0).coerceAtLeast(0.0)
 				chargeEnergyLastMs = json.optLong("energyLastMs")
+				chargeLiveVoltageV = json.optNullableDouble("liveVoltageV")
+				chargeGapOpen = json.optBoolean("gapOpen")
+				chargeGapVoltageV = json.optNullableDouble("gapVoltageV")
+				chargeGapAh = json.optNullableDouble("gapAh")
+				chargeGapSinceMs = json.optLong("gapSinceMs")
 				chargeCurrentIntegralAms = json.optDouble("currentIntegralAms", 0.0).coerceAtLeast(0.0)
 				chargeCurrentDurationMs = json.optLong("currentDurationMs").coerceAtLeast(0L)
 				chargeCurrentStoppedMs = json.optLong("currentStoppedMs")
@@ -1855,6 +1875,33 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		mergeSplitChargeHistory()
 		dropEmptyTrips()
 		collapseStoredDuplicates()
+	}
+
+	fun repairChargeHistoryAsync(onDone: () -> Unit = {}) {
+		synchronized(chargeHistoryRepairCallbacks) {
+			chargeHistoryRepairCallbacks.add(onDone)
+			if (chargeHistoryRepairRunning) {
+				return
+			}
+			chargeHistoryRepairRunning = true
+		}
+		Thread {
+			try {
+				repairChargeHistory()
+			} catch (e: Exception) {
+				Log.e(TAG, "charge history repair failed", e)
+				journal.e("history", "repair failed: ${e.message}")
+			}
+			val callbacks = synchronized(chargeHistoryRepairCallbacks) {
+				chargeHistoryRepairRunning = false
+				chargeHistoryRepairCallbacks.toList().also { chargeHistoryRepairCallbacks.clear() }
+			}
+			handler.post {
+				for (callback in callbacks) {
+					callback()
+				}
+			}
+		}.start()
 	}
 
 	private fun collapseStoredDuplicates() {
@@ -2450,6 +2497,191 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 
 	private fun formatChargeStamp(ms: Long): String {
 		return SimpleDateFormat("d MMM HH:mm", Locale.getDefault()).format(Date(ms))
+	}
+
+	private fun accumulateChargeEnergy(
+		now: Long,
+		bmsFresh: Boolean,
+		packI: Double?,
+		voltageV: Double?,
+		remainingAh: Double?,
+		prevAh: Double?,
+		prevVoltage: Double?
+	) {
+		val volts = voltageV?.takeIf { it > EvChargeEnergy.MIN_VOLTAGE_V }
+		if (!bmsFresh) {
+			if ((charging || chargeSessionOpen) && !chargeGapOpen) {
+				chargeGapOpen = true
+				chargeGapVoltageV = prevVoltage ?: chargeLiveVoltageV
+				chargeGapAh = prevAh ?: chargeLastAh
+				chargeGapSinceMs = now
+			}
+			return
+		}
+		val stalled = chargeEnergyLastMs > 0L && now - chargeEnergyLastMs > EvChargeEnergy.LINK_GAP_MS
+		if (chargeGapOpen || stalled) {
+			val v0 = if (chargeGapOpen) chargeGapVoltageV else prevVoltage
+			val ah0 = if (chargeGapOpen) chargeGapAh else prevAh
+			val since = if (chargeGapOpen && chargeGapSinceMs > 0L) chargeGapSinceMs else chargeEnergyLastMs
+			addChargeGapEnergy(ah0, v0, remainingAh, volts, now, since)
+			chargeGapOpen = false
+			chargeGapVoltageV = null
+			chargeGapAh = null
+			chargeGapSinceMs = 0L
+			chargeEnergyLastMs = now
+		} else {
+			val amps = packI?.takeIf { it >= EvChargeEnergy.MIN_CURRENT_A }
+			if (amps != null && volts != null && chargeEnergyLastMs > 0L) {
+				val dtMs = (now - chargeEnergyLastMs).coerceAtLeast(0L)
+				chargeEnergyWhAcc += volts * amps * (dtMs / 3_600_000.0)
+				chargeCurrentIntegralAms += amps * dtMs
+				chargeCurrentDurationMs += dtMs
+			}
+			chargeEnergyLastMs = now
+		}
+		if (volts != null) {
+			chargeLiveVoltageV = volts
+		}
+	}
+
+	private fun addChargeGapEnergy(
+		ah0: Double?,
+		v0: Double?,
+		ah1: Double?,
+		v1: Double?,
+		now: Long,
+		sinceMs: Long
+	) {
+		if (ah0 == null || ah1 == null || v0 == null || v1 == null) {
+			return
+		}
+		if (v0 <= EvChargeEnergy.MIN_VOLTAGE_V || v1 <= EvChargeEnergy.MIN_VOLTAGE_V) {
+			return
+		}
+		val deltaAh = (ah1 - ah0).coerceAtLeast(0.0)
+		if (deltaAh <= 0.001) {
+			return
+		}
+		chargeEnergyWhAcc += deltaAh * (v0 + v1) / 2.0
+		chargeCurrentIntegralAms += deltaAh * 3_600_000.0
+		if (sinceMs > 0L) {
+			chargeCurrentDurationMs += (now - sinceMs).coerceAtLeast(0L)
+		}
+	}
+
+	fun recomputeTodayChargeEnergy(onDone: (Boolean) -> Unit) {
+		val key = todayChargeWhKey()
+		if (key == null || key == CHARGE_WH_REPAIR.get()) {
+			onDone(false)
+			return
+		}
+		synchronized(chargeWhRepairCallbacks) {
+			chargeWhRepairCallbacks.add(onDone)
+			if (chargeWhRepairRunning) {
+				return
+			}
+			chargeWhRepairRunning = true
+		}
+		Thread {
+			val changed = try {
+				applyTodayChargeWattHours()
+			} catch (e: Exception) {
+				Log.e(TAG, "charge energy repair failed", e)
+				journal.e("charge", "energy repair failed: ${e.message}")
+				false
+			}
+			CHARGE_WH_REPAIR.set(key)
+			val callbacks = synchronized(chargeWhRepairCallbacks) {
+				chargeWhRepairRunning = false
+				chargeWhRepairCallbacks.toList().also { chargeWhRepairCallbacks.clear() }
+			}
+			handler.post {
+				for (callback in callbacks) {
+					callback(changed)
+				}
+			}
+		}.start()
+	}
+
+	private fun todayChargeWhKey(): String? {
+		val now = System.currentTimeMillis()
+		val dayStart = historyStore.dayStartMs(now)
+		val files = todayChargeLogs(dayStart, historyStore.nextDayStartMs(now))
+		if (files.isEmpty()) {
+			return null
+		}
+		val day = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(now))
+		val sizes = files.joinToString(",") { "${it.name}:${it.sizeBytes}" }
+		return "gap-ah-v1|$day|$sizes"
+	}
+
+	private fun todayChargeLogs(dayStart: Long, dayEnd: Long): List<TelemetryRecorder.CsvEntry> {
+		return recorder.listFiles().filter { file ->
+			if (!file.name.endsWith(".csv", true)) {
+				return@filter false
+			}
+			val stamp = csvStampMs(file.name) ?: return@filter false
+			stamp < dayEnd && stamp >= dayStart - 18L * 3_600_000L
+		}
+	}
+
+	private fun applyTodayChargeWattHours(): Boolean {
+		val now = System.currentTimeMillis()
+		val dayStart = historyStore.dayStartMs(now)
+		val dayEnd = historyStore.nextDayStartMs(now)
+		val charges = chargeHistory()
+		val targets = charges.filter { row ->
+			val end = if (row.endMs > 0L) row.endMs else now
+			row.startMs < dayEnd && end > dayStart
+		}
+		if (targets.isEmpty()) {
+			return false
+		}
+		val from = targets.minOf { it.startMs }
+		val to = targets.maxOf { if (it.endMs > 0L) it.endMs else now }
+		val accumulators = LinkedHashMap<Long, EvChargeEnergy.Accumulator>()
+		for (row in targets) {
+			accumulators[row.startMs] = EvChargeEnergy.Accumulator()
+		}
+		for (file in todayChargeLogs(dayStart, dayEnd).sortedBy { csvStampMs(it.name) ?: 0L }) {
+			val input = recorder.openLog(file.spec) ?: continue
+			input.use { stream ->
+				EvChargeEnergy.scan(stream, from, to) { sample ->
+					for (row in targets) {
+						val end = if (row.endMs > 0L) row.endMs else now
+						if (sample.timeMs in row.startMs..end) {
+							accumulators[row.startMs]?.add(sample)
+						}
+					}
+				}
+			}
+		}
+		var changed = false
+		val updated = charges.map { row ->
+			val acc = accumulators[row.startMs] ?: return@map row
+			if (!acc.hasEnergy()) {
+				return@map row
+			}
+			val wh = acc.wattHours
+			val previous = row.energyWh ?: 0.0
+			if (wh <= previous + 1.0) {
+				return@map row
+			}
+			changed = true
+			if (row.startMs == chargeStartMs && chargeSessionOpen && wh > chargeEnergyWhAcc + 1.0) {
+				chargeEnergyWhAcc = wh
+				chargeEnergyLastMs = now
+				persistChargeSession(force = true)
+			}
+			journal.i("charge", "energy ${row.startMs} ${previous.roundToInt()} -> ${wh.roundToInt()} Wh")
+			row.copy(energyWh = wh)
+		}
+		if (!changed) {
+			return false
+		}
+		CHARGE_HISTORY.set(historyStore.encodeCharges(updated))
+		historyStore.rewriteChargeCsv(updated.filter { !it.isOpen() })
+		return true
 	}
 
 	private fun resolveChargeEnergyWh(chargedAh: Double?, endVoltageV: Double?): Double? {
