@@ -631,7 +631,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		migratePollPreferences()
 		migrateCadenceTelemetryField()
 		restoreSessions()
-		repairChargeHistory()
+		repairChargeHistoryAsync()
 		profileStore.ensureDefault()
 		publishTracksToMyPlaces()
 		restoreTelemetrySession()
