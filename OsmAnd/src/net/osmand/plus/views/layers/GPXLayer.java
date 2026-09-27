@@ -194,6 +194,10 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 	private int splitLabelAlphaCached = -1;
 	private boolean consumptionKmCirclesVisibleCached = true;
 	private float consumptionKmCircleScaleCached = 1f;
+	private int splitLabelsViewportZoomCached = -1;
+	private double splitLabelsViewportLatCached = Double.NaN;
+	private double splitLabelsViewportLonCached = Double.NaN;
+	private float splitLabelsViewportRotateCached = Float.NaN;
 	private int pointCountCached;
 	private int hiddenGroupsCountCached;
 	private boolean textVisibleCached;
@@ -664,6 +668,7 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 			}
 			changed |= startFinishPointsCount != startFinishPointsCountCached;
 			changed |= splitLabelsCount != splitLabelsCountCached;
+			changed |= isSplitLabelsViewportChanged(tileBox);
 			if (!changed && !mapActivityInvalidated && !invalidated) {
 				return;
 			}
@@ -865,9 +870,20 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 	                                       @NonNull SelectedGpxFile selectedGpxFile,
 	                                       @NonNull List<GpxDisplayItem> items, @ColorInt int trackColor,
 	                                       float density, @Nullable MapRendererView mapRenderer) {
+		float splitIntervalM = consumptionSplitIntervalMeters(selectedGpxFile);
+		float minGap = consumptionValueLabelMinGap(tileBox, mapRenderer, splitIntervalM);
+		List<VisibleSplitLabel> valueLabels = buildAdaptiveSplitLabels(tileBox, items, trackColor, minGap);
+		if (!appearanceHelper.isConsumptionSplitShowKmCircles()) {
+			for (VisibleSplitLabel valueLabel : valueLabels) {
+				WptPt anchor = valueLabel.item.getLabelPoint();
+				if (anchor == null) {
+					continue;
+				}
+				drawConsumptionSplitPairOnCanvas(canvas, tileBox, selectedGpxFile, anchor, null, valueLabel, density, mapRenderer);
+			}
+			return;
+		}
 		List<VisibleSplitLabel> kmLabels = buildConsumptionDistanceLabels(tileBox, items, trackColor, density);
-		List<VisibleSplitLabel> valueLabels = buildAdaptiveSplitLabels(tileBox, items, trackColor,
-				consumptionValueLabelMinGap(tileBox, mapRenderer));
 		Map<String, VisibleSplitLabel> valuesAtAnchor = new LinkedHashMap<>();
 		for (VisibleSplitLabel label : valueLabels) {
 			WptPt point = label.item.getLabelPoint();
@@ -1189,9 +1205,24 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 	                                             @NonNull Gpx3DLinePositionType trackLinePosition,
 	                                             @NonNull Track3DStyle track3DStyle, boolean heightmapsActive) {
 		float density = tileBox.getDensity();
+		float splitIntervalM = consumptionSplitIntervalMeters(selectedGpxFile);
+		float minGap = consumptionValueLabelMinGap(tileBox, mapRenderer, splitIntervalM);
+		List<VisibleSplitLabel> valueLabels = buildAdaptiveSplitLabels(tileBox, items, trackColor, minGap);
+		if (!appearanceHelper.isConsumptionSplitShowKmCircles()) {
+			for (VisibleSplitLabel valueLabel : valueLabels) {
+				WptPt anchor = valueLabel.item.getLabelPoint();
+				if (anchor == null || valueLabel.name == null) {
+					continue;
+				}
+				if (!NativeUtilities.containsLatLon(mapRenderer, tileBox, anchor.getLat(), anchor.getLon())) {
+					continue;
+				}
+				registerSplitLabel(selectedGpxFile, valueLabel.item);
+				addConsumptionSquare(mapRenderer, anchor, valueLabel.name, valueLabel.color, density);
+			}
+			return;
+		}
 		List<VisibleSplitLabel> kmLabels = buildConsumptionDistanceLabels(tileBox, items, trackColor, density);
-		List<VisibleSplitLabel> valueLabels = buildAdaptiveSplitLabels(tileBox, items, trackColor,
-				consumptionValueLabelMinGap(tileBox, mapRenderer));
 		Map<String, VisibleSplitLabel> valuesAtAnchor = new LinkedHashMap<>();
 		for (VisibleSplitLabel label : valueLabels) {
 			WptPt point = label.item.getLabelPoint();
@@ -1331,22 +1362,57 @@ public class GPXLayer extends OsmandMapLayer implements IContextMenuProvider, IM
 	}
 
 	private float consumptionValueLabelMinGap(@NonNull RotatedTileBox tileBox,
-	                                          @Nullable MapRendererView mapRenderer) {
+	                                          @Nullable MapRendererView mapRenderer,
+	                                          float splitIntervalMeters) {
 		float density = tileBox.getDensity();
-		float minGap = CONSUMPTION_VALUE_LABEL_MIN_GAP_DP * density;
+		float minGap = Math.max(CONSUMPTION_VALUE_LABEL_MIN_GAP_DP * density,
+				consumptionSquareScreenGapPx(density));
 		int zoom = tileBox.getZoom();
 		if (zoom > 15) {
 			minGap = Math.max(CONSUMPTION_KM_LABEL_MIN_GAP_DP * density, minGap * 15f / zoom);
 		}
-		LatLon origin = new LatLon(tileBox.getLatitude(), tileBox.getLongitude());
-		LatLon spaced = MapUtils.rhumbDestinationPoint(origin, CONSUMPTION_MIN_DETAIL_SPACING_M, 90);
-		PointF p0 = NativeUtilities.getPixelFromLatLon(mapRenderer, tileBox, origin.getLatitude(), origin.getLongitude());
-		PointF p1 = NativeUtilities.getPixelFromLatLon(mapRenderer, tileBox, spaced.getLatitude(), spaced.getLongitude());
-		float spacingPx = (float) Math.hypot(p1.x - p0.x, p1.y - p0.y);
-		if (spacingPx > CONSUMPTION_KM_LABEL_MIN_GAP_DP * density) {
-			minGap = Math.min(minGap, spacingPx * 0.9f);
+		if (splitIntervalMeters > 0f) {
+			LatLon origin = new LatLon(tileBox.getLatitude(), tileBox.getLongitude());
+			LatLon spaced = MapUtils.rhumbDestinationPoint(origin, splitIntervalMeters, 90);
+			PointF p0 = NativeUtilities.getPixelFromLatLon(mapRenderer, tileBox, origin.getLatitude(), origin.getLongitude());
+			PointF p1 = NativeUtilities.getPixelFromLatLon(mapRenderer, tileBox, spaced.getLatitude(), spaced.getLongitude());
+			float spacingPx = (float) Math.hypot(p1.x - p0.x, p1.y - p0.y);
+			if (spacingPx > CONSUMPTION_KM_LABEL_MIN_GAP_DP * density) {
+				minGap = Math.min(minGap, spacingPx * 0.9f);
+			}
 		}
 		return minGap;
+	}
+
+	private static float consumptionSquareScreenGapPx(float density) {
+		int pad = Math.max(2, Math.round(2f * density));
+		return 12f * density + pad * 8f;
+	}
+
+	private float consumptionSplitIntervalMeters(@NonNull SelectedGpxFile selectedGpxFile) {
+		GpxSplitParams params = gpxDisplayHelper.getGpxSplitParams(selectedGpxFile);
+		if (params != null && params.splitInterval() > 0) {
+			return (float) params.splitInterval();
+		}
+		return CONSUMPTION_MIN_DETAIL_SPACING_M;
+	}
+
+	private boolean isSplitLabelsViewportChanged(@NonNull RotatedTileBox tileBox) {
+		int zoom = tileBox.getZoom();
+		double lat = tileBox.getLatitude();
+		double lon = tileBox.getLongitude();
+		float rotate = tileBox.getRotate();
+		if (zoom != splitLabelsViewportZoomCached
+				|| Double.compare(lat, splitLabelsViewportLatCached) != 0
+				|| Double.compare(lon, splitLabelsViewportLonCached) != 0
+				|| rotate != splitLabelsViewportRotateCached) {
+			splitLabelsViewportZoomCached = zoom;
+			splitLabelsViewportLatCached = lat;
+			splitLabelsViewportLonCached = lon;
+			splitLabelsViewportRotateCached = rotate;
+			return true;
+		}
+		return false;
 	}
 
 	@NonNull
