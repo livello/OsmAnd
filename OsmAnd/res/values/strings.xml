@@ -6500,10 +6500,10 @@ Download tile maps directly, or copy them as SQLite database files to OsmAnd\'s 
     <string name="torrent_maps_nearby_status_mismatch">size / hash differs</string>
     <string name="torrent_maps_nearby_status_unknown">unknown</string>
 
-    <string name="voice_gps_plugin_name">Voice GPS notes</string>
-    <string name="voice_gps_plugin_description">Say «OsmAnd» to activate, then «note» to capture a text note at your GPS position. Speak until «end». Uses short microphone sessions for the wake phrase and full dictation only while recording a note. Notes appear as favorites on the map (and as track waypoints when trip recording is on).</string>
+    <string name="voice_gps_plugin_name">EV Voice GPX</string>
+    <string name="voice_gps_plugin_description">Say «OsmAnd» to activate, then «note» to capture a text note at your GPS position. Speak until «end». Short mic sessions for the wake phrase; full dictation only while recording. Notes are saved as favorites, appended to a daily GPX file (`ev-voice-notes-*.gpx`), and shown on the map when trip recording adds track waypoints.</string>
     <string name="voice_gps_favorites_group">Voice notes</string>
-    <string name="voice_gps_notification_title">Voice GPS notes</string>
+    <string name="voice_gps_notification_title">EV Voice GPX</string>
     <string name="voice_gps_notification_text">Listening for «OsmAnd»…</string>
     <string name="voice_gps_request_mic">Microphone permission</string>
     <string name="voice_gps_mic_granted">Microphone allowed — voice control can run</string>
@@ -6517,5 +6517,7 @@ Download tile maps directly, or copy them as SQLite database files to OsmAnd\'s 
     <string name="voice_gps_no_location">No GPS fix — enable location and try again</string>
     <string name="voice_gps_note_saved">Note saved: %1$s</string>
     <string name="voice_gps_note_default_title">Note %1$s</string>
+    <string name="ev_voice_gpx_show_on_map">Show voice GPX on map</string>
+    <string name="ev_voice_gpx_show_on_map_desc">When on, each saved note is added to the daily `ev-voice-notes` GPX and the track is shown on the map.</string>
 
 </resources>

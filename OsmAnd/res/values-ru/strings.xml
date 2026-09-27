@@ -5926,10 +5926,10 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
     <string name="torrent_maps_nearby_status_mismatch">размер / хеш отличается</string>
     <string name="torrent_maps_nearby_status_unknown">неизвестно</string>
 
-    <string name="voice_gps_plugin_name">Голосовые GPS-заметки</string>
-    <string name="voice_gps_plugin_description">Скажите «Османд» для активации, затем «заметка» — текстовая заметка в текущих GPS-координатах. Говорите до слова «конец». Короткие сессии микрофона для wake-слова; полное распознавание только при записи заметки. Заметки сразу на карте (избранное; при записи трека — ещё и waypoint).</string>
+    <string name="voice_gps_plugin_name">EV-Голос GPX</string>
+    <string name="voice_gps_plugin_description">Скажите «Османд» для активации, затем «заметка» — текстовая заметка в текущих GPS-координатах. Говорите до слова «конец». Короткие сессии микрофона для wake-слова; полное распознавание только при записи заметки. Заметки сохраняются в избранное, в суточный GPX (`ev-voice-notes-*.gpx`) и на карту; при записи трека — ещё waypoint в GPX поездки.</string>
     <string name="voice_gps_favorites_group">Голосовые заметки</string>
-    <string name="voice_gps_notification_title">Голосовые GPS-заметки</string>
+    <string name="voice_gps_notification_title">EV-Голос GPX</string>
     <string name="voice_gps_notification_text">Ожидание «Османд»…</string>
     <string name="voice_gps_request_mic">Доступ к микрофону</string>
     <string name="voice_gps_mic_granted">Микрофон разрешён — голосовое управление доступно</string>
@@ -5943,5 +5943,7 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
     <string name="voice_gps_no_location">Нет GPS — включите геолокацию</string>
     <string name="voice_gps_note_saved">Заметка сохранена: %1$s</string>
     <string name="voice_gps_note_default_title">Заметка %1$s</string>
+    <string name="ev_voice_gpx_show_on_map">Показывать GPX заметок на карте</string>
+    <string name="ev_voice_gpx_show_on_map_desc">Каждая заметка добавляется в суточный GPX `ev-voice-notes` и трек показывается на карте.</string>
 
 </resources>

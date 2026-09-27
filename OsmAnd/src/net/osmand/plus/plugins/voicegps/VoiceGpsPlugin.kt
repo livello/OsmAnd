@@ -39,6 +39,8 @@ class VoiceGpsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 		registerIntPreference("voice_gps_listen_window_ms", DEFAULT_LISTEN_WINDOW_MS.toInt()).makeGlobal().makeShared()
 	val PARTIAL_WAKE: CommonPreference<Boolean> =
 		registerBooleanPreference("voice_gps_partial_wake", true).makeGlobal().makeShared()
+	val SHOW_VOICE_GPX_ON_MAP: CommonPreference<Boolean> =
+		registerBooleanPreference("ev_voice_gpx_show_on_map", true).makeGlobal().makeShared()
 
 	private val mainHandler = Handler(Looper.getMainLooper())
 	private val foregroundSyncRunnable = object : Runnable {
@@ -48,7 +50,7 @@ class VoiceGpsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 		}
 	}
 
-	override fun getId(): String = OsmAndCustomizationConstants.PLUGIN_VOICE_GPS
+	override fun getId(): String = OsmAndCustomizationConstants.PLUGIN_EV_VOICE_GPX
 
 	override fun getName(): String = app.getString(R.string.voice_gps_plugin_name)
 
@@ -68,6 +70,7 @@ class VoiceGpsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 		SettingsScreenType.VOICE_GPS_SETTINGS
 
 	override fun init(app: OsmandApplication, activity: Activity?): Boolean {
+		EvVoiceGpxStore.migrateLegacyPluginId(app, getId())
 		mainHandler.removeCallbacks(foregroundSyncRunnable)
 		mainHandler.post(foregroundSyncRunnable)
 		syncListeningService()
@@ -125,6 +128,8 @@ class VoiceGpsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 	fun listenWindowMs(): Long = LISTEN_WINDOW_MS.get().toLong().coerceIn(3000L, 30_000L)
 
 	fun partialWakeEnabled(): Boolean = PARTIAL_WAKE.get()
+
+	fun showVoiceGpxOnMap(): Boolean = SHOW_VOICE_GPX_ON_MAP.get()
 
 	fun syncListeningService() {
 		val start = shouldListenNow()

@@ -5,6 +5,7 @@ import net.osmand.data.BackgroundType
 import net.osmand.plus.OsmandApplication
 import net.osmand.plus.R
 import net.osmand.plus.myplaces.favorites.add.AddFavoriteOptions
+import net.osmand.plus.plugins.PluginsHelper
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -26,6 +27,16 @@ class VoiceGpsNoteWriter(private val app: OsmandApplication) {
 		point.setIconIdFromName("note")
 		point.setColor(0xFF5E35B1.toInt())
 		app.favoritesHelper.addFavourite(point, AddFavoriteOptions().enableAll())
+
+		EvVoiceGpxStore.appendWaypoint(
+			app,
+			lat,
+			lon,
+			timeMs,
+			title,
+			text,
+			PluginsHelper.getPlugin(VoiceGpsPlugin::class.java)?.showVoiceGpxOnMap() != false
+		)
 
 		val track = app.savingTrackHelper
 		if (track.isRecording || track.hasDataToSave()) {

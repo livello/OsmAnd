@@ -17,6 +17,7 @@ class VoiceGpsSettingsFragment : BaseSettingsFragment() {
 		updatePermissionSummary()
 		setupSwitch(plugin.LISTEN_IN_BACKGROUND.id, R.string.voice_gps_listen_background_desc)
 		setupSwitch(plugin.PARTIAL_WAKE.id, R.string.voice_gps_partial_wake_desc)
+		setupSwitch(plugin.SHOW_VOICE_GPX_ON_MAP.id, R.string.ev_voice_gpx_show_on_map_desc)
 	}
 
 	private fun setupSwitch(key: String, desc: Int) {
@@ -35,7 +36,8 @@ class VoiceGpsSettingsFragment : BaseSettingsFragment() {
 		val result = super.onPreferenceChange(preference, newValue)
 		when (preference.key) {
 			plugin.LISTEN_IN_BACKGROUND.id,
-			plugin.PARTIAL_WAKE.id -> plugin.syncListeningService()
+			plugin.PARTIAL_WAKE.id,
+			plugin.SHOW_VOICE_GPX_ON_MAP.id -> plugin.syncListeningService()
 		}
 		return result
 	}

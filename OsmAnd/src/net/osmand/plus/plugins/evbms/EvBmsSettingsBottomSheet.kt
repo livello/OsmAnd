@@ -149,7 +149,6 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
 		super.onViewCreated(view, savedInstanceState)
 		bindTabs(view)
-		setupHistoryRebuildButton(view)
 		if (childFragmentManager.findFragmentByTag(SETTINGS_TAG) == null) {
 			val fragment = EvBmsSettingsFragment()
 			fragment.arguments = Bundle().apply {
@@ -878,6 +877,8 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		item.findViewById<View>(R.id.history_chart_legend).visibility = View.GONE
 		item.findViewById<TextView>(R.id.title).text =
 			"📋 ${getString(R.string.ev_bms_history_legend_title)}"
+		item.findViewById<View>(R.id.history_rebuild_btn).visibility = View.VISIBLE
+		setupHistoryRebuildButton(item)
 		applyHistoryLegend(item)
 		val toggle = View.OnClickListener {
 			historyLegendExpanded = !historyLegendExpanded
@@ -1052,6 +1053,7 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		compact: Boolean = false
 	): View {
 		val item = inflater.inflate(R.layout.ev_bms_history_row, list, false)
+		item.findViewById<View>(R.id.history_rebuild_btn).visibility = View.GONE
 		val endLabel = if (row.isOpen()) {
 			getString(R.string.ev_bms_history_charging_now)
 		} else {
@@ -1098,6 +1100,7 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		compact: Boolean = false
 	): View {
 		val item = inflater.inflate(R.layout.ev_bms_history_row, list, false)
+		item.findViewById<View>(R.id.history_rebuild_btn).visibility = View.GONE
 		val startLabel = if (compact) fmtTime(row.startMs) else fmtDateTime(row.startMs)
 		item.findViewById<TextView>(R.id.title).text = "🛵 $startLabel → ${fmtTime(row.endMs)}"
 		val stopValue = row.stopMs?.let { fmtDuration(it) } ?: getString(R.string.ev_bms_value_none)
