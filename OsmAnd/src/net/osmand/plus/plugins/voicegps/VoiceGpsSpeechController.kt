@@ -9,7 +9,6 @@ import android.speech.SpeechRecognizer
 import android.util.Log
 import net.osmand.plus.OsmandApplication
 import net.osmand.plus.R
-import net.osmand.plus.utils.AndroidUtils
 
 /**
  * Two-stage mic usage for battery: short wake-word listen cycles, then full partial-result
@@ -153,7 +152,7 @@ class VoiceGpsSpeechController(
 			noteStartedMs = System.currentTimeMillis()
 			return
 		}
-		AndroidUtils.getMapActivity(app)?.showShortToastMessage(app.getString(R.string.voice_gps_no_location))
+		app.showShortToastMessage(app.getString(R.string.voice_gps_no_location))
 		resetNoteSession()
 	}
 
@@ -174,7 +173,7 @@ class VoiceGpsSpeechController(
 
 	private fun onWakeDetected() {
 		mode = Mode.AWAIT_COMMAND
-		AndroidUtils.getMapActivity(app)?.showShortToastMessage(app.getString(R.string.voice_gps_activated))
+		app.showShortToastMessage(app.getString(R.string.voice_gps_activated))
 		mainHandler.removeCallbacks(listenTimeoutRunnable)
 		scheduleNextCycle(200L)
 	}
@@ -185,7 +184,7 @@ class VoiceGpsSpeechController(
 		lastPartial = ""
 		captureLocationForNote()
 		if (mode == Mode.DICTATE) {
-			AndroidUtils.getMapActivity(app)?.showShortToastMessage(app.getString(R.string.voice_gps_dictating))
+			app.showShortToastMessage(app.getString(R.string.voice_gps_dictating))
 			scheduleNextCycle(200L)
 		}
 	}

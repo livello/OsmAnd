@@ -1,10 +1,10 @@
 package net.osmand.plus.plugins.voicegps
 
 import net.osmand.data.FavouritePoint
+import net.osmand.data.BackgroundType
 import net.osmand.plus.OsmandApplication
 import net.osmand.plus.R
-import net.osmand.plus.myplaces.favorites.FavouritesHelper.AddFavoriteOptions
-import net.osmand.plus.utils.AndroidUtils
+import net.osmand.plus.myplaces.favorites.add.AddFavoriteOptions
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -19,11 +19,11 @@ class VoiceGpsNoteWriter(private val app: OsmandApplication) {
 		val title = makeTitle(text, timeMs)
 		val category = app.getString(R.string.voice_gps_favorites_group)
 		if (!app.favoritesHelper.groupExists(category)) {
-			app.favoritesHelper.addFavoriteGroup(category, 0xFF5E35B1.toInt(), "note", "circle")
+			app.favoritesHelper.addFavoriteGroup(category, 0xFF5E35B1.toInt(), "note", BackgroundType.CIRCLE)
 		}
 		val point = FavouritePoint(lat, lon, title, category)
 		point.description = text
-		point.setIconName("note")
+		point.setIconIdFromName("note")
 		point.setColor(0xFF5E35B1.toInt())
 		app.favoritesHelper.addFavourite(point, AddFavoriteOptions().enableAll())
 
@@ -41,10 +41,8 @@ class VoiceGpsNoteWriter(private val app: OsmandApplication) {
 				"circle"
 			)
 		}
-		app.osmandMap.mapView.refreshMap(true, false, false)
-		AndroidUtils.getMapActivity(app)?.showShortToastMessage(
-			app.getString(R.string.voice_gps_note_saved, title)
-		)
+		app.osmandMap.refreshMap()
+		app.showShortToastMessage(app.getString(R.string.voice_gps_note_saved, title))
 	}
 
 	private fun makeTitle(text: String, timeMs: Long): String {
