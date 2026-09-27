@@ -5923,4 +5923,22 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
     <string name="torrent_maps_nearby_status_mismatch">размер / хеш отличается</string>
     <string name="torrent_maps_nearby_status_unknown">неизвестно</string>
 
+    <string name="voice_gps_plugin_name">Голосовые GPS-заметки</string>
+    <string name="voice_gps_plugin_description">Скажите «Османд» для активации, затем «заметка» — текстовая заметка в текущих GPS-координатах. Говорите до слова «конец». Короткие сессии микрофона для wake-слова; полное распознавание только при записи заметки. Заметки сразу на карте (избранное; при записи трека — ещё и waypoint).</string>
+    <string name="voice_gps_favorites_group">Голосовые заметки</string>
+    <string name="voice_gps_notification_title">Голосовые GPS-заметки</string>
+    <string name="voice_gps_notification_text">Ожидание «Османд»…</string>
+    <string name="voice_gps_request_mic">Доступ к микрофону</string>
+    <string name="voice_gps_mic_granted">Микрофон разрешён — голосовое управление доступно</string>
+    <string name="voice_gps_mic_denied">Нажмите, чтобы разрешить микрофон</string>
+    <string name="voice_gps_listen_background">Слушать в фоне</string>
+    <string name="voice_gps_listen_background_desc">По умолчанию выкл. для экономии батареи. Если выкл., прослушивание останавливается, когда OsmAnd не на экране.</string>
+    <string name="voice_gps_partial_wake">Частичные результаты для wake-слова</string>
+    <string name="voice_gps_partial_wake_desc">Быстрее распознать «Османд» (чуть больше нагрузки в окнах прослушивания).</string>
+    <string name="voice_gps_activated">Голос активен — скажите «заметка»</string>
+    <string name="voice_gps_dictating">Диктуйте заметку — «конец» для сохранения</string>
+    <string name="voice_gps_no_location">Нет GPS — включите геолокацию</string>
+    <string name="voice_gps_note_saved">Заметка сохранена: %1$s</string>
+    <string name="voice_gps_note_default_title">Заметка %1$s</string>
+
 </resources>

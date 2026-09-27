@@ -6497,4 +6497,22 @@ Download tile maps directly, or copy them as SQLite database files to OsmAnd\'s 
     <string name="torrent_maps_nearby_status_mismatch">size / hash differs</string>
     <string name="torrent_maps_nearby_status_unknown">unknown</string>
 
+    <string name="voice_gps_plugin_name">Voice GPS notes</string>
+    <string name="voice_gps_plugin_description">Say «OsmAnd» to activate, then «note» to capture a text note at your GPS position. Speak until «end». Uses short microphone sessions for the wake phrase and full dictation only while recording a note. Notes appear as favorites on the map (and as track waypoints when trip recording is on).</string>
+    <string name="voice_gps_favorites_group">Voice notes</string>
+    <string name="voice_gps_notification_title">Voice GPS notes</string>
+    <string name="voice_gps_notification_text">Listening for «OsmAnd»…</string>
+    <string name="voice_gps_request_mic">Microphone permission</string>
+    <string name="voice_gps_mic_granted">Microphone allowed — voice control can run</string>
+    <string name="voice_gps_mic_denied">Tap to allow microphone access</string>
+    <string name="voice_gps_listen_background">Listen when app in background</string>
+    <string name="voice_gps_listen_background_desc">Off by default to save battery. When off, listening stops when OsmAnd is not on screen.</string>
+    <string name="voice_gps_partial_wake">Partial results for wake word</string>
+    <string name="voice_gps_partial_wake_desc">Detect «OsmAnd» faster (uses slightly more CPU during listen windows).</string>
+    <string name="voice_gps_activated">Voice control active — say «note»</string>
+    <string name="voice_gps_dictating">Dictating note — say «end» when finished</string>
+    <string name="voice_gps_no_location">No GPS fix — enable location and try again</string>
+    <string name="voice_gps_note_saved">Note saved: %1$s</string>
+    <string name="voice_gps_note_default_title">Note %1$s</string>
+
 </resources>

@@ -35,6 +35,7 @@ public interface OsmAndCustomizationConstants {
 	String DRAWER_OSMAND_VERSION_ID = DRAWER_ITEM_ID_SCHEME + "osmand_version";
 	String DRAWER_VEHICLE_METRICS_ID = DRAWER_ITEM_ID_SCHEME + "vehicle_metrics";
 	String DRAWER_EV_BMS_ID = DRAWER_ITEM_ID_SCHEME + "ev_bms";
+	String DRAWER_VOICE_GPS_ID = DRAWER_ITEM_ID_SCHEME + "voice_gps";
 	String DRAWER_STAR_MAP_ID = DRAWER_ITEM_ID_SCHEME + "star_map";
 
 	// Configure Map:
@@ -146,6 +147,7 @@ public interface OsmAndCustomizationConstants {
 	String PLUGIN_VEHICLE_METRICS = "osmand.vehicle.metrics";
 	String PLUGIN_EV_BMS = "osmand.ev.bms";
 	String PLUGIN_TORRENT_MAPS = "osmand.torrent.maps";
+	String PLUGIN_VOICE_GPS = "osmand.voice.gps";
 	String PLUGIN_WEATHER = "osmand.weather";
 	String PLUGIN_ASTRONOMY = "osmand.astronomy";
 

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+
+	<Preference
+		android:key="voice_gps_request_mic"
+		android:layout="@layout/preference_with_descr"
+		android:persistent="false"
+		android:summary="@string/voice_gps_mic_denied"
+		android:title="@string/voice_gps_request_mic" />
+
+	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
+		android:key="voice_gps_listen_background"
+		android:layout="@layout/preference_with_descr"
+		android:summaryOff="@string/shared_string_disabled"
+		android:summaryOn="@string/shared_string_enabled"
+		android:title="@string/voice_gps_listen_background" />
+
+	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
+		android:key="voice_gps_partial_wake"
+		android:layout="@layout/preference_with_descr"
+		android:summaryOff="@string/shared_string_disabled"
+		android:summaryOn="@string/shared_string_enabled"
+		android:title="@string/voice_gps_partial_wake" />
+
+</PreferenceScreen>
