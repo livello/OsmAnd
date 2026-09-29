@@ -6608,6 +6608,14 @@ Download tile maps directly, or copy them as SQLite database files to OsmAnd\'s 
     <string name="voice_gps_widget_label">Note</string>
     <string name="voice_gps_tab_settings">Settings</string>
     <string name="voice_gps_tab_notes">Notes</string>
+    <string name="voice_gps_stt_offline_hint_title">Offline speech</string>
+    <string name="voice_gps_cat_speech">Speech &amp; microphone</string>
+    <string name="voice_gps_cat_listening">Listening</string>
+    <string name="voice_gps_cat_wake">Wake &amp; manual note</string>
+    <string name="voice_gps_cat_map">Map</string>
+    <string name="voice_gps_offline_stt_missing_title">Offline speech pack missing</string>
+    <string name="voice_gps_offline_stt_missing_message">For voice notes without Internet, install the offline recognizer for:\n\n%1$s</string>
+    <string name="voice_gps_offline_stt_download">Download language pack</string>
     <string name="voice_gps_stt_offline_hint">Speech uses the Android recognizer on your device. Offline works only if the system language pack is installed; otherwise recognition may use the Internet.</string>
     <string name="voice_gps_prefer_online_stt">Prefer online speech recognition</string>
     <string name="voice_gps_prefer_online_stt_desc">Send audio to Google/network STT when the device has no offline model</string>

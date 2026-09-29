@@ -5966,6 +5966,14 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
     <string name="voice_gps_widget_label">Заметка</string>
     <string name="voice_gps_tab_settings">Настройки</string>
     <string name="voice_gps_tab_notes">Заметки</string>
+    <string name="voice_gps_stt_offline_hint_title">Оффлайн-речь</string>
+    <string name="voice_gps_cat_speech">Речь и микрофон</string>
+    <string name="voice_gps_cat_listening">Прослушивание</string>
+    <string name="voice_gps_cat_wake">Пробуждение и ручная заметка</string>
+    <string name="voice_gps_cat_map">Карта</string>
+    <string name="voice_gps_offline_stt_missing_title">Нет офлайн-пакета распознавания</string>
+    <string name="voice_gps_offline_stt_missing_message">Чтобы диктовать заметки без интернета, установите офлайн-модель для:\n\n%1$s</string>
+    <string name="voice_gps_offline_stt_download">Скачать языковой пакет</string>
     <string name="voice_gps_stt_offline_hint">Распознавание через движок Android. Оффлайн возможен только при установленном языковом пакете; иначе может использоваться интернет.</string>
     <string name="voice_gps_prefer_online_stt">Предпочитать онлайн-распознавание</string>
     <string name="voice_gps_prefer_online_stt_desc">Отправлять речь в сеть, если на устройстве нет офлайн-модели</string>

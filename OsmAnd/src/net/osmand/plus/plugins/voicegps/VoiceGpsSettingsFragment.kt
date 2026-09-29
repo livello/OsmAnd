@@ -198,23 +198,32 @@ class VoiceGpsSettingsFragment : BaseSettingsFragment() {
 	}
 
 	private fun decorateRows() {
-		decorate("voice_gps_request_mic", "🎤", R.drawable.ic_action_micro_dark)
-		decorate(plugin.LISTEN_IN_BACKGROUND.id, "🔋", R.drawable.ic_action_battery)
-		decorate(plugin.PAUSE_WHEN_MOVING.id, "⏸️", R.drawable.ic_action_trip_rec_pause)
-		decorate(plugin.MOVING_SPEED_THRESHOLD_KMH.id, "🚴", R.drawable.ic_action_speed)
-		decorate(plugin.PARTIAL_WAKE.id, "👂", R.drawable.ic_action_micro_dark)
-		decorate(plugin.MANUAL_WAKE.id, "✋", R.drawable.ic_action_keyboard)
-		decorate(plugin.MANUAL_WAKE_KEY.id, "🔘", R.drawable.ic_action_keyboard)
-		decorate(plugin.SHOW_VOICE_GPX_ON_MAP.id, "🗺️", R.drawable.ic_action_waypoint)
+		decorate("voice_gps_cat_speech", "🎙️", hideIcon = true)
+		decorate("voice_gps_request_mic", "🎤")
+		decorate("voice_gps_stt_offline_hint", "ℹ️")
+		decorate(plugin.PREFER_ONLINE_STT.id, "🌐")
+		decorate("voice_gps_online_stt_button", "🌐")
+		decorate("voice_gps_cat_listening", "👂", hideIcon = true)
+		decorate(plugin.LISTEN_IN_BACKGROUND.id, "🔋")
+		decorate(plugin.PAUSE_WHEN_MOVING.id, "⏸️")
+		decorate(plugin.MOVING_SPEED_THRESHOLD_KMH.id, "🚴")
+		decorate("voice_gps_cat_wake", "✋", hideIcon = true)
+		decorate(plugin.PARTIAL_WAKE.id, "👂")
+		decorate(plugin.MANUAL_WAKE.id, "✋")
+		decorate(plugin.MANUAL_WAKE_KEY.id, "🔘")
+		decorate("voice_gps_cat_map", "🗺️", hideIcon = true)
+		decorate(plugin.SHOW_VOICE_GPX_ON_MAP.id, "📍")
 	}
 
-	private fun decorate(key: String, emoji: String, iconRes: Int) {
+	private fun decorate(key: String, emoji: String, hideIcon: Boolean = false) {
 		val pref = findPreference<Preference>(key) ?: return
 		val title = pref.title?.toString().orEmpty()
 		if (title.isNotEmpty() && !title.startsWith(emoji)) {
 			pref.title = "$emoji $title"
 		}
-		pref.icon = getContentIcon(iconRes)
+		if (hideIcon) {
+			pref.icon = null
+		}
 	}
 
 	private fun updateDependentRows() {

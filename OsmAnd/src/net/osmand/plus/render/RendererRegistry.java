@@ -115,9 +115,34 @@ public class RendererRegistry {
 		return getRenderer(name, null);
 	}
 
+	/**
+	 * Reloads the active map style so {@code constantOverrides} win over {@code renderingConstant}
+	 * values from XML (used for MTB route zoom/icon/text sliders).
+	 */
+	public void reloadCurrentRendererWithConstants(@NonNull Map<String, String> constantOverrides) {
+		String name = app.getSettings().RENDERER.get();
+		if (Algorithms.isEmpty(name)) {
+			return;
+		}
+		loadedRenderers.remove(name);
+		List<String> warnings = new ArrayList<>();
+		RenderingRulesStorage renderer = getRenderer(name, constantOverrides, warnings);
+		if (renderer != null) {
+			setCurrentSelectedRender(renderer);
+			app.getResourceManager().getRenderer().clearCache();
+		}
+	}
+
 	@Nullable
 	public RenderingRulesStorage getRenderer(@NonNull String name, @Nullable List<String> warnings) {
-		if (loadedRenderers.containsKey(name)) {
+		return getRenderer(name, null, warnings);
+	}
+
+	@Nullable
+	private RenderingRulesStorage getRenderer(@NonNull String name,
+	                                        @Nullable Map<String, String> constantOverrides,
+	                                        @Nullable List<String> warnings) {
+		if (constantOverrides == null && loadedRenderers.containsKey(name)) {
 			return loadedRenderers.get(name);
 		}
 		if (!hasRender(name)) {
@@ -128,6 +153,9 @@ public class RendererRegistry {
 		}
 		try {
 			Map<String, String> renderingConstants = new LinkedHashMap<>();
+			if (constantOverrides != null) {
+				renderingConstants.putAll(constantOverrides);
+			}
 			RenderingRulesStorage renderer = loadRenderer(null, name, new LinkedHashMap<>(), renderingConstants);
 			if (renderer != null) {
 				for (String addonName : getRendererAddons().keySet()) {

@@ -4,14 +4,16 @@ import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.widget.TooltipCompat
 import androidx.core.graphics.Insets
 import androidx.fragment.app.FragmentManager
 import net.osmand.plus.R
 import net.osmand.plus.base.MenuBottomSheetDialogFragment
 import net.osmand.plus.base.bottomsheetmenu.BaseBottomSheetItem
+import net.osmand.plus.OsmAndTaskManager.OsmAndTaskRunnable
 import net.osmand.plus.plugins.PluginsHelper
 import net.osmand.plus.utils.AndroidUtils
-import net.osmand.plus.utils.ColorUtilities
 import net.osmand.plus.utils.InsetTarget
 import net.osmand.plus.utils.InsetTarget.Type
 import net.osmand.plus.utils.InsetTargetsCollection
@@ -30,13 +32,14 @@ class VoiceGpsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		}
 	}
 
-	private enum class Tab { SETTINGS, NOTES }
+	private val plugin: VoiceGpsPlugin
+		get() = PluginsHelper.requirePlugin(VoiceGpsPlugin::class.java)
 
 	private var noteBar: View? = null
 	private var noteButtonVisible = true
-	private var activeTab = Tab.SETTINGS
-	private var tabSettings: TextView? = null
-	private var tabNotes: TextView? = null
+	private var activeTab = VoiceGpsSheetTab.SETTINGS
+	private val tabButtons = HashMap<VoiceGpsSheetTab, TextView>()
+	private var offlineDialogShown = false
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
@@ -71,10 +74,7 @@ class VoiceGpsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 
 	override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
 		super.onViewCreated(view, savedInstanceState)
-		tabSettings = view.findViewById(R.id.tab_settings)
-		tabNotes = view.findViewById(R.id.tab_notes)
-		tabSettings?.setOnClickListener { selectTab(Tab.SETTINGS) }
-		tabNotes?.setOnClickListener { selectTab(Tab.NOTES) }
+		bindTabs(view)
 		if (childFragmentManager.findFragmentByTag(SETTINGS_TAG) == null) {
 			val fragment = VoiceGpsSettingsFragment()
 			fragment.arguments = Bundle().apply {
@@ -89,35 +89,67 @@ class VoiceGpsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 				.replace(R.id.voice_gps_notes_container, VoiceGpsNotesFragment(), NOTES_TAG)
 				.commitNowAllowingStateLoss()
 		}
-		selectTab(Tab.SETTINGS)
+		showTab(VoiceGpsSheetTab.SETTINGS)
+		view.post { maybeShowOfflineSpeechDialog() }
 	}
 
-	private fun selectTab(tab: Tab) {
-		activeTab = tab
-		val view = view ?: return
-		val settingsContainer = view.findViewById<View>(R.id.voice_gps_settings_container)
-		val notesContainer = view.findViewById<View>(R.id.voice_gps_notes_container)
-		val overlay = view.findViewById<View>(R.id.voice_gps_buttons_overlay)
-		val profileColor = settings.getApplicationMode().getProfileColor(nightMode)
-		val activeColor = profileColor
-		val inactiveColor = ColorUtilities.getSecondaryTextColor(requireContext(), nightMode)
-		when (tab) {
-			Tab.SETTINGS -> {
-				settingsContainer.visibility = View.VISIBLE
-				notesContainer.visibility = View.GONE
-				overlay.visibility = View.VISIBLE
-				tabSettings?.setTextColor(activeColor)
-				tabNotes?.setTextColor(inactiveColor)
-			}
-			Tab.NOTES -> {
-				settingsContainer.visibility = View.GONE
-				notesContainer.visibility = View.VISIBLE
-				overlay.visibility = View.GONE
-				tabNotes?.setTextColor(activeColor)
-				tabSettings?.setTextColor(inactiveColor)
-				(childFragmentManager.findFragmentByTag(NOTES_TAG) as? VoiceGpsNotesFragment)?.reload()
-			}
+	private fun bindTabs(root: View) {
+		tabButtons[VoiceGpsSheetTab.SETTINGS] = root.findViewById(R.id.tab_settings)
+		tabButtons[VoiceGpsSheetTab.NOTES] = root.findViewById(R.id.tab_notes)
+		tabButtons[VoiceGpsSheetTab.SETTINGS]?.contentDescription = getString(R.string.shared_string_settings)
+		tabButtons[VoiceGpsSheetTab.NOTES]?.contentDescription = getString(R.string.voice_gps_tab_notes)
+		for ((tab, button) in tabButtons) {
+			TooltipCompat.setTooltipText(button, button.contentDescription)
+			button.setOnClickListener { showTab(tab) }
 		}
+	}
+
+	private fun showTab(tab: VoiceGpsSheetTab) {
+		activeTab = tab
+		val root = view ?: return
+		root.findViewById<View>(R.id.voice_gps_settings_container).visibility =
+			if (tab == VoiceGpsSheetTab.SETTINGS) View.VISIBLE else View.GONE
+		root.findViewById<View>(R.id.voice_gps_notes_container).visibility =
+			if (tab == VoiceGpsSheetTab.NOTES) View.VISIBLE else View.GONE
+		root.findViewById<View>(R.id.voice_gps_buttons_overlay).visibility =
+			if (tab == VoiceGpsSheetTab.SETTINGS) View.VISIBLE else View.GONE
+		for ((key, button) in tabButtons) {
+			button.alpha = if (key == tab) 1f else 0.38f
+		}
+		if (tab == VoiceGpsSheetTab.NOTES) {
+			(childFragmentManager.findFragmentByTag(NOTES_TAG) as? VoiceGpsNotesFragment)?.reload()
+		}
+		if (tab == VoiceGpsSheetTab.SETTINGS) {
+			noteBar?.let { VoiceGpsNoteBar.setVisible(it, noteButtonVisible, animate = false) }
+		}
+	}
+
+	private fun maybeShowOfflineSpeechDialog() {
+		if (offlineDialogShown || plugin.preferOnlineStt()) {
+			return
+		}
+		val ctx = context ?: return
+		app.getTaskManager().runInBackground(object : OsmAndTaskRunnable<Void, Void, List<VoiceGpsOfflineSpeechHelper.MissingLocale>>() {
+			override fun doInBackground(vararg params: Void?): List<VoiceGpsOfflineSpeechHelper.MissingLocale> {
+				return VoiceGpsOfflineSpeechHelper.missingOfflineLocales(ctx)
+			}
+
+			override fun onPostExecute(missing: List<VoiceGpsOfflineSpeechHelper.MissingLocale>?) {
+				if (missing.isNullOrEmpty() || offlineDialogShown || !isAdded) {
+					return
+				}
+				offlineDialogShown = true
+				val message = VoiceGpsOfflineSpeechHelper.missingLocalesMessage(ctx, missing)
+				AlertDialog.Builder(ctx)
+					.setTitle(R.string.voice_gps_offline_stt_missing_title)
+					.setMessage(message)
+					.setPositiveButton(R.string.voice_gps_offline_stt_download) { _, _ ->
+						VoiceGpsOfflineSpeechHelper.openOfflineSpeechDownloadSettings(ctx)
+					}
+					.setNegativeButton(R.string.shared_string_cancel, null)
+					.show()
+			}
+		})
 	}
 
 	override fun setupBottomButtons(view: ViewGroup) {
@@ -127,7 +159,7 @@ class VoiceGpsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		parent.addView(bar)
 		noteBar = bar
 		noteButtonVisible = true
-		VoiceGpsNoteBar.setVisible(bar, visible = activeTab == Tab.SETTINGS, animate = false)
+		VoiceGpsNoteBar.setVisible(bar, visible = activeTab == VoiceGpsSheetTab.SETTINGS, animate = false)
 	}
 
 	override fun hideButtonsContainer(): Boolean = true
@@ -135,7 +167,7 @@ class VoiceGpsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	override fun useScrollableItemsContainer(): Boolean = false
 
 	fun setNoteButtonVisible(visible: Boolean) {
-		if (activeTab != Tab.SETTINGS) {
+		if (activeTab != VoiceGpsSheetTab.SETTINGS) {
 			return
 		}
 		if (noteButtonVisible == visible) {
@@ -150,7 +182,7 @@ class VoiceGpsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	private fun startVoiceNote() {
 		val host = activity
 		dismissAllowingStateLoss()
-		PluginsHelper.getPlugin(VoiceGpsPlugin::class.java)?.beginManualSession(host)
+		plugin.beginManualSession(host)
 	}
 
 	private fun settingsFragment(): VoiceGpsSettingsFragment? {

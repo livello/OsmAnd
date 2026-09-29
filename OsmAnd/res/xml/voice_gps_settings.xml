@@ -3,6 +3,13 @@
 	android:title="@string/voice_gps_plugin_name">
 
 	<Preference
+		android:key="voice_gps_cat_speech"
+		android:layout="@layout/ev_bms_preference_category_divider"
+		android:persistent="false"
+		android:selectable="true"
+		android:title="@string/voice_gps_cat_speech" />
+
+	<Preference
 		android:key="voice_gps_request_mic"
 		android:layout="@layout/ev_bms_preference_with_descr"
 		android:persistent="false"
@@ -15,7 +22,7 @@
 		android:persistent="false"
 		android:selectable="false"
 		android:summary="@string/voice_gps_stt_offline_hint"
-		android:title="@string/voice_gps_prefer_online_stt" />
+		android:title="@string/voice_gps_stt_offline_hint_title" />
 
 	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
 		android:key="voice_gps_prefer_online_stt"
@@ -28,6 +35,13 @@
 		android:persistent="false"
 		android:summary="@string/voice_gps_online_stt_button_desc"
 		android:title="@string/voice_gps_online_stt_button" />
+
+	<Preference
+		android:key="voice_gps_cat_listening"
+		android:layout="@layout/ev_bms_preference_category_divider"
+		android:persistent="false"
+		android:selectable="true"
+		android:title="@string/voice_gps_cat_listening" />
 
 	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
 		android:key="voice_gps_listen_background"
@@ -45,6 +59,13 @@
 		android:persistent="false"
 		android:title="@string/voice_gps_moving_speed_threshold" />
 
+	<Preference
+		android:key="voice_gps_cat_wake"
+		android:layout="@layout/ev_bms_preference_category_divider"
+		android:persistent="false"
+		android:selectable="true"
+		android:title="@string/voice_gps_cat_wake" />
+
 	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
 		android:key="voice_gps_partial_wake"
 		android:layout="@layout/ev_bms_preference_switch"
@@ -60,6 +81,13 @@
 		android:layout="@layout/voice_gps_choice_row"
 		android:persistent="false"
 		android:title="@string/voice_gps_manual_wake_key" />
+
+	<Preference
+		android:key="voice_gps_cat_map"
+		android:layout="@layout/ev_bms_preference_category_divider"
+		android:persistent="false"
+		android:selectable="true"
+		android:title="@string/voice_gps_cat_map" />
 
 	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
 		android:key="ev_voice_gpx_show_on_map"

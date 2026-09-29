@@ -18,6 +18,7 @@ import androidx.annotation.Nullable;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
 import net.osmand.plus.configmap.ConfigureMapUtils;
+import net.osmand.plus.render.UpdateRendererAsyncTask;
 import net.osmand.plus.settings.backend.OsmandSettings;
 import net.osmand.plus.settings.backend.preferences.CommonPreference;
 import net.osmand.plus.utils.AndroidUtils;
@@ -25,6 +26,8 @@ import net.osmand.render.RenderingClass;
 import net.osmand.render.RenderingRuleProperty;
 import net.osmand.util.Algorithms;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
 
 public class RouteLayersHelper {
@@ -246,7 +249,15 @@ public class RouteLayersHelper {
 	}
 
 	public void refreshMapAfterMtbDisplayChange() {
-		app.runInUIThread(() -> app.getOsmandMap().refreshMap());
+		Map<String, String> overrides = new LinkedHashMap<>();
+		overrides.put(RouteUtils.MTB_ROUTES_MIN_ZOOM_ATTR, getMtbRoutesMinZoomPref().get());
+		overrides.put(RouteUtils.MTB_ROUTES_ICON_SIZE_ATTR, getMtbRoutesIconSizePref().get());
+		overrides.put(RouteUtils.MTB_ROUTES_NAME_TEXT_SIZE_ATTR, getMtbRoutesNameTextSizePref().get());
+		app.getRendererRegistry().reloadCurrentRendererWithConstants(overrides);
+		new UpdateRendererAsyncTask(app, true, changed -> {
+			app.getOsmandMap().refreshMap(true);
+			return false;
+		}).executeOnExecutor(android.os.AsyncTask.THREAD_POOL_EXECUTOR);
 	}
 
 
