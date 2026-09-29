@@ -9,6 +9,26 @@
 		android:summary="@string/voice_gps_mic_denied"
 		android:title="@string/voice_gps_request_mic" />
 
+	<Preference
+		android:key="voice_gps_stt_offline_hint"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:persistent="false"
+		android:selectable="false"
+		android:summary="@string/voice_gps_stt_offline_hint"
+		android:title="@string/voice_gps_prefer_online_stt" />
+
+	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
+		android:key="voice_gps_prefer_online_stt"
+		android:layout="@layout/ev_bms_preference_switch"
+		android:title="@string/voice_gps_prefer_online_stt" />
+
+	<Preference
+		android:key="voice_gps_online_stt_button"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:persistent="false"
+		android:summary="@string/voice_gps_online_stt_button_desc"
+		android:title="@string/voice_gps_online_stt_button" />
+
 	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
 		android:key="voice_gps_listen_background"
 		android:layout="@layout/ev_bms_preference_switch"

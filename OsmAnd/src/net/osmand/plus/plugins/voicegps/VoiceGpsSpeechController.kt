@@ -160,6 +160,7 @@ class VoiceGpsSpeechController(
 			quietEndRecognizerSession()
 			destroyRecognizer()
 			resetNoteSession()
+			plugin.clearForceOnlineSttSession()
 			onStopped?.invoke()
 		}
 	}
@@ -304,6 +305,11 @@ class VoiceGpsSpeechController(
 			putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, app.packageName)
 			// Empty prompt avoids spoken UI feedback from the recognizer service.
 			putExtra(RecognizerIntent.EXTRA_PROMPT, "")
+			if (plugin.useOnlineSttForSession()) {
+				putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)
+			} else {
+				putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+			}
 			if (mode == Mode.WAKE_LISTEN) {
 				putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, WAKE_MIN_SPEECH_MS)
 			} else if (manualOneShot) {

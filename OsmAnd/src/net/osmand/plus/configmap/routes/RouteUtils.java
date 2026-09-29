@@ -32,6 +32,9 @@ public class RouteUtils {
 	public static final String SHOW_MTB_SCALE_IMBA_TRAILS = "showMtbScaleIMBATrails";
 	public static final String SHOW_MTB_SCALE = "showMtbScale";
 	public static final String SHOW_MTB_SCALE_UPHILL = "showMtbScaleUphill";
+	public static final String MTB_ROUTES_MIN_ZOOM_ATTR = "mtbRoutesMinZoom";
+	public static final String MTB_ROUTES_ICON_SIZE_ATTR = "mtbRoutesIconSize";
+	public static final String MTB_ROUTES_NAME_TEXT_SIZE_ATTR = "mtbRoutesNameTextSize";
 	public static final String TRAVEL_ROUTES = "travel_routes";
 
 	public static void showRendererSnackbarForAttr(@NonNull MapActivity activity,

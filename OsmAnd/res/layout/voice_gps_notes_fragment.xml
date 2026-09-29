@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+	android:layout_width="match_parent"
+	android:layout_height="match_parent"
+	android:orientation="vertical">
+
+	<androidx.recyclerview.widget.RecyclerView
+		android:id="@+id/recycler"
+		android:layout_width="match_parent"
+		android:layout_height="0dp"
+		android:layout_weight="1"
+		android:clipToPadding="false"
+		android:paddingBottom="@dimen/content_padding" />
+
+	<net.osmand.plus.widgets.TextViewEx
+		android:id="@+id/empty_view"
+		android:layout_width="match_parent"
+		android:layout_height="0dp"
+		android:layout_weight="1"
+		android:gravity="center"
+		android:padding="@dimen/content_padding"
+		android:text="@string/voice_gps_notes_empty"
+		android:textColor="?android:textColorSecondary"
+		android:visibility="gone" />
+
+	<LinearLayout
+		android:id="@+id/delete_bar"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:background="?attr/list_background_color"
+		android:gravity="center_vertical"
+		android:orientation="horizontal"
+		android:padding="@dimen/content_padding"
+		android:visibility="gone">
+
+		<net.osmand.plus.widgets.TextViewEx
+			android:id="@+id/selected_count"
+			android:layout_width="0dp"
+			android:layout_height="wrap_content"
+			android:layout_weight="1"
+			android:textColor="?android:textColorPrimary" />
+
+		<com.google.android.material.button.MaterialButton
+			android:id="@+id/delete_button"
+			style="@style/Widget.MaterialComponents.Button"
+			android:layout_width="wrap_content"
+			android:layout_height="wrap_content" />
+	</LinearLayout>
+</LinearLayout>

@@ -123,9 +123,12 @@ class VoiceGpsSettingsFragment : BaseSettingsFragment() {
 
 	private fun startVoiceNote() {
 		val host = activity
-		val sheet = parentFragment as? VoiceGpsSettingsBottomSheet
-		sheet?.dismissAllowingStateLoss()
+		dismissParentSheet()
 		plugin.beginManualSession(host)
+	}
+
+	private fun dismissParentSheet() {
+		(parentFragment as? VoiceGpsSettingsBottomSheet)?.dismissAllowingStateLoss()
 	}
 
 	override fun setupPreferences() {
@@ -136,6 +139,7 @@ class VoiceGpsSettingsFragment : BaseSettingsFragment() {
 		setupSwitch(plugin.PARTIAL_WAKE.id, R.string.voice_gps_partial_wake_desc)
 		setupSwitch(plugin.MANUAL_WAKE.id, R.string.voice_gps_manual_wake_desc)
 		setupWakeKeyChips()
+		setupSwitch(plugin.PREFER_ONLINE_STT.id, R.string.voice_gps_prefer_online_stt_desc)
 		setupSwitch(plugin.SHOW_VOICE_GPX_ON_MAP.id, R.string.ev_voice_gpx_show_on_map_desc)
 		decorateRows()
 		updateDependentRows()
@@ -358,6 +362,12 @@ class VoiceGpsSettingsFragment : BaseSettingsFragment() {
 				} else {
 					plugin.syncListeningService()
 				}
+				return true
+			}
+			"voice_gps_online_stt_button" -> {
+				val activity = activity ?: return true
+				dismissParentSheet()
+				plugin.beginOnlineVoiceNote(activity)
 				return true
 			}
 			plugin.MOVING_SPEED_THRESHOLD_KMH.id,

@@ -230,6 +230,25 @@ public class RouteLayersHelper {
 		return isMtbRoutesEnabled() ? mtbRoutesLastClassification.get() : null;
 	}
 
+	@NonNull
+	public CommonPreference<String> getMtbRoutesMinZoomPref() {
+		return settings.getCustomRenderProperty(RouteUtils.MTB_ROUTES_MIN_ZOOM_ATTR, "12");
+	}
+
+	@NonNull
+	public CommonPreference<String> getMtbRoutesIconSizePref() {
+		return settings.getCustomRenderProperty(RouteUtils.MTB_ROUTES_ICON_SIZE_ATTR, "12");
+	}
+
+	@NonNull
+	public CommonPreference<String> getMtbRoutesNameTextSizePref() {
+		return settings.getCustomRenderProperty(RouteUtils.MTB_ROUTES_NAME_TEXT_SIZE_ATTR, "12");
+	}
+
+	public void refreshMapAfterMtbDisplayChange() {
+		app.runInUIThread(() -> app.getOsmandMap().refreshMap());
+	}
+
 
 	// Hiking routes
 	public void toggleHikingRoutes() {

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+	xmlns:app="http://schemas.android.com/apk/res-auto"
+	android:layout_width="match_parent"
+	android:layout_height="wrap_content"
+	android:background="?attr/list_background_color"
+	android:orientation="vertical"
+	android:paddingBottom="@dimen/content_padding_small">
+
+	<net.osmand.plus.widgets.TextViewEx
+		style="@style/TitleStyle.Medium"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginHorizontal="@dimen/content_padding"
+		android:layout_marginTop="@dimen/content_padding_small"
+		android:text="@string/mtb_routes_display_settings"
+		android:textColor="?android:textColorPrimary" />
+
+	<include
+		android:id="@+id/mtb_min_zoom_row"
+		layout="@layout/mtb_routes_slider_row" />
+
+	<include
+		android:id="@+id/mtb_icon_size_row"
+		layout="@layout/mtb_routes_slider_row" />
+
+	<include
+		android:id="@+id/mtb_name_text_size_row"
+		layout="@layout/mtb_routes_slider_row" />
+
+</LinearLayout>

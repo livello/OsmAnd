@@ -5964,6 +5964,25 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
     <string name="voice_gps_widget_name">ev-voice-gpx → Голосовая Заметка</string>
     <string name="voice_gps_widget_desc">Короткое нажатие открывает настройки EV-Голос GPX. Долгое нажатие создаёт голосовую заметку: скажите «заметка», диктуйте, затем «конец». Боковая кнопка запускает заметку только при включённом ручном режиме (по умолчанию — боковая / гарнитура).</string>
     <string name="voice_gps_widget_label">Заметка</string>
+    <string name="voice_gps_tab_settings">Настройки</string>
+    <string name="voice_gps_tab_notes">Заметки</string>
+    <string name="voice_gps_stt_offline_hint">Распознавание через движок Android. Оффлайн возможен только при установленном языковом пакете; иначе может использоваться интернет.</string>
+    <string name="voice_gps_prefer_online_stt">Предпочитать онлайн-распознавание</string>
+    <string name="voice_gps_prefer_online_stt_desc">Отправлять речь в сеть, если на устройстве нет офлайн-модели</string>
+    <string name="voice_gps_online_stt_button">Распознать через интернет</string>
+    <string name="voice_gps_online_stt_button_desc">Одна голосовая заметка с онлайн speech-to-text</string>
+    <string name="voice_gps_notes_empty">Голосовых заметок пока нет</string>
+    <string name="voice_gps_notes_delete_confirm">Удалить %1$d голосовых заметок?</string>
+    <string name="voice_gps_notes_deleted">Удалено заметок: %1$d</string>
+    <string name="voice_gps_notes_select">Выбор заметок</string>
+    <string name="mtb_routes_display_settings">Отображение</string>
+    <string name="mtb_routes_min_zoom">Показывать с масштаба</string>
+    <string name="mtb_routes_min_zoom_desc">Уровень масштаба, с которого видны МТB-маршруты и значки</string>
+    <string name="mtb_routes_icon_size">Размер значка велосипедиста</string>
+    <string name="mtb_routes_icon_size_desc">Щит / символ велосипеда на маршруте</string>
+    <string name="mtb_routes_name_text_size">Размер названия маршрута</string>
+    <string name="mtb_routes_name_text_size_desc">Шрифт подписи МТB-маршрута на карте</string>
+    <string name="mtb_routes_zoom_level_fmt">Масштаб %1$d</string>
     <string name="ev_voice_gpx_show_on_map">Показывать GPX заметок на карте</string>
     <string name="ev_voice_gpx_show_on_map_desc">Суточный трек ev-voice-notes на карте</string>
 

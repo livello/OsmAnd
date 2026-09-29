@@ -3,6 +3,7 @@ package net.osmand.plus.plugins.voicegps
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
+import android.widget.TextView
 import androidx.core.graphics.Insets
 import androidx.fragment.app.FragmentManager
 import net.osmand.plus.R
@@ -10,19 +11,17 @@ import net.osmand.plus.base.MenuBottomSheetDialogFragment
 import net.osmand.plus.base.bottomsheetmenu.BaseBottomSheetItem
 import net.osmand.plus.plugins.PluginsHelper
 import net.osmand.plus.utils.AndroidUtils
+import net.osmand.plus.utils.ColorUtilities
 import net.osmand.plus.utils.InsetTarget
 import net.osmand.plus.utils.InsetTarget.Type
 import net.osmand.plus.utils.InsetTargetsCollection
 
-/**
- * Full-height settings sheet. The emoji note bar hides once the preference list
- * leaves the top, and returns when the list is scrolled back up — same as EV telemetry.
- */
 class VoiceGpsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 
 	companion object {
 		val TAG: String = VoiceGpsSettingsBottomSheet::class.java.simpleName
 		private const val SETTINGS_TAG = "voice_gps_settings_embedded"
+		private const val NOTES_TAG = "voice_gps_notes_embedded"
 
 		fun showInstance(fragmentManager: FragmentManager) {
 			if (AndroidUtils.isFragmentCanBeAdded(fragmentManager, TAG)) {
@@ -31,8 +30,13 @@ class VoiceGpsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		}
 	}
 
+	private enum class Tab { SETTINGS, NOTES }
+
 	private var noteBar: View? = null
 	private var noteButtonVisible = true
+	private var activeTab = Tab.SETTINGS
+	private var tabSettings: TextView? = null
+	private var tabNotes: TextView? = null
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
@@ -67,6 +71,10 @@ class VoiceGpsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 
 	override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
 		super.onViewCreated(view, savedInstanceState)
+		tabSettings = view.findViewById(R.id.tab_settings)
+		tabNotes = view.findViewById(R.id.tab_notes)
+		tabSettings?.setOnClickListener { selectTab(Tab.SETTINGS) }
+		tabNotes?.setOnClickListener { selectTab(Tab.NOTES) }
 		if (childFragmentManager.findFragmentByTag(SETTINGS_TAG) == null) {
 			val fragment = VoiceGpsSettingsFragment()
 			fragment.arguments = Bundle().apply {
@@ -75,6 +83,40 @@ class VoiceGpsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			childFragmentManager.beginTransaction()
 				.replace(R.id.voice_gps_settings_container, fragment, SETTINGS_TAG)
 				.commitNowAllowingStateLoss()
+		}
+		if (childFragmentManager.findFragmentByTag(NOTES_TAG) == null) {
+			childFragmentManager.beginTransaction()
+				.replace(R.id.voice_gps_notes_container, VoiceGpsNotesFragment(), NOTES_TAG)
+				.commitNowAllowingStateLoss()
+		}
+		selectTab(Tab.SETTINGS)
+	}
+
+	private fun selectTab(tab: Tab) {
+		activeTab = tab
+		val view = view ?: return
+		val settingsContainer = view.findViewById<View>(R.id.voice_gps_settings_container)
+		val notesContainer = view.findViewById<View>(R.id.voice_gps_notes_container)
+		val overlay = view.findViewById<View>(R.id.voice_gps_buttons_overlay)
+		val profileColor = settings.getApplicationMode().getProfileColor(nightMode)
+		val activeColor = profileColor
+		val inactiveColor = ColorUtilities.getSecondaryTextColor(requireContext(), nightMode)
+		when (tab) {
+			Tab.SETTINGS -> {
+				settingsContainer.visibility = View.VISIBLE
+				notesContainer.visibility = View.GONE
+				overlay.visibility = View.VISIBLE
+				tabSettings?.setTextColor(activeColor)
+				tabNotes?.setTextColor(inactiveColor)
+			}
+			Tab.NOTES -> {
+				settingsContainer.visibility = View.GONE
+				notesContainer.visibility = View.VISIBLE
+				overlay.visibility = View.GONE
+				tabNotes?.setTextColor(activeColor)
+				tabSettings?.setTextColor(inactiveColor)
+				(childFragmentManager.findFragmentByTag(NOTES_TAG) as? VoiceGpsNotesFragment)?.reload()
+			}
 		}
 	}
 
@@ -85,7 +127,7 @@ class VoiceGpsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		parent.addView(bar)
 		noteBar = bar
 		noteButtonVisible = true
-		VoiceGpsNoteBar.setVisible(bar, visible = true, animate = false)
+		VoiceGpsNoteBar.setVisible(bar, visible = activeTab == Tab.SETTINGS, animate = false)
 	}
 
 	override fun hideButtonsContainer(): Boolean = true
@@ -93,6 +135,9 @@ class VoiceGpsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	override fun useScrollableItemsContainer(): Boolean = false
 
 	fun setNoteButtonVisible(visible: Boolean) {
+		if (activeTab != Tab.SETTINGS) {
+			return
+		}
 		if (noteButtonVisible == visible) {
 			return
 		}

@@ -6606,6 +6606,25 @@ Download tile maps directly, or copy them as SQLite database files to OsmAnd\'s 
     <string name="voice_gps_widget_name">ev-voice-gpx → Voice Note</string>
     <string name="voice_gps_widget_desc">Short tap opens EV Voice GPX settings. Long press creates a voice note: say «note», dictate, then «end». The side button starts a note only when manual mode is on (default key: side / headset).</string>
     <string name="voice_gps_widget_label">Note</string>
+    <string name="voice_gps_tab_settings">Settings</string>
+    <string name="voice_gps_tab_notes">Notes</string>
+    <string name="voice_gps_stt_offline_hint">Speech uses the Android recognizer on your device. Offline works only if the system language pack is installed; otherwise recognition may use the Internet.</string>
+    <string name="voice_gps_prefer_online_stt">Prefer online speech recognition</string>
+    <string name="voice_gps_prefer_online_stt_desc">Send audio to Google/network STT when the device has no offline model</string>
+    <string name="voice_gps_online_stt_button">Recognize via Internet</string>
+    <string name="voice_gps_online_stt_button_desc">Start one voice note using online speech-to-text</string>
+    <string name="voice_gps_notes_empty">No voice notes yet</string>
+    <string name="voice_gps_notes_delete_confirm">Delete %1$d voice note(s)?</string>
+    <string name="voice_gps_notes_deleted">Deleted %1$d note(s)</string>
+    <string name="voice_gps_notes_select">Select notes</string>
+    <string name="mtb_routes_display_settings">Display</string>
+    <string name="mtb_routes_min_zoom">Show from zoom</string>
+    <string name="mtb_routes_min_zoom_desc">Map zoom level when MTB routes and shields appear</string>
+    <string name="mtb_routes_icon_size">Cyclist icon size</string>
+    <string name="mtb_routes_icon_size_desc">Shield / cyclist symbol on the route</string>
+    <string name="mtb_routes_name_text_size">Route name size</string>
+    <string name="mtb_routes_name_text_size_desc">Font size for MTB route names on the map</string>
+    <string name="mtb_routes_zoom_level_fmt">Zoom %1$d</string>
     <string name="ev_voice_gpx_show_on_map">Show voice GPX on map</string>
     <string name="ev_voice_gpx_show_on_map_desc">Daily ev-voice-notes track on the map</string>
 

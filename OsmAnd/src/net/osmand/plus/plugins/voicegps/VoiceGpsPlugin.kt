@@ -78,6 +78,11 @@ class VoiceGpsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 		registerBooleanPreference("voice_gps_manual_wake", false).makeGlobal().makeShared()
 	val MANUAL_WAKE_KEY: CommonPreference<String> =
 		registerStringPreference("voice_gps_manual_wake_key", MANUAL_WAKE_KEY_SIDE).makeGlobal().makeShared()
+	val PREFER_ONLINE_STT: CommonPreference<Boolean> =
+		registerBooleanPreference("voice_gps_prefer_online_stt", false).makeGlobal().makeShared()
+
+	@Volatile
+	private var forceOnlineSttSession = false
 
 	init {
 		// Not shown until the user adds it from Configure screen. Available for every profile.
@@ -336,6 +341,19 @@ class VoiceGpsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 	}
 
 	fun showVoiceGpxOnMap(): Boolean = SHOW_VOICE_GPX_ON_MAP.get()
+
+	fun preferOnlineStt(): Boolean = PREFER_ONLINE_STT.get()
+
+	fun useOnlineSttForSession(): Boolean = forceOnlineSttSession || preferOnlineStt()
+
+	fun clearForceOnlineSttSession() {
+		forceOnlineSttSession = false
+	}
+
+	fun beginOnlineVoiceNote(activity: Activity?) {
+		forceOnlineSttSession = true
+		beginManualSession(activity)
+	}
 
 	/**
 	 * One voice-note session: listen for «заметка», then dictate until «конец».

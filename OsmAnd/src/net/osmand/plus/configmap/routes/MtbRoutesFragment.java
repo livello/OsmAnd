@@ -48,6 +48,7 @@ public class MtbRoutesFragment extends MapRoutesFragment {
 		super.createCards(view);
 
 		addCard(new MtbRoutesCard(getMapActivity()));
+		addCard(new MtbRoutesDisplayCard(getMapActivity()));
 		addRenderingClassCard(MTB.getRenderingPropertyAttr());
 	}
 }
