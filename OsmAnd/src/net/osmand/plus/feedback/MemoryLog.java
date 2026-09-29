@@ -226,7 +226,16 @@ public class MemoryLog {
 	private String gpuMemory(@NonNull OsmandApplication app) {
 		try {
 			MapRendererView mapRenderer = app.getOsmandMap().getMapView().getMapRenderer();
-			return mapRenderer != null ? mapRenderer.getGpuMemoryStats() : null;
+			if (mapRenderer == null) {
+				return null;
+			}
+			try {
+				java.lang.reflect.Method method = mapRenderer.getClass().getMethod("getGpuMemoryStats");
+				Object stats = method.invoke(mapRenderer);
+				return stats != null ? stats.toString() : null;
+			} catch (NoSuchMethodException ignored) {
+				return null;
+			}
 		} catch (Throwable e) {
 			// the renderer may be released by another thread at any moment
 			return null;
