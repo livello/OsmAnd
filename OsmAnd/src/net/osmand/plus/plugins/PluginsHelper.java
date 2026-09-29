@@ -45,6 +45,7 @@ import net.osmand.plus.plugins.custom.CustomRegion;
 import net.osmand.plus.plugins.development.OsmandDevelopmentPlugin;
 import net.osmand.plus.plugins.externalsensors.ExternalSensorsPlugin;
 import net.osmand.plus.plugins.mapillary.MapillaryPlugin;
+import net.osmand.plus.plugins.panoramax.PanoramaxPlugin;
 import net.osmand.plus.plugins.monitoring.OsmandMonitoringPlugin;
 import net.osmand.plus.plugins.evbms.EvBmsPlugin;
 import net.osmand.plus.plugins.voicegps.VoiceGpsPlugin;
@@ -122,6 +123,7 @@ public class PluginsHelper {
 		checkMarketPlugin(app, new ParkingPositionPlugin(app));
 		allPlugins.add(new OsmEditingPlugin(app));
 		allPlugins.add(new MapillaryPlugin(app));
+		allPlugins.add(new PanoramaxPlugin(app));
 		allPlugins.add(new ExternalSensorsPlugin(app));
 		allPlugins.add(new VehicleMetricsPlugin(app));
 		allPlugins.add(new EvBmsPlugin(app));

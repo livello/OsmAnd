@@ -41,6 +41,7 @@ import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
 import net.osmand.plus.Version;
 import net.osmand.plus.download.DownloadOsmandIndexesHelper.AssetEntry;
+import net.osmand.plus.download.DownloadResources;
 import net.osmand.plus.download.SrtmDownloadItem;
 import net.osmand.plus.inapp.InAppPurchaseUtils;
 import net.osmand.plus.plugins.PluginsHelper;
@@ -232,6 +233,13 @@ public class ResourceManager {
 		String regionName = getMapFileName(downloadName);
 		String roadsRegionName = getRoadMapFileName(downloadName);
 		return indexFileNames.containsKey(regionName) || indexFileNames.containsKey(roadsRegionName);
+	}
+
+	public boolean checkIfObjectOutdated(String downloadName) {
+		String regionName = getMapFileName(downloadName);
+		String roadsRegionName = getRoadMapFileName(downloadName);
+		DownloadResources indexes = app.getDownloadThread().getIndexes();
+		return indexes.isItemOutdated(regionName) || indexes.isItemOutdated(roadsRegionName);
 	}
 
 	public boolean checkIfObjectBackuped(String downloadName) {
@@ -836,6 +844,10 @@ public class ResourceManager {
 
 	public Collection<RegionAddressRepository> getAddressRepositories() {
 		return addressMap.values();
+	}
+
+	public int getFileReadersCount() {
+		return fileReaders.size();
 	}
 
 	public Collection<BinaryMapReaderResource> getFileReaders() {

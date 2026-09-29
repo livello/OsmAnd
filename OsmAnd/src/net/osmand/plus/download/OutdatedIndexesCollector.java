@@ -17,9 +17,11 @@ import java.io.File;
 import java.text.DateFormat;
 import java.text.ParseException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class OutdatedIndexesCollector {
 
@@ -52,11 +54,13 @@ public class OutdatedIndexesCollector {
 		initAlreadyLoadedFiles();
 		List<IndexItem> outdatedIndexes = new ArrayList<>();
 		List<IndexItem> activatedOutdatedIndexes = new ArrayList<>();
+		Set<String> outdatedFileNames = new HashSet<>();
 
 		DateFormat format = app.getResourceManager().getDateFormat();
 		for (IndexItem item : indexItems) {
 			if (checkIfItemOutdated(item, format)) {
 				outdatedIndexes.add(item);
+				outdatedFileNames.add(item.getTargetFileName());
 				if (checkIfItemActivated(item)) {
 					activatedOutdatedIndexes.add(item);
 				}
@@ -73,7 +77,8 @@ public class OutdatedIndexesCollector {
 		}
 		return new OutdatedIndexesCollection(outdatedIndexes,
 				activatedOutdatedIndexes, groupedIndexes,
-				groupedActivatedIndexes, deprecatedActivatedIndexes);
+				groupedActivatedIndexes, deprecatedActivatedIndexes,
+				outdatedFileNames);
 	}
 
 	public void initAlreadyLoadedFiles() {
