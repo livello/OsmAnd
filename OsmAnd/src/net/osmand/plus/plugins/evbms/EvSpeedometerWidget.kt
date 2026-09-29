@@ -168,7 +168,10 @@ class EvSpeedometerWidget(
 
 	private fun hudLayoutParams(host: ViewGroup): FrameLayout.LayoutParams {
 		val hostH = host.height
-		val percent = plugin.HUD_HEIGHT_PERCENT.get().coerceIn(50, 100) / 100f
+		val percent = plugin.HUD_HEIGHT_PERCENT.get().coerceIn(
+			EvBmsPlugin.MIN_HUD_HEIGHT_PERCENT,
+			EvBmsPlugin.MAX_HUD_HEIGHT_PERCENT,
+		) / 100f
 		val height = if (hostH > 0) {
 			(hostH * percent).toInt().coerceAtLeast(1)
 		} else {

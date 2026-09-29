@@ -38,4 +38,5 @@
     <item name="widget_panel_view_pager_right" type="id" />
     <item name="ev_speedometer_hud" type="id" />
     <item name="ev_widget_map_passthrough" type="id" />
+    <item name="ev_exact_value_tap" type="id" />
 </resources>

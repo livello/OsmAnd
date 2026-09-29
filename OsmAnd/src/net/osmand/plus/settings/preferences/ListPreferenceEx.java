@@ -143,6 +143,10 @@ public class ListPreferenceEx extends DialogPreference {
 		}
 	}
 
+	public void refreshView() {
+		notifyChanged();
+	}
+
 	private Object getPersistedValue(Object defaultValue) {
 		PreferenceDataStore dataStore = getPreferenceDataStore();
 		if (dataStore instanceof OsmAndPreferencesDataStore) {

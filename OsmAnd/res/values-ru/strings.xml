@@ -4995,6 +4995,9 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
     <string name="ev_bms_n_celsius">%1$d °C</string>
     <string name="ev_bms_n_amp">%1$d А</string>
     <string name="ev_bms_n_repeats">%1$d</string>
+    <string name="ev_exact_value_hint">От %1$s до %2$s</string>
+    <string name="ev_exact_value_hint_or">От %1$s до %2$s, либо %3$s</string>
+    <string name="ev_exact_value_invalid">Введите значение от %1$s до %2$s</string>
     <string name="ev_bms_stop_repeats">Повторы на остановке</string>
     <string name="ev_bms_telemetry_saved">Трек телеметрии сохранён</string>
     <string name="ev_bms_log_meta">%1$s · %2$s · %3$s</string>

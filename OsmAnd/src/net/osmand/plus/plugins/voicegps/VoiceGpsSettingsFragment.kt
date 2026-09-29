@@ -2,7 +2,9 @@ package net.osmand.plus.plugins.voicegps
 
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.drawable.GradientDrawable
+import android.text.InputType
 import android.os.Bundle
 import android.util.TypedValue
 import android.view.Gravity
@@ -17,6 +19,8 @@ import androidx.preference.Preference
 import androidx.preference.PreferenceViewHolder
 import androidx.recyclerview.widget.RecyclerView
 import net.osmand.plus.R
+import net.osmand.plus.plugins.ExactValuePrompt
+import net.osmand.plus.plugins.NumericPresetRange
 import net.osmand.plus.plugins.PluginsHelper
 import net.osmand.plus.settings.fragments.BaseSettingsFragment
 import net.osmand.plus.settings.preferences.SwitchPreferenceEx
@@ -33,10 +37,18 @@ class VoiceGpsSettingsFragment : BaseSettingsFragment() {
 
 	private class ChipOption(val value: String, val label: String, val description: String)
 
+	private class ExactSpeed(
+		val min: Int,
+		val max: Int,
+		val read: () -> Int,
+		val format: (Int) -> String,
+	)
+
 	private class ChipRow(
 		val choices: List<ChipOption>,
 		val read: () -> String,
 		val write: (String) -> Unit,
+		val exact: ExactSpeed? = null,
 	)
 
 	private val plugin: VoiceGpsPlugin
@@ -155,7 +167,11 @@ class VoiceGpsSettingsFragment : BaseSettingsFragment() {
 	private fun setupSpeedChips() {
 		val pref = findPreference<Preference>(plugin.MOVING_SPEED_THRESHOLD_KMH.id) ?: return
 		pref.summary = getString(R.string.voice_gps_moving_speed_threshold_desc)
-		val values = intArrayOf(5, 8, 10, 15, 20)
+		val min = VoiceGpsPlugin.MIN_MOVING_SPEED_THRESHOLD_KMH
+		val max = VoiceGpsPlugin.MAX_MOVING_SPEED_THRESHOLD_KMH
+		val expanded = NumericPresetRange.expand(intArrayOf(5, 8, 10, 15, 20), min, max)
+		val current = plugin.movingSpeedThresholdKmh()
+		val values = if (current in expanded) expanded else (expanded + current).sorted().toIntArray()
 		chipRows[pref.key] = ChipRow(
 			choices = values.map { kmh ->
 				ChipOption(
@@ -166,8 +182,14 @@ class VoiceGpsSettingsFragment : BaseSettingsFragment() {
 			},
 			read = { plugin.movingSpeedThresholdKmh().toString() },
 			write = { raw ->
-				raw.toIntOrNull()?.let { plugin.MOVING_SPEED_THRESHOLD_KMH.set(it) }
+				raw.toIntOrNull()?.let { plugin.MOVING_SPEED_THRESHOLD_KMH.set(it.coerceIn(min, max)) }
 			},
+			exact = ExactSpeed(
+				min = min,
+				max = max,
+				read = { plugin.movingSpeedThresholdKmh() },
+				format = { kmh -> getString(R.string.ev_bms_n_kmh, kmh) },
+			),
 		)
 	}
 
@@ -250,16 +272,18 @@ class VoiceGpsSettingsFragment : BaseSettingsFragment() {
 
 	private fun bindChips(preference: Preference, holder: PreferenceViewHolder) {
 		val row = chipRows[preference.key] ?: return
+		bindExactSpeed(preference, holder, row)
 		val container = holder.findViewById(R.id.voice_gps_chips) as? LinearLayout ?: return
 		container.removeAllViews()
 		val selected = row.read()
 		val enabled = preference.isEnabled
 		val ctx = preference.context
+		val choices = chipChoices(row)
 		val padH = AndroidUtils.dpToPx(ctx, 10f)
 		val padV = AndroidUtils.dpToPx(ctx, 4f)
 		val gap = AndroidUtils.dpToPx(ctx, 6f)
 		val minH = AndroidUtils.dpToPx(ctx, 28f)
-		for ((index, choice) in row.choices.withIndex()) {
+		for ((index, choice) in choices.withIndex()) {
 			val chip = TextView(ctx)
 			chip.text = choice.label
 			chip.contentDescription = choice.description
@@ -281,7 +305,14 @@ class VoiceGpsSettingsFragment : BaseSettingsFragment() {
 			}
 			chip.layoutParams = lp
 			chip.setOnClickListener {
-				if (!preference.isEnabled || row.read() == choice.value) {
+				if (!preference.isEnabled) {
+					return@setOnClickListener
+				}
+				if (row.read() == choice.value) {
+					val exact = row.exact
+					if (exact != null) {
+						showExactSpeedDialog(preference, row, exact)
+					}
 					return@setOnClickListener
 				}
 				row.write(choice.value)
@@ -289,6 +320,66 @@ class VoiceGpsSettingsFragment : BaseSettingsFragment() {
 				updatePreference(preference)
 			}
 			container.addView(chip)
+		}
+	}
+
+	private fun chipChoices(row: ChipRow): List<ChipOption> {
+		val exact = row.exact ?: return row.choices
+		val current = exact.read()
+		if (row.choices.any { it.value == current.toString() }) {
+			return row.choices
+		}
+		return (row.choices + ChipOption(
+			current.toString(),
+			current.toString(),
+			exact.format(current),
+		)).sortedBy { it.value.toIntOrNull() ?: Int.MAX_VALUE }
+	}
+
+	private fun bindExactSpeed(preference: Preference, holder: PreferenceViewHolder, row: ChipRow) {
+		val valueView = holder.findViewById(R.id.voice_gps_exact_value) as? TextView ?: return
+		val exact = row.exact
+		if (exact == null) {
+			valueView.visibility = View.GONE
+			valueView.setOnClickListener(null)
+			return
+		}
+		val current = exact.read()
+		valueView.visibility = View.VISIBLE
+		valueView.text = exact.format(current)
+		valueView.paintFlags = valueView.paintFlags or Paint.UNDERLINE_TEXT_FLAG
+		valueView.isEnabled = preference.isEnabled
+		valueView.setTextColor(ColorUtilities.getActiveColor(valueView.context, isNightMode()))
+		valueView.setOnClickListener {
+			if (!preference.isEnabled) {
+				return@setOnClickListener
+			}
+			showExactSpeedDialog(preference, row, exact)
+		}
+	}
+
+	private fun showExactSpeedDialog(preference: Preference, row: ChipRow, exact: ExactSpeed) {
+		val activity = activity ?: return
+		ExactValuePrompt.show(
+			activity,
+			isNightMode(),
+			preference.title ?: "",
+			getString(R.string.ev_exact_value_hint, exact.format(exact.min), exact.format(exact.max)),
+			exact.read().toString(),
+			InputType.TYPE_CLASS_NUMBER,
+		) { raw ->
+			val parsed = raw.trim().toIntOrNull()
+			if (parsed == null || parsed !in exact.min..exact.max) {
+				app.showToastMessage(
+					getString(R.string.ev_exact_value_invalid, exact.format(exact.min), exact.format(exact.max))
+				)
+				return@show false
+			}
+			row.write(parsed.toString())
+			plugin.syncListeningService()
+			setupSpeedChips()
+			updatePreference(preference)
+			true
 		}
 	}
 

@@ -53,8 +53,8 @@ class VoiceGpsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 		private const val DEFAULT_DICTATION_LISTEN_MS = 45_000L
 		private const val FOREGROUND_SYNC_MS = 2500L
 		const val DEFAULT_MOVING_SPEED_THRESHOLD_KMH = 8
-		private const val MIN_MOVING_SPEED_THRESHOLD_KMH = 2
-		private const val MAX_MOVING_SPEED_THRESHOLD_KMH = 40
+		const val MIN_MOVING_SPEED_THRESHOLD_KMH = 2
+		const val MAX_MOVING_SPEED_THRESHOLD_KMH = 40
 	}
 
 	val LISTEN_IN_BACKGROUND: CommonPreference<Boolean> =

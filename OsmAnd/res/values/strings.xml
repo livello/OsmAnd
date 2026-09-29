@@ -1564,6 +1564,9 @@ Layouts: <i>res/layout/ev_bms_*.xml</i>. Preferences: <i>res/xml/ev_bms_settings
     <string name="ev_bms_n_celsius">%1$d °C</string>
     <string name="ev_bms_n_amp">%1$d A</string>
     <string name="ev_bms_n_repeats">%1$d</string>
+    <string name="ev_exact_value_hint">From %1$s to %2$s</string>
+    <string name="ev_exact_value_hint_or">From %1$s to %2$s, or %3$s</string>
+    <string name="ev_exact_value_invalid">Enter a value from %1$s to %2$s</string>
     <string name="ev_bms_stop_repeats">Repeats while stopped</string>
     <string name="ev_bms_telemetry_saved">Telemetry track saved</string>
     <string name="ev_bms_log_meta">%1$s · %2$s · %3$s</string>

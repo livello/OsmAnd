@@ -64,6 +64,19 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	companion object {
 		const val DEFAULT_POLL_MS = 2000
 		const val MIN_POLL_MS = 200
+		const val MAX_POLL_MS = 60_000
+		const val MIN_HUD_FPS = 1
+		const val MAX_HUD_FPS = 60
+		const val MIN_HUD_HIDE_DELAY_SEC = 1
+		const val MAX_HUD_HIDE_DELAY_SEC = 120
+		const val MIN_HUD_GAUGE_PERCENT = 8
+		const val MAX_HUD_GAUGE_PERCENT = 55
+		const val MIN_HUD_HEIGHT_PERCENT = 50
+		const val MAX_HUD_HEIGHT_PERCENT = 100
+		const val MIN_SETTING_SPEED_KMH = 1
+		const val MAX_SETTING_SPEED_KMH = 160
+		const val MIN_SPEED_CAL_DISTANCE_M = 100
+		const val MAX_SPEED_CAL_DISTANCE_M = 20_000
 		const val DEFAULT_BMS_POLL_MS = 500
 		const val DEFAULT_CTRL_POLL_MS = 200
 		const val DEFAULT_RECORD_INTERVAL_MS = 1000
@@ -4324,7 +4337,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		}
 	}
 
-	fun hudFps(): Int = HUD_FPS.get().coerceIn(HUD_FPS_VALUES.first(), HUD_FPS_VALUES.last())
+	fun hudFps(): Int = HUD_FPS.get().coerceIn(MIN_HUD_FPS, MAX_HUD_FPS)
 
 	fun hudFrameIntervalMs(): Long = (1000L / hudFps()).coerceAtLeast(16L)
 
@@ -4337,7 +4350,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		val showAt = HUD_SHOW_KMH.get().toDouble()
 		val hideAt = (showAt - SPEED_PROFILE_HYSTERESIS_KMH).coerceAtLeast(0.0)
 		val now = SystemClock.elapsedRealtime()
-		val delayMs = HUD_HIDE_DELAY_SEC.get().coerceIn(1, 30) * 1000L
+		val delayMs = HUD_HIDE_DELAY_SEC.get().coerceIn(MIN_HUD_HIDE_DELAY_SEC, MAX_HUD_HIDE_DELAY_SEC) * 1000L
 		if (speedKmh >= showAt) {
 			hudWantVisible = true
 			hudHideDeadlineMs = 0L
@@ -5133,7 +5146,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 
 	fun isSpeedCalibrating(): Boolean = speedCalRunning
 
-	fun speedCalTargetMeters(): Int = SPEED_CAL_DISTANCE_M.get().coerceAtLeast(100)
+	fun speedCalTargetMeters(): Int =
+		SPEED_CAL_DISTANCE_M.get().coerceIn(MIN_SPEED_CAL_DISTANCE_M, MAX_SPEED_CAL_DISTANCE_M)
 
 	fun speedCalProgressGpsM(): Double = speedCalGpsM
 
@@ -5407,7 +5421,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private fun activeTickMs(): Long = minOf(activeBmsPollMs(), activeCtrlPollMs())
 
 	private fun coercePollMs(raw: Int): Long {
-		val poll = raw.toLong().coerceAtLeast(MIN_POLL_MS.toLong())
+		val poll = raw.toLong().coerceIn(MIN_POLL_MS.toLong(), MAX_POLL_MS.toLong())
 		return if (isHikeMode()) {
 			poll.coerceAtLeast(HikeModeController.HIKE_POLL_MS.toLong())
 		} else {
@@ -5418,7 +5432,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private fun activeRecordIntervalMs(): Long {
 		val rec = RECORD_INTERVAL_MS.get().toLong()
 		val poll = activeTickMs()
-		return if (rec <= RECORD_INTERVAL_SAME) poll else rec.coerceAtLeast(poll)
+		return if (rec <= RECORD_INTERVAL_SAME) poll else rec.coerceIn(poll, MAX_POLL_MS.toLong())
 	}
 
 	private fun dataStaleMs(pollMs: Long): Long = maxOf(DATA_STALE_MS, pollMs * 3)

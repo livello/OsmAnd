@@ -5,6 +5,7 @@ import android.app.Activity
 import android.app.Dialog
 import android.content.Context
 import android.content.Intent
+import android.graphics.Paint
 import android.graphics.drawable.ColorDrawable
 import android.location.LocationManager
 import android.net.Uri
@@ -41,6 +42,8 @@ import androidx.preference.PreferenceViewHolder
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import net.osmand.plus.R
+import net.osmand.plus.plugins.ExactValuePrompt
+import net.osmand.plus.plugins.NumericPresetRange
 import net.osmand.plus.plugins.PluginsHelper
 import net.osmand.plus.plugins.evbms.ble.EvBleUartClient
 import net.osmand.plus.settings.backend.ApplicationMode
@@ -57,6 +60,7 @@ import net.osmand.plus.utils.UiUtilities
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.roundToInt
 
 class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanListener {
 
@@ -305,8 +309,8 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		setupSwitch(plugin.ANNOUNCE_RANGE_RESERVE.id)
 		setupSwitch(plugin.ANNOUNCE_RANGE_RESERVE_SMALL.id)
 		setupSwitch(plugin.ANNOUNCE_RANGE_RESERVE_LOW.id)
-		setupKmThreshold(plugin.RANGE_RESERVE_SMALL_KM, arrayOf(2, 5, 8, 10, 15, 20))
-		setupKmThreshold(plugin.RANGE_RESERVE_LOW_KM, arrayOf(8, 10, 15, 20, 30, 50))
+		setupKmThreshold(plugin.RANGE_RESERVE_SMALL_KM, arrayOf(2, 5, 8, 10, 15, 20), 1, 100)
+		setupKmThreshold(plugin.RANGE_RESERVE_LOW_KM, arrayOf(8, 10, 15, 20, 30, 50), 1, 300)
 		setupRangeForReserve()
 		setupStopSpeed()
 		setupSwitch(plugin.ANNOUNCE_CELL_VOLTAGE.id)
@@ -314,11 +318,11 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		setupCellThreshold(plugin.CRITICAL_CELL_MV, arrayOf(3400, 3350, 3300, 3250, 3200, 3100))
 		setupCellAlertInterval()
 		setupSwitch(plugin.ANNOUNCE_MOTOR_HEAT.id)
-		setupTempThreshold(plugin.MOTOR_HEAT_C, arrayOf(70, 80, 90, 100, 110, 120))
+		setupTempThreshold(plugin.MOTOR_HEAT_C, arrayOf(70, 80, 90, 100, 110, 120), 40, 150)
 		setupSwitch(plugin.ANNOUNCE_BATTERY_OVERHEAT.id)
-		setupTempThreshold(plugin.BATTERY_OVERHEAT_C, arrayOf(40, 45, 50, 55, 60))
+		setupTempThreshold(plugin.BATTERY_OVERHEAT_C, arrayOf(40, 45, 50, 55, 60), 20, 90)
 		setupSwitch(plugin.ANNOUNCE_BATTERY_FREEZE.id)
-		setupTempThreshold(plugin.BATTERY_FREEZE_C, arrayOf(5, 0, -5, -10))
+		setupTempThreshold(plugin.BATTERY_FREEZE_C, arrayOf(5, 0, -5, -10), -40, 20)
 		setupSwitch(plugin.ANNOUNCE_LINK.id)
 		setupSwitch(plugin.ANNOUNCE_CHARGE_ETA.id)
 		setupHistoryPrefs()
@@ -474,6 +478,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 
 	override fun onBindPreferenceViewHolder(preference: Preference, holder: PreferenceViewHolder) {
 		super.onBindPreferenceViewHolder(preference, holder)
+		bindExactValueTap(preference, holder)
 		val key = preference.key ?: return
 		if (key !in SETTINGS_CATEGORY_KEYS) {
 			return
@@ -691,6 +696,187 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		pref.setDescription(R.string.ev_bms_jbd_password_desc)
 	}
 
+	private class IntChoice(
+		val min: Int,
+		val max: Int,
+		val sentinels: IntArray,
+		val label: (Int) -> String,
+		val editText: (Int) -> String,
+		val parse: (String) -> Int?,
+		val inputType: Int,
+		val rangeMessage: () -> String,
+		val refresh: () -> Unit,
+	)
+
+	private val exactChoices = HashMap<String, IntChoice>()
+
+	private fun bindIntChoice(
+		pref: ListPreferenceEx,
+		presets: IntArray,
+		current: Int,
+		min: Int,
+		max: Int,
+		label: (Int) -> String,
+		sentinels: IntArray = intArrayOf(),
+		editText: (Int) -> String = { it.toString() },
+		parse: (String) -> Int? = { it.trim().toIntOrNull() },
+		inputType: Int = InputType.TYPE_CLASS_NUMBER,
+		rangeMessage: (() -> String)? = null,
+		refresh: () -> Unit,
+	) {
+		val message = rangeMessage ?: {
+			if (sentinels.isEmpty()) {
+				getString(R.string.ev_exact_value_hint, label(min), label(max))
+			} else {
+				getString(
+					R.string.ev_exact_value_hint_or,
+					label(min),
+					label(max),
+					sentinels.joinToString { label(it) },
+				)
+			}
+		}
+		exactChoices[pref.key] = IntChoice(
+			min, max, sentinels, label, editText, parse, inputType, message, refresh,
+		)
+		val values = choiceValues(presets, current, min, max, sentinels)
+		pref.setEntries(values.map(label).toTypedArray())
+		pref.setEntryValues(values.map { it as Any }.toTypedArray())
+		pref.setValue(current)
+		if (pref.entry == null) {
+			pref.summary = label(current)
+		}
+	}
+
+	private fun choiceValues(
+		presets: IntArray,
+		current: Int,
+		min: Int,
+		max: Int,
+		sentinels: IntArray,
+	): IntArray {
+		val sentinelSet = sentinels.toSet()
+		val expanded = NumericPresetRange.expand(
+			presets.filter { it !in sentinelSet }.toIntArray(),
+			min,
+			max,
+		)
+		val tail = LinkedHashSet<Int>()
+		expanded.forEach { tail.add(it) }
+		if (current !in sentinelSet && current in min..max) {
+			tail.add(current)
+		}
+		return (sentinels.toList() + tail.sorted()).toIntArray()
+	}
+
+	private fun bindExactValueTap(preference: Preference, holder: PreferenceViewHolder) {
+		val summary = holder.findViewById(android.R.id.summary) as? TextView ?: return
+		val choice = exactChoices[preference.key]
+		val tagged = summary.getTag(R.id.ev_exact_value_tap) as? Int
+		if (choice == null || preference !is ListPreferenceEx) {
+			if (tagged != null) {
+				summary.setTextColor(tagged)
+				summary.paintFlags = summary.paintFlags and Paint.UNDERLINE_TEXT_FLAG.inv()
+				summary.setOnClickListener(null)
+				summary.isClickable = false
+				summary.setTag(R.id.ev_exact_value_tap, null)
+			}
+			return
+		}
+		if (tagged == null) {
+			summary.setTag(R.id.ev_exact_value_tap, summary.currentTextColor)
+		}
+		summary.paintFlags = summary.paintFlags or Paint.UNDERLINE_TEXT_FLAG
+		val color = if (preference.isEnabled) {
+			ColorUtilities.getActiveColor(summary.context, isNightMode())
+		} else {
+			ColorUtilities.getSecondaryTextColor(summary.context, isNightMode())
+		}
+		summary.setTextColor(color)
+		summary.isClickable = preference.isEnabled
+		summary.setOnClickListener {
+			if (!preference.isEnabled) {
+				return@setOnClickListener
+			}
+			showExactIntDialog(preference, choice)
+		}
+	}
+
+	private fun showExactIntDialog(pref: ListPreferenceEx, choice: IntChoice) {
+		val activity = activity ?: return
+		val current = (pref.value as? Number)?.toInt() ?: choice.min
+		ExactValuePrompt.show(
+			activity,
+			isNightMode(),
+			pref.title ?: "",
+			choice.rangeMessage(),
+			choice.editText(current),
+			choice.inputType,
+		) { raw ->
+			val parsed = choice.parse(raw)
+			val allowed = parsed != null && (parsed in choice.sentinels || parsed in choice.min..choice.max)
+			if (!allowed || parsed == null) {
+				val lo = choice.label(choice.min)
+				val hi = choice.label(choice.max)
+				app.showToastMessage(getString(R.string.ev_exact_value_invalid, lo, hi))
+				return@show false
+			}
+			if (!pref.callChangeListener(parsed)) {
+				return@show false
+			}
+			pref.setValue(parsed)
+			choice.refresh()
+			onPreferenceChanged(pref.key)
+			findPreference<ListPreferenceEx>(pref.key)?.refreshView()
+			true
+		}
+	}
+
+	private fun parseDecimal(text: String): Double? {
+		return text.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it.isFinite() }
+	}
+
+	private fun voltEdit(millivolts: Int): String {
+		val text = String.format(Locale.US, "%.3f", millivolts / 1000.0)
+		return text.trimEnd('0').trimEnd('.')
+	}
+
+	private fun parseVoltMv(text: String): Int? {
+		val volts = parseDecimal(text) ?: return null
+		return (volts * 1000.0).roundToInt()
+	}
+
+	private fun ahEdit(milliAmpHours: Int): String {
+		val text = String.format(Locale.US, "%.3f", milliAmpHours / 1000.0)
+		return text.trimEnd('0').trimEnd('.')
+	}
+
+	private fun parseAhMah(text: String): Int? {
+		val ah = parseDecimal(text) ?: return null
+		return (ah * 1000.0).roundToInt()
+	}
+
+	private fun durationLabel(seconds: Int): String {
+		return if (seconds >= 60 && seconds % 60 == 0) {
+			getString(R.string.ev_bms_n_min, seconds / 60)
+		} else {
+			getString(R.string.ev_bms_n_sec, seconds)
+		}
+	}
+
+	private fun metersLabel(meters: Int): String {
+		return if (meters >= 1000 && meters % 1000 == 0) {
+			getString(R.string.ev_bms_n_km_int, meters / 1000)
+		} else {
+			getString(R.string.ev_bms_n_meters, meters)
+		}
+	}
+
+	private val decimalInput =
+		InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+	private val signedInput =
+		InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_SIGNED
+
 	private fun setupPollInterval() {
 		setupPollMsPref(plugin.BMS_POLL_MS, R.string.ev_bms_bms_poll_desc)
 		setupPollMsPref(plugin.CONTROLLER_POLL_MS, R.string.ev_bms_ctrl_poll_desc)
@@ -701,30 +887,58 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		descriptionRes: Int
 	) {
 		val pref = findPreference<ListPreferenceEx>(holder.id) ?: return
-		pref.setEntries(EvBmsPlugin.POLL_MS_VALUES.map { pollLabel(it) }.toTypedArray())
-		pref.setEntryValues(EvBmsPlugin.POLL_MS_VALUES.map { it as Any }.toTypedArray())
-		pref.setValue(holder.get())
+		bindIntChoice(
+			pref,
+			EvBmsPlugin.POLL_MS_VALUES,
+			holder.get(),
+			EvBmsPlugin.MIN_POLL_MS,
+			EvBmsPlugin.MAX_POLL_MS,
+			::pollLabel,
+			editText = { it.toString() },
+			rangeMessage = {
+				getString(
+					R.string.ev_exact_value_hint,
+					getString(R.string.ev_bms_n_ms, EvBmsPlugin.MIN_POLL_MS),
+					getString(R.string.ev_bms_n_ms, EvBmsPlugin.MAX_POLL_MS),
+				)
+			},
+			refresh = { setupPollMsPref(holder, descriptionRes) },
+		)
 		pref.setDescription(descriptionRes)
 	}
 
 	private fun setupRecordInterval() {
 		val pref = findPreference<ListPreferenceEx>(plugin.RECORD_INTERVAL_MS.id) ?: return
-		pref.setEntries(
-			EvBmsPlugin.RECORD_INTERVAL_MS_VALUES.map { ms ->
-				if (ms == EvBmsPlugin.RECORD_INTERVAL_SAME) {
-					getString(R.string.ev_bms_record_interval_same)
-				} else {
-					pollLabel(ms)
-				}
-			}.toTypedArray()
+		val label = { ms: Int ->
+			if (ms == EvBmsPlugin.RECORD_INTERVAL_SAME) {
+				getString(R.string.ev_bms_record_interval_same)
+			} else {
+				pollLabel(ms)
+			}
+		}
+		bindIntChoice(
+			pref,
+			EvBmsPlugin.RECORD_INTERVAL_MS_VALUES,
+			plugin.RECORD_INTERVAL_MS.get(),
+			EvBmsPlugin.MIN_POLL_MS,
+			EvBmsPlugin.MAX_POLL_MS,
+			label,
+			sentinels = intArrayOf(EvBmsPlugin.RECORD_INTERVAL_SAME),
+			rangeMessage = {
+				getString(
+					R.string.ev_exact_value_hint_or,
+					getString(R.string.ev_bms_n_ms, EvBmsPlugin.MIN_POLL_MS),
+					getString(R.string.ev_bms_n_ms, EvBmsPlugin.MAX_POLL_MS),
+					getString(R.string.ev_bms_record_interval_same),
+				)
+			},
+			refresh = { setupRecordInterval() },
 		)
-		pref.setEntryValues(EvBmsPlugin.RECORD_INTERVAL_MS_VALUES.map { it as Any }.toTypedArray())
-		pref.setValue(plugin.RECORD_INTERVAL_MS.get())
 		pref.setDescription(R.string.ev_bms_record_interval_desc)
 	}
 
 	private fun pollLabel(ms: Int): String {
-		return if (ms < 1000) {
+		return if (ms < 1000 || ms % 1000 != 0) {
 			getString(R.string.ev_bms_n_ms, ms)
 		} else {
 			getString(R.string.ev_bms_n_sec, ms / 1000)
@@ -736,10 +950,15 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		autoPref.setDescription(R.string.ev_bms_speed_profile_auto_desc)
 
 		val thresholdPref = findPreference<ListPreferenceEx>(plugin.SPEED_PROFILE_KMH.id) ?: return
-		val kmh = arrayOf(10, 15, 20, 25, 30, 35, 40, 50, 60)
-		thresholdPref.setEntries(kmh.map { getString(R.string.ev_bms_n_kmh, it) }.toTypedArray())
-		thresholdPref.setEntryValues(kmh.map { it as Any }.toTypedArray())
-		thresholdPref.setValue(plugin.SPEED_PROFILE_KMH.get())
+		bindIntChoice(
+			thresholdPref,
+			intArrayOf(10, 15, 20, 25, 30, 35, 40, 50, 60),
+			plugin.SPEED_PROFILE_KMH.get(),
+			EvBmsPlugin.MIN_SETTING_SPEED_KMH,
+			EvBmsPlugin.MAX_SETTING_SPEED_KMH,
+			{ getString(R.string.ev_bms_n_kmh, it) },
+			refresh = { setupSpeedProfile() },
+		)
 		thresholdPref.setDescription(R.string.ev_bms_speed_profile_kmh_desc)
 
 		setupSpeedProfileMode(plugin.SPEED_PROFILE_SLOW.id, plugin.SPEED_PROFILE_SLOW.get())
@@ -776,63 +995,100 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		setupHudKmh(
 			plugin.HUD_SHOW_KMH.id,
 			plugin.HUD_SHOW_KMH.get(),
-			R.string.ev_bms_hud_show_desc
-		)
+			R.string.ev_bms_hud_show_desc,
+		) { setupHudLook() }
 		setupHudHideDelay()
 		setupHudPercent(
 			plugin.HUD_STROKE_PERCENT.id,
 			plugin.HUD_STROKE_PERCENT.get(),
-			arrayOf(10, 15, 20, 25, 30, 35, 40, 50),
-			R.string.ev_bms_hud_stroke_desc
-		)
+			intArrayOf(10, 15, 20, 25, 30, 35, 40, 50),
+			R.string.ev_bms_hud_stroke_desc,
+			EvBmsPlugin.MIN_HUD_GAUGE_PERCENT,
+			EvBmsPlugin.MAX_HUD_GAUGE_PERCENT,
+		) { setupHudLook() }
 		setupHudPercent(
 			plugin.HUD_HEIGHT_PERCENT.id,
 			plugin.HUD_HEIGHT_PERCENT.get(),
-			arrayOf(50, 60, 70, 80, 90, 100),
-			R.string.ev_bms_hud_height_desc
-		)
+			intArrayOf(50, 60, 70, 80, 90, 100),
+			R.string.ev_bms_hud_height_desc,
+			EvBmsPlugin.MIN_HUD_HEIGHT_PERCENT,
+			EvBmsPlugin.MAX_HUD_HEIGHT_PERCENT,
+		) { setupHudLook() }
 		setupHudFps()
 		setupHudPercent(
 			plugin.HUD_FONT_PERCENT.id,
 			plugin.HUD_FONT_PERCENT.get(),
-			arrayOf(13, 20, 26, 32, 39, 45, 52),
-			R.string.ev_bms_hud_font_desc
-		)
+			intArrayOf(13, 20, 26, 32, 39, 45, 52),
+			R.string.ev_bms_hud_font_desc,
+			EvBmsPlugin.MIN_HUD_GAUGE_PERCENT,
+			EvBmsPlugin.MAX_HUD_GAUGE_PERCENT,
+		) { setupHudLook() }
 		findPreference<SwitchPreferenceEx>(plugin.HUD_SHOW_UNITS.id)
 			?.setDescription(R.string.ev_bms_hud_show_units_desc)
 		val stats = findPreference<ListPreferenceEx>(plugin.HUD_STATS_MINUTES.id) ?: return
-		val minutes = arrayOf(0, 1, 2, 3, 5, 10, 15, 30)
-		stats.setEntries(minutes.map { min ->
+		val label = { min: Int ->
 			if (min == 0) getString(R.string.shared_string_disabled) else getString(R.string.ev_bms_n_min, min)
-		}.toTypedArray())
-		stats.setEntryValues(minutes.map { it as Any }.toTypedArray())
-		stats.setValue(plugin.HUD_STATS_MINUTES.get())
+		}
+		bindIntChoice(
+			stats,
+			intArrayOf(0, 1, 2, 3, 5, 10, 15, 30),
+			plugin.HUD_STATS_MINUTES.get(),
+			1,
+			120,
+			label,
+			sentinels = intArrayOf(0),
+			refresh = { setupHudLook() },
+		)
 		stats.setDescription(R.string.ev_bms_hud_stats_desc)
 	}
 
 	private fun setupHudHideDelay() {
 		val pref = findPreference<ListPreferenceEx>(plugin.HUD_HIDE_DELAY_SEC.id) ?: return
-		val values = EvBmsPlugin.HUD_HIDE_DELAY_SEC_VALUES
-		pref.setEntries(values.map { getString(R.string.ev_bms_n_sec, it) }.toTypedArray())
-		pref.setEntryValues(values.map { it as Any }.toTypedArray())
-		pref.setValue(plugin.HUD_HIDE_DELAY_SEC.get())
+		bindIntChoice(
+			pref,
+			EvBmsPlugin.HUD_HIDE_DELAY_SEC_VALUES,
+			plugin.HUD_HIDE_DELAY_SEC.get(),
+			EvBmsPlugin.MIN_HUD_HIDE_DELAY_SEC,
+			EvBmsPlugin.MAX_HUD_HIDE_DELAY_SEC,
+			{ getString(R.string.ev_bms_n_sec, it) },
+			refresh = { setupHudHideDelay() },
+		)
 		pref.setDescription(R.string.ev_bms_hud_hide_delay_desc)
 	}
 
 	private fun setupHudFps() {
 		val pref = findPreference<ListPreferenceEx>(plugin.HUD_FPS.id) ?: return
-		val values = EvBmsPlugin.HUD_FPS_VALUES
-		pref.setEntries(values.map { getString(R.string.ev_bms_n_fps, it) }.toTypedArray())
-		pref.setEntryValues(values.map { it as Any }.toTypedArray())
-		pref.setValue(plugin.HUD_FPS.get())
+		bindIntChoice(
+			pref,
+			EvBmsPlugin.HUD_FPS_VALUES,
+			plugin.HUD_FPS.get(),
+			EvBmsPlugin.MIN_HUD_FPS,
+			EvBmsPlugin.MAX_HUD_FPS,
+			{ getString(R.string.ev_bms_n_fps, it) },
+			refresh = { setupHudFps() },
+		)
 		pref.setDescription(R.string.ev_bms_hud_fps_desc)
 	}
 
-	private fun setupHudPercent(prefId: String, value: Int, values: Array<Int>, descId: Int) {
+	private fun setupHudPercent(
+		prefId: String,
+		value: Int,
+		values: IntArray,
+		descId: Int,
+		min: Int,
+		max: Int,
+		refresh: () -> Unit,
+	) {
 		val pref = findPreference<ListPreferenceEx>(prefId) ?: return
-		pref.setEntries(values.map { getString(R.string.ev_bms_n_percent, it) }.toTypedArray())
-		pref.setEntryValues(values.map { it as Any }.toTypedArray())
-		pref.setValue(value)
+		bindIntChoice(
+			pref,
+			values,
+			value,
+			min,
+			max,
+			{ getString(R.string.ev_bms_n_percent, it) },
+			refresh = refresh,
+		)
 		pref.setDescription(descId)
 	}
 
@@ -840,40 +1096,50 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		setupHudKmh(
 			plugin.HUD_LIMIT1_KMH.id,
 			plugin.HUD_LIMIT1_KMH.get(),
-			R.string.ev_bms_hud_limit1_desc
-		)
+			R.string.ev_bms_hud_limit1_desc,
+		) { setupHudLimits() }
 		setupHudKmh(
 			plugin.HUD_BUFFER1_KMH.id,
 			plugin.HUD_BUFFER1_KMH.get(),
-			R.string.ev_bms_hud_buffer1_desc
-		)
+			R.string.ev_bms_hud_buffer1_desc,
+		) { setupHudLimits() }
 		setupHudKmh(
 			plugin.HUD_LIMIT2_KMH.id,
 			plugin.HUD_LIMIT2_KMH.get(),
-			R.string.ev_bms_hud_limit2_desc
-		)
+			R.string.ev_bms_hud_limit2_desc,
+		) { setupHudLimits() }
 		setupHudKmh(
 			plugin.HUD_BUFFER2_KMH.id,
 			plugin.HUD_BUFFER2_KMH.get(),
-			R.string.ev_bms_hud_buffer2_desc
-		)
+			R.string.ev_bms_hud_buffer2_desc,
+		) { setupHudLimits() }
 	}
 
-	private fun setupHudKmh(prefId: String, value: Int, descId: Int) {
+	private fun setupHudKmh(prefId: String, value: Int, descId: Int, refresh: () -> Unit) {
 		val pref = findPreference<ListPreferenceEx>(prefId) ?: return
-		val kmh = arrayOf(20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 80, 90)
-		pref.setEntries(kmh.map { getString(R.string.ev_bms_n_kmh, it) }.toTypedArray())
-		pref.setEntryValues(kmh.map { it as Any }.toTypedArray())
-		pref.setValue(value)
+		bindIntChoice(
+			pref,
+			intArrayOf(20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 80, 90),
+			value,
+			EvBmsPlugin.MIN_SETTING_SPEED_KMH,
+			EvBmsPlugin.MAX_SETTING_SPEED_KMH,
+			{ getString(R.string.ev_bms_n_kmh, it) },
+			refresh = refresh,
+		)
 		pref.setDescription(descId)
 	}
 
 	private fun setupCalDistance() {
 		val pref = findPreference<ListPreferenceEx>(plugin.SPEED_CAL_DISTANCE_M.id) ?: return
-		val meters = arrayOf(500, 1000, 2000, 5000)
-		pref.setEntries(meters.map { OsmAndFormatter.getFormattedDistance(it.toFloat(), app) }.toTypedArray())
-		pref.setEntryValues(meters.map { it as Any }.toTypedArray())
-		pref.setValue(plugin.SPEED_CAL_DISTANCE_M.get())
+		bindIntChoice(
+			pref,
+			intArrayOf(500, 1000, 2000, 5000),
+			plugin.SPEED_CAL_DISTANCE_M.get(),
+			EvBmsPlugin.MIN_SPEED_CAL_DISTANCE_M,
+			EvBmsPlugin.MAX_SPEED_CAL_DISTANCE_M,
+			{ OsmAndFormatter.getFormattedDistance(it.toFloat(), app) },
+			refresh = { setupCalDistance() },
+		)
 	}
 
 	private fun setupCalFactor() {
@@ -913,81 +1179,124 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 
 	private fun setupCtrlOdoExcess() {
 		val pref = findPreference<ListPreferenceEx>(plugin.CTRL_ODO_EXCESS_PERCENT.id) ?: return
-		val values = arrayOf(100, 110, 120, 130, 140, 150)
-		pref.setEntries(values.map { getString(R.string.ev_bms_n_percent, it) }.toTypedArray())
-		pref.setEntryValues(values.map { it as Any }.toTypedArray())
-		pref.setValue(plugin.CTRL_ODO_EXCESS_PERCENT.get())
+		bindIntChoice(
+			pref,
+			intArrayOf(100, 110, 120, 130, 140, 150),
+			plugin.CTRL_ODO_EXCESS_PERCENT.get(),
+			100,
+			300,
+			{ getString(R.string.ev_bms_n_percent, it) },
+			refresh = { setupCtrlOdoExcess() },
+		)
 		pref.isEnabled = plugin.FILTER_CTRL_ODO.get()
 	}
 
 	private fun setupChargeVoltStep() {
 		val pref = findPreference<ListPreferenceEx>(plugin.CHARGE_VOLT_STEP_MV.id) ?: return
-		pref.setEntries(
-			arrayOf(
-				getString(R.string.ev_bms_n_volt, 0.5),
-				getString(R.string.ev_bms_n_volt, 1.0),
-				getString(R.string.ev_bms_n_volt, 2.0)
-			)
+		bindIntChoice(
+			pref,
+			intArrayOf(500, 1000, 2000),
+			plugin.CHARGE_VOLT_STEP_MV.get(),
+			100,
+			5000,
+			{ getString(R.string.ev_bms_n_volt, it / 1000.0) },
+			editText = ::voltEdit,
+			parse = ::parseVoltMv,
+			inputType = decimalInput,
+			refresh = { setupChargeVoltStep() },
 		)
-		pref.setEntryValues(arrayOf<Any>(500, 1000, 2000))
-		pref.setValue(plugin.CHARGE_VOLT_STEP_MV.get())
 	}
 
 	private fun setupStopRepeats() {
 		val pref = findPreference<ListPreferenceEx>(plugin.STOP_ANNOUNCE_REPEATS.id) ?: return
-		val values = arrayOf(1, 2, 3, 5, 10)
-		pref.setEntries(values.map { getString(R.string.ev_bms_n_repeats, it) }.toTypedArray())
-		pref.setEntryValues(values.map { it as Any }.toTypedArray())
-		pref.setValue(plugin.STOP_ANNOUNCE_REPEATS.get())
+		bindIntChoice(
+			pref,
+			intArrayOf(1, 2, 3, 5, 10),
+			plugin.STOP_ANNOUNCE_REPEATS.get(),
+			1,
+			30,
+			{ getString(R.string.ev_bms_n_repeats, it) },
+			refresh = { setupStopRepeats() },
+		)
 	}
 
 	private fun setupStopSpeed() {
 		val pref = findPreference<ListPreferenceEx>(plugin.STOP_SPEED_KMH.id) ?: return
-		pref.setEntries(
-			arrayOf(
-				getString(R.string.ev_bms_n_kmh, 2),
-				getString(R.string.ev_bms_n_kmh, 3),
-				getString(R.string.ev_bms_n_kmh, 5)
-			)
+		bindIntChoice(
+			pref,
+			intArrayOf(2, 3, 5),
+			plugin.STOP_SPEED_KMH.get(),
+			0,
+			40,
+			{ getString(R.string.ev_bms_n_kmh, it) },
+			refresh = { setupStopSpeed() },
 		)
-		pref.setEntryValues(arrayOf<Any>(2, 3, 5))
-		pref.setValue(plugin.STOP_SPEED_KMH.get())
 	}
 
 	private fun setupCellThreshold(prefHolder: net.osmand.plus.settings.backend.preferences.CommonPreference<Int>, millivolts: Array<Int>) {
 		val pref = findPreference<ListPreferenceEx>(prefHolder.id) ?: return
-		pref.setEntries(millivolts.map { getString(R.string.ev_bms_n_volt, it / 1000.0) }.toTypedArray())
-		pref.setEntryValues(millivolts.map { it as Any }.toTypedArray())
-		pref.setValue(prefHolder.get())
+		bindIntChoice(
+			pref,
+			millivolts.toIntArray(),
+			prefHolder.get(),
+			2500,
+			4200,
+			{ getString(R.string.ev_bms_n_volt, it / 1000.0) },
+			editText = ::voltEdit,
+			parse = ::parseVoltMv,
+			inputType = decimalInput,
+			refresh = { setupCellThreshold(prefHolder, millivolts) },
+		)
 	}
 
 	private fun setupCellAlertInterval() {
 		val pref = findPreference<ListPreferenceEx>(plugin.CELL_ALERT_INTERVAL_SEC.id) ?: return
-		pref.setEntries(
-			arrayOf(
-				getString(R.string.ev_bms_n_sec, 15),
-				getString(R.string.ev_bms_n_sec, 30),
-				getString(R.string.ev_bms_n_min, 1),
-				getString(R.string.ev_bms_n_min, 2),
-				getString(R.string.ev_bms_n_min, 5)
-			)
+		bindIntChoice(
+			pref,
+			intArrayOf(15, 30, 60, 120, 300),
+			plugin.CELL_ALERT_INTERVAL_SEC.get(),
+			5,
+			3600,
+			::durationLabel,
+			refresh = { setupCellAlertInterval() },
 		)
-		pref.setEntryValues(arrayOf<Any>(15, 30, 60, 120, 300))
-		pref.setValue(plugin.CELL_ALERT_INTERVAL_SEC.get())
 	}
 
-	private fun setupTempThreshold(prefHolder: net.osmand.plus.settings.backend.preferences.CommonPreference<Int>, celsius: Array<Int>) {
+	private fun setupTempThreshold(
+		prefHolder: net.osmand.plus.settings.backend.preferences.CommonPreference<Int>,
+		celsius: Array<Int>,
+		min: Int,
+		max: Int,
+	) {
 		val pref = findPreference<ListPreferenceEx>(prefHolder.id) ?: return
-		pref.setEntries(celsius.map { getString(R.string.ev_bms_n_celsius, it) }.toTypedArray())
-		pref.setEntryValues(celsius.map { it as Any }.toTypedArray())
-		pref.setValue(prefHolder.get())
+		bindIntChoice(
+			pref,
+			celsius.toIntArray(),
+			prefHolder.get(),
+			min,
+			max,
+			{ getString(R.string.ev_bms_n_celsius, it) },
+			inputType = signedInput,
+			refresh = { setupTempThreshold(prefHolder, celsius, min, max) },
+		)
 	}
 
-	private fun setupKmThreshold(prefHolder: net.osmand.plus.settings.backend.preferences.CommonPreference<Int>, km: Array<Int>) {
+	private fun setupKmThreshold(
+		prefHolder: net.osmand.plus.settings.backend.preferences.CommonPreference<Int>,
+		km: Array<Int>,
+		min: Int,
+		max: Int,
+	) {
 		val pref = findPreference<ListPreferenceEx>(prefHolder.id) ?: return
-		pref.setEntries(km.map { getString(R.string.ev_bms_n_km_int, it) }.toTypedArray())
-		pref.setEntryValues(km.map { it as Any }.toTypedArray())
-		pref.setValue(prefHolder.get())
+		bindIntChoice(
+			pref,
+			km.toIntArray(),
+			prefHolder.get(),
+			min,
+			max,
+			{ getString(R.string.ev_bms_n_km_int, it) },
+			refresh = { setupKmThreshold(prefHolder, km, min, max) },
+		)
 	}
 
 	private fun setupRangeForReserve() {
@@ -1049,29 +1358,28 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 
 	private fun setupChargeStillSec() {
 		val pref = findPreference<ListPreferenceEx>(plugin.CHARGE_STILL_SEC.id) ?: return
-		pref.setEntries(
-			arrayOf(
-				getString(R.string.ev_bms_n_sec, 30),
-				getString(R.string.ev_bms_n_sec, 60),
-				getString(R.string.ev_bms_n_sec, 90),
-				getString(R.string.ev_bms_n_sec, 120)
-			)
+		bindIntChoice(
+			pref,
+			intArrayOf(30, 60, 90, 120),
+			plugin.CHARGE_STILL_SEC.get(),
+			5,
+			600,
+			{ getString(R.string.ev_bms_n_sec, it) },
+			refresh = { setupChargeStillSec() },
 		)
-		pref.setEntryValues(arrayOf<Any>(30, 60, 90, 120))
-		pref.setValue(plugin.CHARGE_STILL_SEC.get())
 	}
 
 	private fun setupChargeStillKmh() {
 		val pref = findPreference<ListPreferenceEx>(plugin.CHARGE_STILL_KMH.id) ?: return
-		pref.setEntries(
-			arrayOf(
-				getString(R.string.ev_bms_n_kmh, 1),
-				getString(R.string.ev_bms_n_kmh, 2),
-				getString(R.string.ev_bms_n_kmh, 3)
-			)
+		bindIntChoice(
+			pref,
+			intArrayOf(1, 2, 3),
+			plugin.CHARGE_STILL_KMH.get(),
+			0,
+			30,
+			{ getString(R.string.ev_bms_n_kmh, it) },
+			refresh = { setupChargeStillKmh() },
 		)
-		pref.setEntryValues(arrayOf<Any>(1, 2, 3))
-		pref.setValue(plugin.CHARGE_STILL_KMH.get())
 	}
 
 	fun refreshHistoryPrefs() {
@@ -1080,47 +1388,44 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 
 	private fun setupChargeRearmDistance() {
 		val pref = findPreference<ListPreferenceEx>(plugin.CHARGE_REARM_M.id) ?: return
-		pref.setEntries(
-			arrayOf(
-				getString(R.string.ev_bms_n_meters, 50),
-				getString(R.string.ev_bms_n_meters, 100),
-				getString(R.string.ev_bms_n_meters, 200),
-				getString(R.string.ev_bms_n_meters, 500),
-				getString(R.string.ev_bms_n_km_int, 1)
-			)
+		bindIntChoice(
+			pref,
+			intArrayOf(50, 100, 200, 500, 1000),
+			plugin.CHARGE_REARM_M.get(),
+			10,
+			10_000,
+			::metersLabel,
+			refresh = { setupChargeRearmDistance() },
 		)
-		pref.setEntryValues(arrayOf<Any>(50, 100, 200, 500, 1000))
-		pref.setValue(plugin.CHARGE_REARM_M.get())
 	}
 
 	private fun setupChargeRearmAh() {
 		val pref = findPreference<ListPreferenceEx>(plugin.CHARGE_REARM_MAH.id) ?: return
-		pref.setEntries(
-			arrayOf(
-				getString(R.string.ev_bms_n_ah, "0.1"),
-				getString(R.string.ev_bms_n_ah, "0.2"),
-				getString(R.string.ev_bms_n_ah, "0.3"),
-				getString(R.string.ev_bms_n_ah, "0.5"),
-				getString(R.string.ev_bms_n_ah, "1.0")
-			)
+		bindIntChoice(
+			pref,
+			intArrayOf(100, 200, 300, 500, 1000),
+			plugin.CHARGE_REARM_MAH.get(),
+			50,
+			10_000,
+			{ getString(R.string.ev_bms_n_ah, ahEdit(it)) },
+			editText = ::ahEdit,
+			parse = ::parseAhMah,
+			inputType = decimalInput,
+			refresh = { setupChargeRearmAh() },
 		)
-		pref.setEntryValues(arrayOf<Any>(100, 200, 300, 500, 1000))
-		pref.setValue(plugin.CHARGE_REARM_MAH.get())
 	}
 
 	private fun setupChargeCurrent() {
 		val pref = findPreference<ListPreferenceEx>(plugin.CHARGE_CURRENT_A.id) ?: return
-		pref.setEntries(
-			arrayOf(
-				getString(R.string.ev_bms_n_amp, 2),
-				getString(R.string.ev_bms_n_amp, 3),
-				getString(R.string.ev_bms_n_amp, 5),
-				getString(R.string.ev_bms_n_amp, 8),
-				getString(R.string.ev_bms_n_amp, 10)
-			)
+		bindIntChoice(
+			pref,
+			intArrayOf(2, 3, 5, 8, 10),
+			plugin.CHARGE_CURRENT_A.get(),
+			1,
+			100,
+			{ getString(R.string.ev_bms_n_amp, it) },
+			refresh = { setupChargeCurrent() },
 		)
-		pref.setEntryValues(arrayOf<Any>(2, 3, 5, 8, 10))
-		pref.setValue(plugin.CHARGE_CURRENT_A.get())
 	}
 
 	private fun setupCsvFolder() {
