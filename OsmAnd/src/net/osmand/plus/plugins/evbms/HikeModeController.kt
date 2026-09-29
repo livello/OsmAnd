@@ -82,7 +82,7 @@ class HikeModeController(
 		val srtm = PluginsHelper.getPlugin(SRTMPlugin::class.java)
 		if (srtm != null) {
 			json.put("terrain", srtm.isTerrainLayerEnabled)
-			json.put("buildings3d", srtm.ENABLE_3D_MAP_OBJECTS.get())
+			json.put("buildings3d", settings.ENABLE_3D_MAP_OBJECTS.get())
 		}
 		val weather = PluginsHelper.getPlugin(WeatherPlugin::class.java)
 		if (weather != null) {
@@ -140,10 +140,8 @@ class HikeModeController(
 		TransportLinesMenu(app).toggleTransportLines(mapActivity, false)
 		app.poiFilters.clearAllSelectedPoiFilters()
 		PluginsHelper.getPlugin(WikipediaPlugin::class.java)?.toggleWikipediaPoi(false, null)
-		PluginsHelper.getPlugin(SRTMPlugin::class.java)?.let {
-			it.setTerrainLayerEnabled(false)
-			it.ENABLE_3D_MAP_OBJECTS.set(false)
-		}
+		PluginsHelper.getPlugin(SRTMPlugin::class.java)?.setTerrainLayerEnabled(false)
+		settings.ENABLE_3D_MAP_OBJECTS.set(false)
 		PluginsHelper.getPlugin(WeatherPlugin::class.java)?.setWeatherEnabled(false)
 		PluginsHelper.getPlugin(MapillaryPlugin::class.java)?.SHOW_MAPILLARY?.set(false)
 		disablePlugins(mapActivity)
@@ -200,10 +198,9 @@ class HikeModeController(
 				}
 			}
 		}
-		PluginsHelper.getPlugin(SRTMPlugin::class.java)?.let {
-			it.setTerrainLayerEnabled(json.optBoolean("terrain", false))
-			it.ENABLE_3D_MAP_OBJECTS.set(json.optBoolean("buildings3d", false))
-		}
+		PluginsHelper.getPlugin(SRTMPlugin::class.java)
+			?.setTerrainLayerEnabled(json.optBoolean("terrain", false))
+		settings.ENABLE_3D_MAP_OBJECTS.set(json.optBoolean("buildings3d", false))
 		PluginsHelper.getPlugin(WeatherPlugin::class.java)?.setWeatherEnabled(json.optBoolean("weather", false))
 		PluginsHelper.getPlugin(MapillaryPlugin::class.java)?.SHOW_MAPILLARY?.set(json.optBoolean("mapillary", false))
 		restorePlugins(mapActivity, json.optJSONObject("plugins"))
