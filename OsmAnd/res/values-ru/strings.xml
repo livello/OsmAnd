@@ -5963,6 +5963,11 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
     <string name="voice_gps_dictating">Диктуйте заметку — «конец» для сохранения</string>
     <string name="voice_gps_no_location">Нет GPS — включите геолокацию</string>
     <string name="voice_gps_note_saved">Заметка сохранена: %1$s</string>
+    <string name="voice_gps_note_empty">Текст заметки не распознан</string>
+    <string name="voice_gps_note_recorded">Заметка записана</string>
+    <string name="voice_gps_tab_log">Журнал плагина</string>
+    <string name="voice_gps_debug_log">Режим отладки</string>
+    <string name="voice_gps_log_empty">Журнал пуст. Включите отладку, чтобы писать подробный след.</string>
     <string name="voice_gps_note_default_title">Заметка %1$s</string>
     <string name="voice_gps_widget_name">ev-voice-gpx → Голосовая Заметка</string>
     <string name="voice_gps_widget_desc">Короткое нажатие открывает настройки EV-Голос GPX. Долгое нажатие создаёт голосовую заметку: скажите «заметка», диктуйте, затем «конец». Боковая кнопка запускает заметку только при включённом ручном режиме (по умолчанию — боковая / гарнитура).</string>

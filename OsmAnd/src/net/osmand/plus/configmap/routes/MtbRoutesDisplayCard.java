@@ -1,9 +1,14 @@
 package net.osmand.plus.configmap.routes;
 
+import android.graphics.Paint;
+import android.text.InputType;
 import android.view.View;
+import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
+import androidx.appcompat.app.AlertDialog;
 
 import com.google.android.material.slider.Slider;
 
@@ -11,6 +16,8 @@ import net.osmand.plus.R;
 import net.osmand.plus.activities.MapActivity;
 import net.osmand.plus.routepreparationmenu.cards.MapBaseCard;
 import net.osmand.plus.settings.backend.preferences.CommonPreference;
+import net.osmand.plus.utils.AndroidUtils;
+import net.osmand.plus.utils.ColorUtilities;
 import net.osmand.plus.utils.UiUtilities;
 
 public class MtbRoutesDisplayCard extends MapBaseCard {
@@ -34,8 +41,8 @@ public class MtbRoutesDisplayCard extends MapBaseCard {
 				R.string.mtb_routes_min_zoom,
 				R.string.mtb_routes_min_zoom_desc,
 				routeLayersHelper.getMtbRoutesMinZoomPref(),
-				8f,
-				16f,
+				4f,
+				20f,
 				12f
 		);
 		setupSlider(
@@ -43,8 +50,8 @@ public class MtbRoutesDisplayCard extends MapBaseCard {
 				R.string.mtb_routes_icon_size,
 				R.string.mtb_routes_icon_size_desc,
 				routeLayersHelper.getMtbRoutesIconSizePref(),
-				8f,
-				24f,
+				4f,
+				32f,
 				12f
 		);
 		setupSlider(
@@ -52,8 +59,8 @@ public class MtbRoutesDisplayCard extends MapBaseCard {
 				R.string.mtb_routes_name_text_size,
 				R.string.mtb_routes_name_text_size_desc,
 				routeLayersHelper.getMtbRoutesNameTextSizePref(),
-				9f,
-				21f,
+				6f,
+				27f,
 				12f
 		);
 	}
@@ -87,12 +94,68 @@ public class MtbRoutesDisplayCard extends MapBaseCard {
 			if (!fromUser) {
 				return;
 			}
-			int intVal = Math.round(value);
-			valueTv.setText(formatValue(titleId, intVal));
-			pref.set(String.valueOf(intVal));
-			routeLayersHelper.refreshMapAfterMtbDisplayChange();
+			applyValue(valueTv, titleId, pref, Math.round(value));
 		});
+		valueTv.setPaintFlags(valueTv.getPaintFlags() | Paint.UNDERLINE_TEXT_FLAG);
+		valueTv.setTextColor(ColorUtilities.getActiveColor(valueTv.getContext(), nightMode));
+		valueTv.setOnClickListener(v -> askExactValue(valueTv, slider, titleId, pref, min, max));
 		row.setContentDescription(getString(summaryId));
+	}
+
+	private void askExactValue(@NonNull TextView valueTv,
+	                           @NonNull Slider slider,
+	                           int titleId,
+	                           @NonNull CommonPreference<String> pref,
+	                           float min,
+	                           float max) {
+		android.content.Context themed = UiUtilities.getThemedContext(mapActivity, nightMode);
+		int pad = AndroidUtils.dpToPx(themed, 16f);
+		EditText input = new EditText(themed);
+		input.setInputType(InputType.TYPE_CLASS_NUMBER);
+		input.setSingleLine();
+		input.setText(String.valueOf(Math.round(slider.getValue())));
+		input.setSelection(input.getText().length());
+		FrameLayout wrap = new FrameLayout(themed);
+		wrap.setPadding(pad, pad / 2, pad, 0);
+		wrap.addView(input);
+		String message = app.getString(
+				R.string.ev_exact_value_hint,
+				formatValue(titleId, (int) min),
+				formatValue(titleId, (int) max)
+		);
+		new AlertDialog.Builder(themed)
+				.setTitle(titleId)
+				.setMessage(message)
+				.setView(wrap)
+				.setNegativeButton(R.string.shared_string_cancel, null)
+				.setPositiveButton(R.string.shared_string_apply, (dialog, which) -> {
+					int parsed;
+					try {
+						parsed = Integer.parseInt(input.getText().toString().trim());
+					} catch (NumberFormatException e) {
+						parsed = Integer.MIN_VALUE;
+					}
+					if (parsed < min || parsed > max) {
+						app.showToastMessage(app.getString(
+								R.string.ev_exact_value_invalid,
+								formatValue(titleId, (int) min),
+								formatValue(titleId, (int) max)
+						));
+						return;
+					}
+					slider.setValue(parsed);
+					applyValue(valueTv, titleId, pref, parsed);
+				})
+				.show();
+	}
+
+	private void applyValue(@NonNull TextView valueTv,
+	                        int titleId,
+	                        @NonNull CommonPreference<String> pref,
+	                        int value) {
+		valueTv.setText(formatValue(titleId, value));
+		pref.set(String.valueOf(value));
+		routeLayersHelper.refreshMapAfterMtbDisplayChange();
 	}
 
 	private float parsePref(@NonNull String raw, float defaultValue) {

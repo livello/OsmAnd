@@ -80,6 +80,8 @@ class VoiceGpsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 		registerStringPreference("voice_gps_manual_wake_key", MANUAL_WAKE_KEY_SIDE).makeGlobal().makeShared()
 	val PREFER_ONLINE_STT: CommonPreference<Boolean> =
 		registerBooleanPreference("voice_gps_prefer_online_stt", false).makeGlobal().makeShared()
+	val DEBUG_LOG: CommonPreference<Boolean> =
+		registerBooleanPreference("voice_gps_debug_log", false).makeGlobal().makeShared()
 
 	@Volatile
 	private var forceOnlineSttSession = false
@@ -165,6 +167,20 @@ class VoiceGpsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 
 	fun showSettings(activity: FragmentActivity) {
 		VoiceGpsSettingsBottomSheet.showInstance(activity.supportFragmentManager)
+	}
+
+	fun speakNoteRecorded() {
+		val phrase = app.getString(R.string.voice_gps_note_recorded)
+		val generation = ++promptGeneration
+		val player = try {
+			app.routingHelper.voiceRouter.player
+		} catch (_: Exception) {
+			null
+		}
+		if (player is JsTtsCommandPlayer && player.speakAdditional(phrase)) {
+			return
+		}
+		speakPromptWithEngine(phrase, generation, Runnable { })
 	}
 
 	/**
@@ -348,6 +364,10 @@ class VoiceGpsPlugin(app: OsmandApplication) : OsmandPlugin(app) {
 
 	fun clearForceOnlineSttSession() {
 		forceOnlineSttSession = false
+	}
+
+	fun fallbackToOnlineStt() {
+		forceOnlineSttSession = true
 	}
 
 	fun beginOnlineVoiceNote(activity: Activity?) {

@@ -6605,6 +6605,11 @@ Download tile maps directly, or copy them as SQLite database files to OsmAnd\'s 
     <string name="voice_gps_dictating">Dictating note — say «end» when finished</string>
     <string name="voice_gps_no_location">No GPS fix — enable location and try again</string>
     <string name="voice_gps_note_saved">Note saved: %1$s</string>
+    <string name="voice_gps_note_empty">No text recognized for the note</string>
+    <string name="voice_gps_note_recorded">Note recorded</string>
+    <string name="voice_gps_tab_log">Plugin log</string>
+    <string name="voice_gps_debug_log">Debug log</string>
+    <string name="voice_gps_log_empty">No log lines yet. Turn on debug to keep a detailed trace.</string>
     <string name="voice_gps_note_default_title">Note %1$s</string>
     <string name="voice_gps_widget_name">ev-voice-gpx → Voice Note</string>
     <string name="voice_gps_widget_desc">Short tap opens EV Voice GPX settings. Long press creates a voice note: say «note», dictate, then «end». The side button starts a note only when manual mode is on (default key: side / headset).</string>
