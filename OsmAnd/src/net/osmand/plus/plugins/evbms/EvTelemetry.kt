@@ -1,5 +1,6 @@
 package net.osmand.plus.plugins.evbms
 
+import org.json.JSONObject
 import java.util.Calendar
 import java.util.Locale
 
@@ -63,6 +64,66 @@ data class EvTelemetry(
 					"speed_meters_per_sec;tacho_meters;tacho_abs_meters;num_vescs;ms_today_imu;" +
 					"roll;pitch;yaw;accX;accY;accZ;gyroX;gyroY;gyroZ;gnss_posTime;gnss_lat;" +
 					"gnss_lon;gnss_alt;gnss_gVel;gnss_vVel;gnss_hAcc;gnss_vAcc;"
+
+		fun fromJson(raw: String?): EvTelemetry? {
+			if (raw.isNullOrBlank()) {
+				return null
+			}
+			return try {
+				val json = JSONObject(raw)
+				fun d(key: String): Double? = if (json.has(key) && !json.isNull(key)) json.optDouble(key) else null
+				fun i(key: String): Int? = if (json.has(key) && !json.isNull(key)) json.optInt(key) else null
+				fun l(key: String): Long? = if (json.has(key) && !json.isNull(key)) json.optLong(key) else null
+				EvTelemetry(
+					timeMs = json.optLong("timeMs"),
+					lat = d("lat"),
+					lon = d("lon"),
+					gpsSpeedKmh = d("gpsSpeedKmh"),
+					socPercent = i("socPercent"),
+					socVoltagePercent = i("socVoltagePercent"),
+					voltageV = d("voltageV"),
+					currentA = d("currentA"),
+					remainingAh = d("remainingAh"),
+					fullAh = d("fullAh"),
+					bmsTempC = d("bmsTempC"),
+					cycles = i("cycles"),
+					minCellVoltageV = d("minCellVoltageV"),
+					maxCellVoltageV = d("maxCellVoltageV"),
+					cellImbalanceV = d("cellImbalanceV"),
+					controllerVoltageV = d("controllerVoltageV"),
+					controllerCurrentA = d("controllerCurrentA"),
+					controllerPowerW = d("controllerPowerW"),
+					rpm = i("rpm"),
+					gear = i("gear"),
+					motorTempC = d("motorTempC"),
+					controllerTempC = d("controllerTempC"),
+					remainingRangeKm = d("remainingRangeKm"),
+					windowRangeKm = d("windowRangeKm"),
+					pnzRangeKm = d("pnzRangeKm"),
+					consumptionAhPerKm = d("consumptionAhPerKm"),
+					energyWh = d("energyWh"),
+					usedAh = d("usedAh"),
+					consumptionWhPerKm = d("consumptionWhPerKm"),
+					consumptionWhPerKm100m = d("consumptionWhPerKm100m"),
+					coverageWhPerKm = d("coverageWhPerKm"),
+					weakCellFactor = d("weakCellFactor"),
+					farOdometerKm = d("farOdometerKm"),
+					farTripKm = d("farTripKm"),
+					chargeTripKm = d("chargeTripKm"),
+					farSpeedKmh = d("farSpeedKmh"),
+					wheelSpeedKmh = d("wheelSpeedKmh"),
+					wheelOdometerKm = d("wheelOdometerKm"),
+					cadenceRpm = d("cadenceRpm"),
+					farAvgWhPerKm = d("farAvgWhPerKm"),
+					gpsUnreliable = json.optBoolean("gpsUnreliable"),
+					usedFarDriverDistance = json.optBoolean("usedFarDriverDistance"),
+					rangeReserveKm = d("rangeReserveKm"),
+					stopTimeMs = l("stopTimeMs")
+				)
+			} catch (_: Exception) {
+				null
+			}
+		}
 	}
 
 	fun toCsvRow(): String {
@@ -151,5 +212,54 @@ data class EvTelemetry(
 			return ""
 		}
 		return String.format(Locale.US, fmt, v)
+	}
+
+	fun toJson(): JSONObject {
+		val json = JSONObject()
+		json.put("timeMs", timeMs)
+		json.putOpt("lat", lat)
+		json.putOpt("lon", lon)
+		json.putOpt("gpsSpeedKmh", gpsSpeedKmh)
+		json.putOpt("socPercent", socPercent)
+		json.putOpt("voltageV", voltageV)
+		json.putOpt("currentA", currentA)
+		json.putOpt("remainingAh", remainingAh)
+		json.putOpt("fullAh", fullAh)
+		json.putOpt("bmsTempC", bmsTempC)
+		json.putOpt("cycles", cycles)
+		json.putOpt("minCellVoltageV", minCellVoltageV)
+		json.putOpt("maxCellVoltageV", maxCellVoltageV)
+		json.putOpt("cellImbalanceV", cellImbalanceV)
+		json.putOpt("controllerVoltageV", controllerVoltageV)
+		json.putOpt("controllerCurrentA", controllerCurrentA)
+		json.putOpt("controllerPowerW", controllerPowerW)
+		json.putOpt("rpm", rpm)
+		json.putOpt("gear", gear)
+		json.putOpt("motorTempC", motorTempC)
+		json.putOpt("controllerTempC", controllerTempC)
+		json.putOpt("remainingRangeKm", remainingRangeKm)
+		json.putOpt("windowRangeKm", windowRangeKm)
+		json.putOpt("pnzRangeKm", pnzRangeKm)
+		json.putOpt("socVoltagePercent", socVoltagePercent)
+		json.putOpt("consumptionAhPerKm", consumptionAhPerKm)
+		json.putOpt("energyWh", energyWh)
+		json.putOpt("usedAh", usedAh)
+		json.putOpt("consumptionWhPerKm", consumptionWhPerKm)
+		json.putOpt("consumptionWhPerKm100m", consumptionWhPerKm100m)
+		json.putOpt("coverageWhPerKm", coverageWhPerKm)
+		json.putOpt("weakCellFactor", weakCellFactor)
+		json.putOpt("farOdometerKm", farOdometerKm)
+		json.putOpt("farTripKm", farTripKm)
+		json.putOpt("chargeTripKm", chargeTripKm)
+		json.putOpt("farSpeedKmh", farSpeedKmh)
+		json.putOpt("wheelSpeedKmh", wheelSpeedKmh)
+		json.putOpt("wheelOdometerKm", wheelOdometerKm)
+		json.putOpt("cadenceRpm", cadenceRpm)
+		json.putOpt("farAvgWhPerKm", farAvgWhPerKm)
+		json.putOpt("rangeReserveKm", rangeReserveKm)
+		json.putOpt("stopTimeMs", stopTimeMs)
+		json.put("gpsUnreliable", gpsUnreliable)
+		json.put("usedFarDriverDistance", usedFarDriverDistance)
+		return json
 	}
 }

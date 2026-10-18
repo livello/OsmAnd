@@ -1475,6 +1475,8 @@ Layouts: <i>res/layout/ev_bms_*.xml</i>. Preferences: <i>res/xml/ev_bms_settings
     <string name="ev_bms_speed_profile_slow">Slow map profile</string>
     <string name="ev_bms_speed_profile_fast">Fast map profile</string>
     <string name="ev_bms_hud">Anti-speeding HUD</string>
+    <string name="ev_bms_hud_disabled">Disable anti-speeding HUD</string>
+    <string name="ev_bms_hud_disabled_desc">Hides the speeding arc even when the speedometer HUD widget is on the map.</string>
     <string name="ev_bms_hud_demo">HUD demo</string>
     <string name="ev_bms_hud_demo_desc">Same HUD as a live ride, but speed is virtual: 0–90 km/h, 10 s acceleration then 10 s braking. Hide-below-threshold and auto profile switch use this virtual speed. Needs the Speedometer HUD widget on the profile. Turn off before riding.</string>
     <string name="ev_bms_hud_stroke">Arc thickness</string>

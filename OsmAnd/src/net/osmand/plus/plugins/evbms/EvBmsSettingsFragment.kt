@@ -280,6 +280,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		setupWheelCircumference()
 		setupSwitch(plugin.HIKE_MODE.id)
 		setupSpeedProfile()
+		setupHudDisabled()
 		setupHudDemo()
 		setupHudLook()
 		setupHudLimits()
@@ -382,6 +383,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		decorate(plugin.SPEED_PROFILE_KMH.id, "🎚️", R.drawable.ic_action_speed)
 		decorate(plugin.SPEED_PROFILE_SLOW.id, "🐢", R.drawable.ic_action_map_style)
 		decorate(plugin.SPEED_PROFILE_FAST.id, "🏁", R.drawable.ic_action_map_style)
+		decorate(plugin.HUD_DISABLED.id, "🚫", R.drawable.ic_action_hide)
 		decorate(plugin.HUD_DEMO.id, "🎬", R.drawable.ic_action_play_dark)
 		decorate(plugin.HUD_SHOW_KMH.id, "👁️", R.drawable.ic_action_speed)
 		decorate(plugin.HUD_HIDE_DELAY_SEC.id, "⏳", R.drawable.ic_action_time_span)
@@ -578,7 +580,12 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		plugin.captureActiveProfile()
 		val pref = findPreference<Preference>(plugin.SETTINGS_PROFILE.id) ?: return
 		val active = plugin.activeProfileName()
-		pref.summary = active
+		val names = plugin.profileNames()
+		pref.summary = if (names.size <= 1) {
+			active
+		} else {
+			names.joinToString(", ")
+		}
 	}
 
 	override fun onPause() {
@@ -984,6 +991,11 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		pref.setEntries(names.toTypedArray())
 		pref.setEntryValues(keys.toTypedArray())
 		pref.setValue(selectedKey ?: "")
+	}
+
+	private fun setupHudDisabled() {
+		val pref = findPreference<SwitchPreferenceEx>(plugin.HUD_DISABLED.id) ?: return
+		pref.setDescription(R.string.ev_bms_hud_disabled_desc)
 	}
 
 	private fun setupHudDemo() {
@@ -1640,10 +1652,11 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 		val activity = activity ?: return
 		val themed = UiUtilities.getThemedContext(activity, isNightMode())
 		val content = LayoutInflater.from(themed).inflate(R.layout.ev_bms_profile_dialog, null)
-		val namesGroup = content.findViewById<RadioGroup>(R.id.profile_names)
+		val namesGroup = content.findViewById<LinearLayout>(R.id.profile_names)
 		val actions = content.findViewById<LinearLayout>(R.id.profile_actions)
 		val active = plugin.activeProfileName()
 		val textColor = ColorUtilities.getPrimaryTextColor(themed, isNightMode())
+		val radios = ArrayList<RadioButton>()
 		for (name in plugin.profileNames()) {
 			val radio = RadioButton(themed).apply {
 				id = View.generateViewId()
@@ -1653,24 +1666,29 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			}
 			UiUtilities.setupCompoundButton(radio, isNightMode(), UiUtilities.CompoundButtonType.GLOBAL)
 			namesGroup.addView(radio)
+			radios.add(radio)
 		}
 		val dialog = AlertDialog.Builder(themed)
 			.setTitle(R.string.ev_bms_settings_profile_select)
 			.setView(content)
 			.setNegativeButton(R.string.shared_string_close, null)
 			.create()
-		namesGroup.setOnCheckedChangeListener { group, checkedId ->
-			val button = group.findViewById<RadioButton>(checkedId) ?: return@setOnCheckedChangeListener
-			val name = button.text.toString()
-			if (name == plugin.activeProfileName()) {
-				return@setOnCheckedChangeListener
+		for (radio in radios) {
+			radio.setOnClickListener {
+				for (other in radios) {
+					other.isChecked = other === radio
+				}
+				val name = radio.text.toString()
+				if (name == plugin.activeProfileName()) {
+					return@setOnClickListener
+				}
+				if (plugin.selectSettingsProfile(name)) {
+					app.showToastMessage(getString(R.string.ev_bms_settings_profile_loaded, name))
+					plugin.connectSavedDevices(activity)
+					setupPreferences()
+				}
+				dialog.dismiss()
 			}
-			if (plugin.selectSettingsProfile(name)) {
-				app.showToastMessage(getString(R.string.ev_bms_settings_profile_loaded, name))
-				plugin.connectSavedDevices(activity)
-				setupPreferences()
-			}
-			dialog.dismiss()
 		}
 		fun addAction(titleRes: Int, emoji: String, onClick: () -> Unit) {
 			val padH = AndroidUtils.dpToPx(themed, 16f)
@@ -1711,6 +1729,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 				if (plugin.createSettingsProfile(typed)) {
 					app.showToastMessage(getString(R.string.ev_bms_settings_profile_saved, typed))
 					setupPreferences()
+					showProfileModal()
 				} else {
 					app.showToastMessage(R.string.ev_bms_settings_profile_exists)
 				}
@@ -1737,7 +1756,7 @@ class EvBmsSettingsFragment : BaseSettingsFragment(), EvBmsPlugin.DeviceScanList
 			.setTitle(titleRes)
 			.setView(wrap)
 			.setNegativeButton(R.string.shared_string_cancel, null)
-			.setPositiveButton(R.string.shared_string_apply) { _, _ ->
+			.setPositiveButton(R.string.shared_string_save) { _, _ ->
 				val name = plugin.sanitizeProfileName(input.text?.toString())
 				if (name != null) {
 					onOk(name)

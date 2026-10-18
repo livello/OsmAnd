@@ -1,6 +1,7 @@
 package net.osmand.plus.plugins.evbms
 
 import net.osmand.PlatformUtil
+import net.osmand.evbms.EvJournalWindow
 import net.osmand.plus.OsmandApplication
 import org.json.JSONArray
 import org.json.JSONObject
@@ -25,6 +26,7 @@ class EvHistoryStore(private val app: OsmandApplication) {
 		private const val TRIP_HEADER =
 			"start_time;end_time;date;duration_min;moving_min;stop_min;distance_km;energy_wh;used_ah;wh_per_km;avg_moving_kmh;start_voltage_v;end_voltage_v;min_cell_v;start_temp_c;end_temp_c;start_lat;start_lon;end_lat;end_lon"
 		private const val MERGE_GAP_MS = 30 * 60_000L
+		private const val MAX_CHARGE_SPAN_MS = EvJournalWindow.MAX_CHARGE_MS
 		private const val MIN_CHARGE_PIECE_MS = 5 * 60_000L
 		private const val MIN_TRIP_PIECE_MS = 60_000L
 		private const val MIN_DAY_PIECE_MS = 60_000L
@@ -373,7 +375,8 @@ class EvHistoryStore(private val app: OsmandApplication) {
 			}
 			val gap = next.startMs - accEnd
 			val close = gap <= MERGE_GAP_MS || acc.isOpen() || next.isOpen()
-			if (hasRide || !close) {
+			val span = mergedEnd - acc.startMs
+			if (hasRide || !close || span > MAX_CHARGE_SPAN_MS) {
 				out.add(acc)
 				acc = next
 			} else {
@@ -705,6 +708,28 @@ class EvHistoryStore(private val app: OsmandApplication) {
 		appendCsv(CHARGE_FILE, CHARGE_HEADER, chargeCells(row))
 	}
 
+	fun <T> outsideWindow(
+		rows: List<T>,
+		winStart: Long,
+		winEnd: Long,
+		nowMs: Long,
+		startOf: (T) -> Long,
+		endOf: (T) -> Long,
+		clip: (T, Long) -> T
+	): List<T> {
+		if (winEnd <= winStart) {
+			return rows
+		}
+		return rows.mapNotNull { row ->
+			val kept = EvJournalWindow.keptEnd(startOf(row), endOf(row), winStart, winEnd, nowMs)
+			when {
+				kept < 0L -> null
+				kept == endOf(row) -> row
+				else -> clip(row, kept)
+			}
+		}
+	}
+
 	fun rewriteChargeCsv(rows: List<ChargeRecord>) {
 		writeCsv(CHARGE_FILE, CHARGE_HEADER, rows.filter { !it.isOpen() }.map { chargeCells(it) })
 	}
@@ -888,6 +913,12 @@ class EvHistoryStore(private val app: OsmandApplication) {
 				return
 			}
 			val file = File(dir, name)
+			if (file.exists() && !file.canWrite()) {
+				if (!file.delete()) {
+					LOG.error("Cannot append unwritable $name")
+					return
+				}
+			}
 			val fresh = !file.exists() || file.length() == 0L
 			FileWriter(file, true).use { out ->
 				if (fresh) {
@@ -907,6 +938,12 @@ class EvHistoryStore(private val app: OsmandApplication) {
 				return
 			}
 			val file = File(dir, name)
+			if (file.exists() && !file.canWrite()) {
+				if (!file.delete()) {
+					LOG.error("Cannot replace unwritable $name")
+					return
+				}
+			}
 			FileWriter(file, false).use { out ->
 				out.append(header).append('\n')
 				for (cells in rows) {

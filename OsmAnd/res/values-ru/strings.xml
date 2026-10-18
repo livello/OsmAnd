@@ -4907,6 +4907,8 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
     <string name="ev_bms_speed_profile_slow">Медленный профиль карты</string>
     <string name="ev_bms_speed_profile_fast">Быстрый профиль карты</string>
     <string name="ev_bms_hud">HUD против превышения</string>
+    <string name="ev_bms_hud_disabled">Отключить HUD против превышения</string>
+    <string name="ev_bms_hud_disabled_desc">Прячет дугу превышения, даже если виджет спидометра HUD включён на карте.</string>
     <string name="ev_bms_hud_demo">Демо HUD</string>
     <string name="ev_bms_hud_demo_desc">Тот же HUD, что в поездке, но скорость виртуальная: 0–90 км/ч, 10 с разгон и 10 с торможение. Скрытие ниже порога и автопереключение профилей используют эту скорость. Нужен виджет «Спидометр HUD» на профиле. Перед поездкой выключите.</string>
     <string name="ev_bms_hud_stroke">Толщина дуги</string>

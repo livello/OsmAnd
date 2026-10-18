@@ -12,6 +12,7 @@ import androidx.fragment.app.FragmentActivity
 import com.github.mikephil.charting.charts.LineChart
 import net.osmand.Location
 import net.osmand.aidlapi.OsmAndCustomizationConstants
+import net.osmand.plus.NavigationService
 import net.osmand.plus.OsmandApplication
 import net.osmand.plus.R
 import net.osmand.plus.activities.MapActivity
@@ -20,6 +21,8 @@ import net.osmand.plus.charts.GPXDataSetType
 import net.osmand.plus.charts.GpxDataSetTypeGroup
 import net.osmand.plus.charts.OrderedLineDataSet
 import net.osmand.plus.plugins.OsmandPlugin
+import net.osmand.plus.plugins.PluginsHelper
+import net.osmand.plus.plugins.monitoring.OsmandMonitoringPlugin
 import net.osmand.plus.plugins.evbms.ble.EvBleUartClient
 import net.osmand.plus.plugins.evbms.protocol.AntBmsProtocol
 import net.osmand.plus.plugins.evbms.protocol.BmsSnapshot
@@ -318,6 +321,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerIntPreference("ev_bms_hud_limit2_kmh", DEFAULT_HUD_LIMIT2_KMH).makeGlobal().makeShared()
 	val HUD_BUFFER2_KMH: CommonPreference<Int> =
 		registerIntPreference("ev_bms_hud_buffer2_kmh", DEFAULT_HUD_BUFFER2_KMH).makeGlobal().makeShared()
+	val HUD_DISABLED: CommonPreference<Boolean> =
+		registerBooleanPreference("ev_bms_hud_disabled", false).makeGlobal().makeShared()
 	val HUD_DEMO: CommonPreference<Boolean> =
 		registerBooleanPreference("ev_bms_hud_demo", false).makeGlobal()
 	val HUD_STROKE_PERCENT: CommonPreference<Int> =
@@ -368,6 +373,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		registerStringPreference("ev_bms_telemetry_session_gpx", "").makeGlobal()
 	private val TELEMETRY_SESSION_FIELDS: CommonPreference<String> =
 		registerStringPreference("ev_bms_telemetry_session_fields", "").makeGlobal()
+	private val LAST_TELEMETRY: CommonPreference<String> =
+		registerStringPreference("ev_bms_last_telemetry", "").makeGlobal()
 
 	private val handler = Handler(Looper.getMainLooper())
 	private val rangeEstimator = RangeEstimator()
@@ -516,6 +523,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	private var lastRangeSampleMs = 0L
 	private var lastChartSampleMs = 0L
 	private var lastRecordMs = 0L
+	private var lastTelemetryPersistMs = 0L
 	private var jbdPasswordSentMs = 0L
 	private var jbdPasswordToastMs = 0L
 	private var jbdPasswordRejected = false
@@ -551,6 +559,25 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			}
 			publishSample()
 			handler.postDelayed(this, activeTickMs())
+		}
+	}
+
+	private val chargeWidgetTick = object : Runnable {
+		override fun run() {
+			if (mapActivity == null) {
+				return
+			}
+			if (charging || chargeSessionOpen) {
+				mapActivity?.refreshMap()
+				handler.postDelayed(this, 1000L)
+			}
+		}
+	}
+
+	private fun scheduleChargeWidgetTick() {
+		handler.removeCallbacks(chargeWidgetTick)
+		if ((charging || chargeSessionOpen) && mapActivity != null) {
+			handler.post(chargeWidgetTick)
 		}
 	}
 
@@ -644,10 +671,14 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		socCalibrator.decode(SOC_CAL_STORE.get())
 		migratePollPreferences()
 		migrateCadenceTelemetryField()
+		restoreLastTelemetry()
 		restoreSessions()
 		profileStore.ensureDefault()
 		publishTracksToMyPlaces()
 		restoreTelemetrySession()
+		restoreTrackRecording()
+		scheduleChargeWidgetTick()
+		repairChargeHistoryAsync()
 		if (SYNC_MASTER.get()) {
 			sync.startMaster()
 		}
@@ -677,6 +708,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		startPolling()
 		applyHikeTelemetryState()
 		restoreTelemetrySessionIfNeeded()
+		restoreTrackRecording()
+		scheduleChargeWidgetTick()
 		closeStaleChargeAgainstTrip()
 		sync.restartMasterIfEnabled()
 		handler.post { sync.showPendingTrackConflicts() }
@@ -688,6 +721,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		if (mapActivity === activity) {
 			mapActivity = null
 		}
+		handler.removeCallbacks(chargeWidgetTick)
 	}
 
 	override fun updateLocation(location: Location?) {
@@ -1106,6 +1140,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		chargeCurrentIntegralAms = 0.0
 		chargeCurrentDurationMs = 0L
 		persistChargeSession(force = true)
+		scheduleChargeWidgetTick()
 		upsertOpenChargeRecord(now, remainingAh, tempC, loc, force = true)
 		markGpxEvent(
 			name = app.getString(R.string.ev_bms_gpx_charge_start),
@@ -1973,7 +2008,10 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		}
 	}
 
-	private fun telemetryHistoryDoneKey(name: String): String = "$TELEMETRY_HISTORY_VERSION:$name"
+	private fun telemetryHistoryDoneKey(name: String, bytes: Long = -1L): String {
+		val base = "$TELEMETRY_HISTORY_VERSION:$name"
+		return if (bytes >= 0L) "$base:$bytes" else base
+	}
 
 	private fun telemetryHistoryDoneNames(): MutableSet<String> {
 		return TELEMETRY_HISTORY_DONE.get()
@@ -1983,9 +2021,9 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			.toMutableSet()
 	}
 
-	private fun markTelemetryHistoryDone(name: String) {
+	private fun markTelemetryHistoryDone(name: String, bytes: Long = -1L) {
 		val done = telemetryHistoryDoneNames()
-		if (done.add(telemetryHistoryDoneKey(name))) {
+		if (done.add(telemetryHistoryDoneKey(name, bytes))) {
 			TELEMETRY_HISTORY_DONE.set(done.sorted().joinToString(","))
 		}
 	}
@@ -2027,10 +2065,12 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				val stamp = csvStampMs(file.name) ?: return@filter false
 				val sessionStart = maxOf(tripStartMs, diskTripStartMs())
 				val overlapsLive = sessionOverlapsWindow(sessionStart, stamp, stamp + 36L * 3_600_000L)
-				file.spec != active &&
-					telemetryHistoryDoneKey(file.name) !in done &&
-					file.sizeBytes > 8_000L &&
-					(overlapsLive || stamp >= recentMs || file.name == newestName)
+				val sizedKey = telemetryHistoryDoneKey(file.name, file.sizeBytes)
+				val pending = sizedKey !in done &&
+					(file.spec == active || telemetryHistoryDoneKey(file.name) !in done)
+				file.sizeBytes > 8_000L &&
+					pending &&
+					(file.spec == active || overlapsLive || stamp >= recentMs || file.name == newestName)
 			}
 			if (csvs.isEmpty()) {
 				return
@@ -2056,11 +2096,24 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 					continue
 				}
 				val leftoverTrips = trips.filter { it.isRealRide() }
-				charges = historyStore.unionByStart(charges, parsed.charges) { it.startMs }
-				trips = historyStore.unionByStart(
+				charges = historyStore.outsideWindow(
+					charges,
+					parsed.fileStartMs,
+					parsed.fileEndMs,
+					now,
+					{ it.startMs },
+					{ it.endMs },
+					{ row, end -> row.copy(endMs = end) }
+				) + parsed.charges
+				trips = historyStore.outsideWindow(
 					leftoverTrips,
-					parsed.trips.filter { it.isRealRide() }
-				) { it.startMs }
+					parsed.fileStartMs,
+					parsed.fileEndMs,
+					now,
+					{ it.startMs },
+					{ it.endMs },
+					{ row, end -> row.copy(endMs = end) }
+				) + parsed.trips.filter { it.isRealRide() }
 				changed = true
 				val sessionStart = maxOf(tripStartMs, diskTripStartMs())
 				if (sessionOverlapsWindow(sessionStart, parsed.fileStartMs, parsed.fileEndMs)) {
@@ -2095,7 +2148,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				abandonLiveTripSession()
 			}
 			for (name in processed) {
-				markTelemetryHistoryDone(name)
+				val bytes = csvs.firstOrNull { it.name == name }?.sizeBytes ?: -1L
+				markTelemetryHistoryDone(name, bytes)
 			}
 		} catch (e: Exception) {
 			Log.e(TAG, "telemetry history rebuild failed", e)
@@ -2199,18 +2253,6 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 				clearPhantomTripAfterChargeRepair(charges, merged)
 			}
 			historyStore.rewriteMergedChargeCsv(tripHistory())
-			val last = merged.maxByOrNull { it.startMs } ?: return
-			if (chargeSessionOpen && last.startMs < chargeStartMs) {
-				chargeStartMs = last.startMs
-				chargeStartTempC = last.startTempC ?: chargeStartTempC
-				chargeStartMinCellV = last.startMinCellV ?: chargeStartMinCellV
-				chargeStartLat = last.startLat ?: chargeStartLat
-				chargeStartLon = last.startLon ?: chargeStartLon
-				chargeEnergyWhAcc = maxOf(chargeEnergyWhAcc, last.energyWh ?: 0.0)
-				chargeParkedSinceMs = last.startMs
-				persistChargeSession(force = true)
-				upsertOpenChargeRecord(System.currentTimeMillis(), lastBms?.remainingMah?.div(1000.0), last.endTempC, lastLocation, force = true)
-			}
 		} catch (e: Exception) {
 			Log.e(TAG, "charge history repair failed", e)
 			journal.e("charge", "repair failed: ${e.message}")
@@ -4017,7 +4059,13 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		)
 		val bmsFreshAfter = isBmsFresh()
 		val ctrlFreshAfter = isControllerFresh()
-		latestTelemetry = sample
+		val published = if (!bmsFreshAfter && !ctrlFreshAfter) {
+			mergeRestoredTelemetry(latestTelemetry, sample)
+		} else {
+			sample
+		}
+		latestTelemetry = published
+		persistLastTelemetry()
 		tickSpeedProfileSwitch()
 		maybeCollectHistorySample(sample)
 		if (journal.enabled) {
@@ -4342,6 +4390,11 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 	fun hudFrameIntervalMs(): Long = (1000L / hudFps()).coerceAtLeast(16L)
 
 	fun shouldShowSpeedometerHud(speedKmh: Double): Boolean {
+		if (HUD_DISABLED.get()) {
+			hudWantVisible = false
+			hudHideDeadlineMs = 0L
+			return false
+		}
 		if (isFastSpeedProfile()) {
 			hudWantVisible = true
 			hudHideDeadlineMs = 0L
@@ -5122,6 +5175,111 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			return
 		}
 		restoreTelemetrySession()
+	}
+
+	private fun restoreLastTelemetry() {
+		var raw = LAST_TELEMETRY.get()
+		if (raw.isNullOrBlank()) {
+			val file = File(app.getAppPath(TelemetryRecorder.DIR_NAME), "last_sample.json")
+			if (file.isFile) {
+				raw = try {
+					file.readText()
+				} catch (_: Exception) {
+					null
+				}
+			}
+		}
+		latestTelemetry = EvTelemetry.fromJson(raw)
+	}
+
+	private fun persistLastTelemetry(force: Boolean = false) {
+		val sample = latestTelemetry ?: return
+		val now = System.currentTimeMillis()
+		if (!force && lastTelemetryPersistMs > 0L && now - lastTelemetryPersistMs < PREFS_PERSIST_MIN_MS) {
+			return
+		}
+		lastTelemetryPersistMs = now
+		val json = try {
+			sample.toJson().toString()
+		} catch (_: Exception) {
+			return
+		}
+		LAST_TELEMETRY.set(json)
+		try {
+			val dir = app.getAppPath(TelemetryRecorder.DIR_NAME)
+			if (!dir.exists()) {
+				dir.mkdirs()
+			}
+			val dest = File(dir, "last_sample.json")
+			val tmp = File(dir, "last_sample.json.tmp")
+			tmp.writeText(json)
+			if (!tmp.renameTo(dest)) {
+				dest.writeText(json)
+				tmp.delete()
+			}
+		} catch (e: Exception) {
+			Log.e(TAG, "Cannot persist last telemetry", e)
+		}
+	}
+
+	private fun mergeRestoredTelemetry(prev: EvTelemetry?, sample: EvTelemetry): EvTelemetry {
+		if (prev == null) {
+			return sample
+		}
+		return sample.copy(
+			timeMs = if (prev.timeMs > 0L) prev.timeMs else sample.timeMs,
+			lat = sample.lat ?: prev.lat,
+			lon = sample.lon ?: prev.lon,
+			gpsSpeedKmh = sample.gpsSpeedKmh ?: prev.gpsSpeedKmh,
+			socPercent = sample.socPercent ?: prev.socPercent,
+			socVoltagePercent = sample.socVoltagePercent ?: prev.socVoltagePercent,
+			voltageV = sample.voltageV ?: prev.voltageV,
+			currentA = sample.currentA ?: prev.currentA,
+			remainingAh = sample.remainingAh ?: prev.remainingAh,
+			fullAh = sample.fullAh ?: prev.fullAh,
+			bmsTempC = sample.bmsTempC ?: prev.bmsTempC,
+			cycles = sample.cycles ?: prev.cycles,
+			minCellVoltageV = sample.minCellVoltageV ?: prev.minCellVoltageV,
+			maxCellVoltageV = sample.maxCellVoltageV ?: prev.maxCellVoltageV,
+			cellImbalanceV = sample.cellImbalanceV ?: prev.cellImbalanceV,
+			controllerVoltageV = sample.controllerVoltageV ?: prev.controllerVoltageV,
+			controllerCurrentA = sample.controllerCurrentA ?: prev.controllerCurrentA,
+			controllerPowerW = sample.controllerPowerW ?: prev.controllerPowerW,
+			rpm = sample.rpm ?: prev.rpm,
+			gear = sample.gear ?: prev.gear,
+			motorTempC = sample.motorTempC ?: prev.motorTempC,
+			controllerTempC = sample.controllerTempC ?: prev.controllerTempC,
+			remainingRangeKm = sample.remainingRangeKm ?: prev.remainingRangeKm,
+			windowRangeKm = sample.windowRangeKm ?: prev.windowRangeKm,
+			pnzRangeKm = sample.pnzRangeKm ?: prev.pnzRangeKm,
+			consumptionAhPerKm = sample.consumptionAhPerKm ?: prev.consumptionAhPerKm,
+			energyWh = sample.energyWh ?: prev.energyWh,
+			usedAh = sample.usedAh ?: prev.usedAh,
+			consumptionWhPerKm = sample.consumptionWhPerKm ?: prev.consumptionWhPerKm,
+			consumptionWhPerKm100m = sample.consumptionWhPerKm100m ?: prev.consumptionWhPerKm100m,
+			coverageWhPerKm = sample.coverageWhPerKm ?: prev.coverageWhPerKm,
+			weakCellFactor = sample.weakCellFactor ?: prev.weakCellFactor,
+			farOdometerKm = sample.farOdometerKm ?: prev.farOdometerKm,
+			farTripKm = sample.farTripKm ?: prev.farTripKm,
+			chargeTripKm = sample.chargeTripKm ?: prev.chargeTripKm,
+			farSpeedKmh = sample.farSpeedKmh ?: prev.farSpeedKmh,
+			wheelSpeedKmh = sample.wheelSpeedKmh ?: prev.wheelSpeedKmh,
+			wheelOdometerKm = sample.wheelOdometerKm ?: prev.wheelOdometerKm,
+			cadenceRpm = sample.cadenceRpm ?: prev.cadenceRpm,
+			farAvgWhPerKm = sample.farAvgWhPerKm ?: prev.farAvgWhPerKm,
+			rangeReserveKm = sample.rangeReserveKm ?: prev.rangeReserveKm,
+			stopTimeMs = sample.stopTimeMs ?: prev.stopTimeMs
+		)
+	}
+
+	private fun restoreTrackRecording() {
+		if (!app.settings.SAVE_GLOBAL_TRACK_TO_GPX.get()) {
+			return
+		}
+		if (!PluginsHelper.isActive(OsmandMonitoringPlugin::class.java)) {
+			return
+		}
+		app.startNavigationService(NavigationService.USED_BY_GPX)
 	}
 
 	private fun restoreTelemetrySession() {

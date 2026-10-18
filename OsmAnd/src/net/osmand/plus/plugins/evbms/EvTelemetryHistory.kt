@@ -59,6 +59,7 @@ object EvTelemetryHistory {
 			val iCtrlSpeed = idx("controller_speed_kmh")
 			val iWheelSpeed = idx("wheel_speed_kmh")
 			val iWheelOdo = idx("wheel_odometer_km")
+			val iTrip = idx("charge_trip_km")
 
 			fun cell(parts: List<String>, index: Int): String? =
 				if (index >= 0 && index < parts.size) parts[index].trim().takeIf { it.isNotEmpty() } else null
@@ -108,7 +109,7 @@ object EvTelemetryHistory {
 						ride.add(
 							t, parts, currentA,
 							iLat, iLon, iGpsSpeed, iVoltage, iAh, iTemp, iMinCell, iRpm, iMotor,
-							iCtrlOdo, iCtrlSpeed, iWheelSpeed, iWheelOdo, charging = false, ::num
+							iCtrlOdo, iCtrlSpeed, iWheelSpeed, iWheelOdo, iTrip, charging = false, ::num
 						)
 					}
 					if (currentA != null && currentA >= onA) {
@@ -123,7 +124,7 @@ object EvTelemetryHistory {
 							charge.add(
 								t, parts, currentA,
 								iLat, iLon, iGpsSpeed, iVoltage, iAh, iTemp, iMinCell, iRpm, iMotor,
-								iCtrlOdo, iCtrlSpeed, iWheelSpeed, iWheelOdo, charging = true, ::num
+								iCtrlOdo, iCtrlSpeed, iWheelSpeed, iWheelOdo, iTrip, charging = true, ::num
 							)
 							charge.forceStart(start)
 						}
@@ -134,7 +135,7 @@ object EvTelemetryHistory {
 					charge.add(
 						t, parts, currentA,
 						iLat, iLon, iGpsSpeed, iVoltage, iAh, iTemp, iMinCell, iRpm, iMotor,
-						iCtrlOdo, iCtrlSpeed, iWheelSpeed, iWheelOdo, charging = true, ::num
+						iCtrlOdo, iCtrlSpeed, iWheelSpeed, iWheelOdo, iTrip, charging = true, ::num
 					)
 					if (currentA != null && currentA <= CHARGE_OFF_A) {
 						offSince = offSince ?: t
@@ -147,7 +148,7 @@ object EvTelemetryHistory {
 							ride.add(
 								t, parts, currentA,
 								iLat, iLon, iGpsSpeed, iVoltage, iAh, iTemp, iMinCell, iRpm, iMotor,
-								iCtrlOdo, iCtrlSpeed, iWheelSpeed, iWheelOdo, charging = false, ::num
+								iCtrlOdo, iCtrlSpeed, iWheelSpeed, iWheelOdo, iTrip, charging = false, ::num
 							)
 							ride.forceStart(end)
 						}
@@ -197,6 +198,8 @@ object EvTelemetryHistory {
 		var ctrlKm = 0.0
 		var gpsKm = 0.0
 		var speedKm = 0.0
+		var tripKm = 0.0
+		var lastTrip: Double? = null
 
 		fun forceStart(ms: Long) {
 			if (startMs == 0L || startMs > ms) {
@@ -221,6 +224,7 @@ object EvTelemetryHistory {
 			iCtrlSpeed: Int,
 			iWheelSpeed: Int,
 			iWheelOdo: Int,
+			iTrip: Int,
 			charging: Boolean,
 			num: (List<String>, Int) -> Double?
 		) {
@@ -279,6 +283,14 @@ object EvTelemetryHistory {
 				}
 			}
 			if (ctrl != null) lastCtrl = ctrl
+			val trip = num(parts, iTrip)
+			if (lastTrip != null && trip != null) {
+				val d = trip - lastTrip!!
+				if (d in 0.0..ODO_STEP_MAX_KM) {
+					tripKm += d
+				}
+			}
+			if (trip != null) lastTrip = trip
 			if (lat != null && lon != null && lastLat != null && lastLon != null && lastGpsT > 0L) {
 				val d = haversineKm(lastLat!!, lastLon!!, lat, lon)
 				val gdt = t - lastGpsT
@@ -314,7 +326,7 @@ object EvTelemetryHistory {
 			lastT = t
 		}
 
-		fun distanceKm(): Double = maxOf(wheelKm, ctrlKm, gpsKm, speedKm)
+		fun distanceKm(): Double = maxOf(wheelKm, ctrlKm, gpsKm, speedKm, tripKm)
 
 		fun toCharge(endMs: Long): EvHistoryStore.ChargeRecord? {
 			if (startMs <= 0L || endMs <= startMs) {

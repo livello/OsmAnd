@@ -2,12 +2,14 @@ package net.osmand.plus.plugins.evbms
 
 import android.net.Uri
 import net.osmand.PlatformUtil
+import net.osmand.evbms.EvBmsProfileCatalog
 import net.osmand.plus.OsmandApplication
 import net.osmand.plus.settings.backend.preferences.CommonPreference
 import net.osmand.plus.settings.backend.preferences.OsmandPreference
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
+import java.io.File
 import java.io.InputStreamReader
 import java.nio.charset.StandardCharsets
 
@@ -37,6 +39,7 @@ class EvBmsProfileStore(
 			"ev_bms_telemetry_session_csv",
 			"ev_bms_telemetry_session_gpx",
 			"ev_bms_telemetry_session_fields",
+			"ev_bms_last_telemetry",
 			"ev_bms_telemetry_history_done",
 			"ev_bms_hike_snapshot",
 			"ev_bms_hud_demo",
@@ -64,11 +67,7 @@ class EvBmsProfileStore(
 	}
 
 	fun profileNames(): List<String> {
-		val json = storeJson()
-		val arr = json.optJSONArray("profiles") ?: return emptyList()
-		return (0 until arr.length()).mapNotNull { i ->
-			arr.optJSONObject(i)?.optString("name")?.takeIf { it.isNotBlank() }
-		}
+		return EvBmsProfileCatalog.visibleNames(storePref.get(), profilesDir())
 	}
 
 	fun activeName(): String = activePref.get().orEmpty()
@@ -101,7 +100,7 @@ class EvBmsProfileStore(
 		captureActive()
 		saveProfile(clean, snapshotSettings())
 		activePref.set(clean)
-		return true
+		return clean in profileNames()
 	}
 
 	fun rename(newName: String): Boolean {
@@ -114,21 +113,20 @@ class EvBmsProfileStore(
 		if (clean in profileNames()) {
 			return false
 		}
-		val json = storeJson()
-		val arr = json.optJSONArray("profiles") ?: JSONArray()
-		for (i in 0 until arr.length()) {
-			val obj = arr.optJSONObject(i) ?: continue
-			if (obj.optString("name") == old) {
-				obj.put("name", clean)
-				obj.put("settings", snapshotSettings())
-				persist(json)
-				activePref.set(clean)
-				return true
-			}
+		val settings = snapshotSettings()
+		try {
+			EvBmsProfileCatalog.writeProfile(profilesDir(), clean, settings.toString())
+			EvBmsProfileCatalog.deleteProfile(profilesDir(), old)
+		} catch (e: Exception) {
+			LOG.error("Cannot rename profile file", e)
 		}
-		saveProfile(clean, snapshotSettings())
+		try {
+			storePref.set(EvBmsProfileCatalog.rename(storePref.get(), old, clean, settings.toString()))
+		} catch (e: Exception) {
+			LOG.error("Cannot rename profile", e)
+		}
 		activePref.set(clean)
-		return true
+		return clean in profileNames()
 	}
 
 	fun exportJson(): String {
@@ -234,7 +232,22 @@ class EvBmsProfileStore(
 		return plugin.getPreferences().filter { it.id !in RUNTIME_IDS }
 	}
 
+	private fun profilesDir(): File {
+		val dir = File(app.getAppPath(TelemetryRecorder.DIR_NAME), "profiles")
+		if (!dir.exists()) {
+			dir.mkdirs()
+		}
+		return dir
+	}
+
 	private fun profileSettings(name: String): JSONObject? {
+		val fromFile = EvBmsProfileCatalog.readSettings(profilesDir(), name)
+		if (!fromFile.isNullOrBlank()) {
+			try {
+				return JSONObject(fromFile)
+			} catch (_: Exception) {
+			}
+		}
 		val arr = storeJson().optJSONArray("profiles") ?: return null
 		for (i in 0 until arr.length()) {
 			val obj = arr.optJSONObject(i) ?: continue
@@ -246,21 +259,17 @@ class EvBmsProfileStore(
 	}
 
 	private fun saveProfile(name: String, settings: JSONObject) {
-		val json = storeJson()
-		val arr = json.optJSONArray("profiles") ?: JSONArray().also { json.put("profiles", it) }
-		var found = false
-		for (i in 0 until arr.length()) {
-			val obj = arr.optJSONObject(i) ?: continue
-			if (obj.optString("name") == name) {
-				obj.put("settings", settings)
-				found = true
-				break
-			}
+		val text = settings.toString()
+		try {
+			EvBmsProfileCatalog.writeProfile(profilesDir(), name, text)
+		} catch (e: Exception) {
+			LOG.error("Cannot write profile $name", e)
 		}
-		if (!found) {
-			arr.put(JSONObject().put("name", name).put("settings", settings))
+		try {
+			storePref.set(EvBmsProfileCatalog.upsert(storePref.get(), name, text))
+		} catch (e: Exception) {
+			LOG.error("Cannot store profile $name", e)
 		}
-		persist(json)
 	}
 
 	private fun storeJson(): JSONObject {
@@ -273,10 +282,6 @@ class EvBmsProfileStore(
 		} catch (_: Exception) {
 			JSONObject().put("profiles", JSONArray())
 		}
-	}
-
-	private fun persist(json: JSONObject) {
-		storePref.set(json.toString())
 	}
 
 	fun sanitizeName(raw: String?): String? {
