@@ -2096,7 +2096,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 					continue
 				}
 				val leftoverTrips = trips.filter { it.isRealRide() }
-				charges = historyStore.outsideWindow(
+				charges = (historyStore.outsideWindow(
 					charges,
 					parsed.fileStartMs,
 					parsed.fileEndMs,
@@ -2104,8 +2104,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 					{ it.startMs },
 					{ it.endMs },
 					{ row, end -> row.copy(endMs = end) }
-				) + parsed.charges
-				trips = historyStore.outsideWindow(
+				) + parsed.charges).toMutableList()
+				trips = (historyStore.outsideWindow(
 					leftoverTrips,
 					parsed.fileStartMs,
 					parsed.fileEndMs,
@@ -2113,7 +2113,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 					{ it.startMs },
 					{ it.endMs },
 					{ row, end -> row.copy(endMs = end) }
-				) + parsed.trips.filter { it.isRealRide() }
+				) + parsed.trips.filter { it.isRealRide() }).toMutableList()
 				changed = true
 				val sessionStart = maxOf(tripStartMs, diskTripStartMs())
 				if (sessionOverlapsWindow(sessionStart, parsed.fileStartMs, parsed.fileEndMs)) {
