@@ -1,6 +1,7 @@
 package net.osmand.plus;
 
 import static android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION;
+import static android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SHORT_SERVICE;
 import static net.osmand.plus.OsmAndLocationProvider.NOT_SWITCH_TO_NETWORK_WHEN_GPS_LOST_MS;
 import static net.osmand.plus.OsmAndLocationProvider.isRunningOnEmulator;
 import static net.osmand.plus.notifications.OsmandNotification.NotificationType.AIS;
@@ -127,13 +128,24 @@ public class NavigationService extends Service {
 	public int onStartCommand(Intent intent, int flags, int startId) {
 		LOG.info(">>>> NavigationService onStartCommand");
 		int usageIntent = intent != null ? intent.getIntExtra(USAGE_INTENT, 0) : 0;
+		OsmandApplication app = getApp();
+		NotificationHelper notificationHelper = app.getNotificationHelper();
+
+		// Meet the startForegroundService() deadline before any other work. A second start of
+		// an already running service arms a new deadline; returning without startForeground()
+		// kills the process with ForegroundServiceDidNotStartInTimeException.
+		if (!promoteToForeground(notificationHelper.buildFallbackNotification())) {
+			resetServiceState(app);
+			stopSelf();
+			return START_NOT_STICKY;
+		}
+
 		if (isUsed()) {
 			LOG.info(">>>> NavigationService is used by = " + usedBy.get());
 			addUsageIntent(usageIntent);
 			return START_REDELIVER_INTENT;
 		}
 
-		OsmandApplication app = getApp();
 		settings = app.getSettings();
 		routingHelper = app.getRoutingHelper();
 		usedBy.set(usageIntent);
@@ -143,20 +155,13 @@ public class NavigationService extends Service {
 		app.setNavigationService(this);
 
 		NotificationType type = isUsedBy(USED_BY_NAVIGATION) ? NAVIGATION : isUsedBy(USED_BY_GPX) ? GPX : AIS;
-		NotificationHelper notificationHelper = app.getNotificationHelper();
 		Notification notification = notificationHelper.buildTopNotification(this, type);
-
-		boolean hasNotification = notification != null;
-		if (hasNotification) {
+		if (notification != null) {
 			try {
 				startForeground(notification);
 			} catch (Exception e) {
-				LOG.error("Failed to start NavigationService (usedBy=" + usedBy.get() + ")", e);
-				resetServiceState(app);
-				// The service has to go down right away: a service that never reached the
-				// foreground state is killed with ForegroundServiceDidNotStartInTimeException.
-				stopSelf();
-				return START_NOT_STICKY;
+				// The fallback promotion above already satisfied the deadline.
+				LOG.error("Failed to replace fallback notification (usedBy=" + usedBy.get() + ")", e);
 			}
 			try {
 				onServiceChanged(true);
@@ -166,19 +171,48 @@ public class NavigationService extends Service {
 		} else {
 			LOG.error("NavigationService could not be started because the notification is null. usedBy=" + usedBy.get());
 			resetServiceState(app);
-			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-				try {
-					startForeground(notificationHelper.buildFallbackNotification());
-					stopForeground(STOP_FOREGROUND_REMOVE);
-				} catch (Exception e) {
-					LOG.error(e);
-				}
-			}
+			stopForeground(STOP_FOREGROUND_REMOVE);
 			stopSelf();
 			return START_NOT_STICKY;
 		}
 		requestLocationUpdates();
 		return START_REDELIVER_INTENT;
+	}
+
+	/**
+	 * @return true when the service is in the foreground with the location type
+	 */
+	private boolean promoteToForeground(@NonNull Notification notification) {
+		try {
+			startForeground(notification);
+			return true;
+		} catch (Exception e) {
+			LOG.error("Failed to start NavigationService (usedBy=" + usedBy.get() + ")", e);
+			// stopSelf() does not cancel the deadline. Location type is denied for a service
+			// started from the background; shortService is allowed, and is stopped immediately.
+			acknowledgeForegroundStart(notification);
+			return false;
+		}
+	}
+
+	private void acknowledgeForegroundStart(@NonNull Notification notification) {
+		try {
+			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+				startForeground(TOP_NOTIFICATION_SERVICE_ID, notification, FOREGROUND_SERVICE_TYPE_SHORT_SERVICE);
+			} else {
+				startForeground(TOP_NOTIFICATION_SERVICE_ID, notification);
+			}
+			stopForeground(STOP_FOREGROUND_REMOVE);
+		} catch (Exception e) {
+			LOG.error("Failed to acknowledge foreground service start", e);
+		}
+	}
+
+	@Override
+	public void onTimeout(int startId) {
+		super.onTimeout(startId);
+		LOG.info(">>>> NavigationService onTimeout " + startId);
+		stopSelf();
 	}
 
 	private void startForeground(@NonNull Notification notification) {

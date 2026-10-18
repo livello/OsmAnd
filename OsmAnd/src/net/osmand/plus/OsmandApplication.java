@@ -1179,6 +1179,9 @@ public class OsmandApplication extends MultiDexApplication {
 		intent.putExtra(NavigationService.USAGE_INTENT, usageIntent);
 		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
 			runInUIThread(() -> {
+				if (attachUsageToRunningNavigationService(usageIntent)) {
+					return;
+				}
 				if (!OsmAndLocationProvider.isLocationPermissionAvailable(this)) {
 					LOG.info(">>>> Failed APP startForegroundService = " + usageIntent + " {no location permission}");
 					return;
@@ -1201,8 +1204,30 @@ public class OsmandApplication extends MultiDexApplication {
 				}
 			});
 		} else {
-			context.startService(intent);
+			if (!attachUsageToRunningNavigationService(usageIntent)) {
+				context.startService(intent);
+			}
 		}
+	}
+
+	/**
+	 * A service that is already in the foreground must not be started again with
+	 * {@code startForegroundService()}. Each such call arms a new deadline, and
+	 * {@code NavigationService.onStartCommand()} used to return immediately when
+	 * {@code usedBy != 0} without calling {@code startForeground()}, which kills the
+	 * process with {@code ForegroundServiceDidNotStartInTimeException} during navigation
+	 * and trip recording.
+	 *
+	 * @return true when the usage was attached and no new service start is required
+	 */
+	private boolean attachUsageToRunningNavigationService(int usageIntent) {
+		NavigationService running = getNavigationService();
+		if (running != null && running.isUsed()) {
+			running.addUsageIntent(usageIntent);
+			LOG.info(">>>> APP navigation service already running, usage=" + usageIntent);
+			return true;
+		}
+		return false;
 	}
 
 	public void setupDrivingRegion(@NonNull WorldRegion worldRegion) {

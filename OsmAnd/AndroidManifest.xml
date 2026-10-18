@@ -1165,7 +1165,7 @@
 			android:name="net.osmand.plus.NavigationService"
 			android:exported="true"
 			android:permission="${applicationId}.SERVICE_PERMISSION"
-			android:foregroundServiceType="location"
+			android:foregroundServiceType="location|shortService"
 			android:stopWithTask="false">
 		</service>
 
