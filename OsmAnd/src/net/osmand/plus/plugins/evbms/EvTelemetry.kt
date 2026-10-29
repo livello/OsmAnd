@@ -1,5 +1,6 @@
 package net.osmand.plus.plugins.evbms
 
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Calendar
 import java.util.Locale
@@ -48,7 +49,9 @@ data class EvTelemetry(
 	val usedFarDriverDistance: Boolean = false,
 	val rangeReserveKm: Double? = null,
 	val stopTimeMs: Long? = null,
-	val cadenceRpm: Double? = null
+	val cadenceRpm: Double? = null,
+	val cellVoltagesV: List<Double> = emptyList(),
+	val packTemperaturesC: List<Double> = emptyList()
 ) {
 	companion object {
 		fun csvHeader(): String = VESC_HEADER
@@ -74,6 +77,20 @@ data class EvTelemetry(
 				fun d(key: String): Double? = if (json.has(key) && !json.isNull(key)) json.optDouble(key) else null
 				fun i(key: String): Int? = if (json.has(key) && !json.isNull(key)) json.optInt(key) else null
 				fun l(key: String): Long? = if (json.has(key) && !json.isNull(key)) json.optLong(key) else null
+				fun doubles(key: String): List<Double> {
+					val arr = json.optJSONArray(key) ?: return emptyList()
+					val out = ArrayList<Double>(arr.length())
+					for (i in 0 until arr.length()) {
+						if (arr.isNull(i)) {
+							continue
+						}
+						val v = arr.optDouble(i)
+						if (v.isFinite()) {
+							out.add(v)
+						}
+					}
+					return out
+				}
 				EvTelemetry(
 					timeMs = json.optLong("timeMs"),
 					lat = d("lat"),
@@ -118,7 +135,9 @@ data class EvTelemetry(
 					gpsUnreliable = json.optBoolean("gpsUnreliable"),
 					usedFarDriverDistance = json.optBoolean("usedFarDriverDistance"),
 					rangeReserveKm = d("rangeReserveKm"),
-					stopTimeMs = l("stopTimeMs")
+					stopTimeMs = l("stopTimeMs"),
+					cellVoltagesV = doubles("cellVoltagesV"),
+					packTemperaturesC = doubles("packTemperaturesC")
 				)
 			} catch (_: Exception) {
 				null
@@ -260,6 +279,12 @@ data class EvTelemetry(
 		json.putOpt("stopTimeMs", stopTimeMs)
 		json.put("gpsUnreliable", gpsUnreliable)
 		json.put("usedFarDriverDistance", usedFarDriverDistance)
+		if (cellVoltagesV.isNotEmpty()) {
+			json.put("cellVoltagesV", JSONArray(cellVoltagesV))
+		}
+		if (packTemperaturesC.isNotEmpty()) {
+			json.put("packTemperaturesC", JSONArray(packTemperaturesC))
+		}
 		return json
 	}
 }

@@ -671,6 +671,7 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		socCalibrator.decode(SOC_CAL_STORE.get())
 		migratePollPreferences()
 		migrateCadenceTelemetryField()
+		migrateSeriesTelemetryFields()
 		restoreLastTelemetry()
 		restoreSessions()
 		profileStore.ensureDefault()
@@ -4027,6 +4028,10 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			minCellVoltageV = minCellVoltageV,
 			maxCellVoltageV = liveMaxCell,
 			cellImbalanceV = imbalanceV,
+			cellVoltagesV = lastCells.orEmpty().dropLastWhile { !it.isFinite() || it <= 0.5 },
+			packTemperaturesC = bms?.temperaturesC.orEmpty().map { it.toDouble() }
+				.filter { it.isFinite() }
+				.dropLastWhile { it !in -40.0..125.0 },
 			controllerVoltageV = ctrlVoltageV(),
 			controllerCurrentA = ctrlCurrentA(),
 			controllerPowerW = ctrlPowerW(),
@@ -5242,6 +5247,8 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 			minCellVoltageV = sample.minCellVoltageV ?: prev.minCellVoltageV,
 			maxCellVoltageV = sample.maxCellVoltageV ?: prev.maxCellVoltageV,
 			cellImbalanceV = sample.cellImbalanceV ?: prev.cellImbalanceV,
+			cellVoltagesV = sample.cellVoltagesV.ifEmpty { prev.cellVoltagesV },
+			packTemperaturesC = sample.packTemperaturesC.ifEmpty { prev.packTemperaturesC },
 			controllerVoltageV = sample.controllerVoltageV ?: prev.controllerVoltageV,
 			controllerCurrentA = sample.controllerCurrentA ?: prev.controllerCurrentA,
 			controllerPowerW = sample.controllerPowerW ?: prev.controllerPowerW,
@@ -5558,6 +5565,37 @@ class EvBmsPlugin(app: OsmandApplication) : OsmandPlugin(app), EvBleUartClient.L
 		if (!CONTROLLER_POLL_MS.isSet()) {
 			CONTROLLER_POLL_MS.set(old)
 		}
+	}
+
+	private fun migrateSeriesTelemetryFields() {
+		appendTelemetryField(TELEMETRY_FIELDS, TelemetryField.TEMPS.id, TelemetryField.BMS_TEMP.id)
+		appendTelemetryField(TELEMETRY_FIELDS, TelemetryField.CELLS.id, TelemetryField.MIN_CELL.id)
+		if (TELEMETRY_GPX_FIELDS.isSet()) {
+			appendTelemetryField(TELEMETRY_GPX_FIELDS, TelemetryField.TEMPS.id, TelemetryField.BMS_TEMP.id)
+			appendTelemetryField(TELEMETRY_GPX_FIELDS, TelemetryField.CELLS.id, TelemetryField.MIN_CELL.id)
+		}
+	}
+
+	private fun appendTelemetryField(
+		pref: CommonPreference<String>,
+		id: String,
+		afterId: String
+	) {
+		val raw = pref.get()
+		if (raw.isNullOrBlank()) {
+			return
+		}
+		val ids = raw.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toMutableList()
+		if (id in ids) {
+			return
+		}
+		val at = ids.indexOf(afterId)
+		if (at >= 0) {
+			ids.add(at + 1, id)
+		} else {
+			ids.add(id)
+		}
+		pref.set(ids.joinToString(","))
 	}
 
 	private fun migrateCadenceTelemetryField() {

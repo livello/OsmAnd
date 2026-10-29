@@ -26,6 +26,7 @@ import androidx.core.graphics.Insets
 import androidx.core.text.HtmlCompat
 import androidx.fragment.app.FragmentManager
 import com.github.mikephil.charting.charts.LineChart
+import com.github.mikephil.charting.components.Legend
 import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.data.Entry
 import com.github.mikephil.charting.data.LineData
@@ -568,8 +569,23 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			val chart = row.findViewById<LineChart>(R.id.chart)
 			title.text = "${field.emoji} ${getString(field.titleRes)}"
 			styleChartTitle(title, field)
-			value.text = field.liveValue(ctx, plugin.latestTelemetry)
+			value.text = chartValueText(field, plugin.latestTelemetry)
 			styleChart(chart)
+			if (field.isMultiSeries()) {
+				val heightDp = if (field == TelemetryField.CELLS) 210f else 148f
+				chart.layoutParams.height = AndroidUtils.dpToPx(ctx, heightDp)
+				chart.requestLayout()
+				chart.legend.isEnabled = true
+				chart.legend.textSize = 8f
+				chart.legend.form = Legend.LegendForm.LINE
+				chart.legend.formSize = 8f
+				chart.legend.verticalAlignment = Legend.LegendVerticalAlignment.BOTTOM
+				chart.legend.horizontalAlignment = Legend.LegendHorizontalAlignment.LEFT
+				chart.legend.orientation = Legend.LegendOrientation.HORIZONTAL
+				chart.legend.isWordWrapEnabled = true
+				chart.legend.xEntrySpace = 6f
+				chart.extraBottomOffset = if (field == TelemetryField.CELLS) 36f else 22f
+			}
 			val chartRow = ChartRow(field, chart, value)
 			bindChartInspect(chartRow)
 			chartRows.add(chartRow)
@@ -698,8 +714,7 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 
 			override fun onNothingSelected() {
 				row.selectedX = null
-				val ctx = context ?: return
-				row.value.text = row.field.liveValue(ctx, plugin.latestTelemetry)
+				row.value.text = chartValueText(row.field, plugin.latestTelemetry)
 			}
 		})
 	}
@@ -707,10 +722,10 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	private fun showChartInspect(row: ChartRow, entry: Entry) {
 		val ctx = context ?: return
 		val sample = entry.data as? EvTelemetry
-		val value = if (sample != null) {
-			row.field.liveValue(ctx, sample)
-		} else {
-			row.field.liveValue(ctx, plugin.latestTelemetry)
+		val value = when {
+			row.field.isMultiSeries() -> row.field.chartCaption(ctx, sample ?: plugin.latestTelemetry)
+			sample != null -> row.field.liveValue(ctx, sample)
+			else -> row.field.liveValue(ctx, plugin.latestTelemetry)
 		}
 		val time = if (sample != null) {
 			CHART_CLOCK.format(Date(sample.timeMs))
@@ -737,7 +752,12 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 				return
 			}
 		}
-		row.value.text = row.field.liveValue(ctx, live)
+		row.value.text = chartValueText(row.field, live)
+	}
+
+	private fun chartValueText(field: TelemetryField, sample: EvTelemetry?): String {
+		val ctx = context ?: return ""
+		return if (field.isMultiSeries()) field.chartCaption(ctx, sample) else field.liveValue(ctx, sample)
 	}
 
 	private fun refreshCharts() {
@@ -750,37 +770,34 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 				applyChartValue(row, sample)
 				continue
 			}
-			val entries = ArrayList<Entry>()
 			val t0 = history.firstOrNull()?.timeMs ?: 0L
-			for (item in history) {
-				val y = row.field.chartValue(item) ?: continue
-				val x = ((item.timeMs - t0) / 1000.0).toFloat()
-				entries.add(Entry(x, y.toFloat(), item))
+			val data = if (row.field.isMultiSeries()) {
+				seriesLineData(row.field, history, t0, color)
+			} else {
+				singleLineData(row.field, history, t0, color)
 			}
-			if (entries.isEmpty()) {
+			if (data == null) {
 				row.chart.clear()
 				row.chart.invalidate()
 				applyChartValue(row, sample)
 				continue
 			}
-			if (entries.size == 1) {
-				val only = entries[0]
-				entries.add(Entry(only.x + 1f, only.y, only.data))
+			row.chart.data = data
+			if (row.field.isMultiSeries()) {
+				var lo = Float.POSITIVE_INFINITY
+				var hi = Float.NEGATIVE_INFINITY
+				for (i in 0 until data.dataSetCount) {
+					val set = data.getDataSetByIndex(i)
+					for (j in 0 until set.entryCount) {
+						val y = set.getEntryForIndex(j).y
+						if (y < lo) lo = y
+						if (y > hi) hi = y
+					}
+				}
+				val pad = ((hi - lo) * 0.12f).coerceAtLeast(if (row.field == TelemetryField.TEMPS) 0.4f else 0.02f)
+				row.chart.axisLeft.axisMinimum = lo - pad
+				row.chart.axisLeft.axisMaximum = hi + pad
 			}
-			val set = LineDataSet(entries, "")
-			set.setDrawCircles(false)
-			set.setDrawValues(false)
-			set.setDrawFilled(true)
-			set.lineWidth = 1.6f
-			set.color = color
-			set.fillColor = color
-			set.fillAlpha = 48
-			set.highLightColor = color
-			set.setHighlightLineWidth(1.2f)
-			set.setDrawHorizontalHighlightIndicator(false)
-			set.setDrawVerticalHighlightIndicator(true)
-			set.mode = LineDataSet.Mode.LINEAR
-			row.chart.data = LineData(set)
 			val selectedX = row.selectedX
 			if (selectedX != null) {
 				row.chart.highlightValue(selectedX, 0, false)
@@ -790,6 +807,116 @@ class EvBmsSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			row.chart.invalidate()
 			applyChartValue(row, sample)
 		}
+	}
+
+	private fun singleLineData(
+		field: TelemetryField,
+		history: List<EvTelemetry>,
+		t0: Long,
+		color: Int
+	): LineData? {
+		val entries = ArrayList<Entry>()
+		for (item in history) {
+			val y = field.chartValue(item) ?: continue
+			val x = ((item.timeMs - t0) / 1000.0).toFloat()
+			entries.add(Entry(x, y.toFloat(), item))
+		}
+		if (entries.isEmpty()) {
+			return null
+		}
+		if (entries.size == 1) {
+			val only = entries[0]
+			entries.add(Entry(only.x + 1f, only.y, only.data))
+		}
+		val set = LineDataSet(entries, "")
+		set.setDrawCircles(false)
+		set.setDrawValues(false)
+		set.setDrawFilled(true)
+		set.lineWidth = 1.6f
+		set.color = color
+		set.fillColor = color
+		set.fillAlpha = 48
+		set.highLightColor = color
+		set.setHighlightLineWidth(1.2f)
+		set.setDrawHorizontalHighlightIndicator(false)
+		set.setDrawVerticalHighlightIndicator(true)
+		set.mode = LineDataSet.Mode.LINEAR
+		return LineData(set)
+	}
+
+	private fun seriesLineData(
+		field: TelemetryField,
+		history: List<EvTelemetry>,
+		t0: Long,
+		fallbackColor: Int
+	): LineData? {
+		var count = 0
+		for (item in history) {
+			val n = field.seriesValues(item)?.size ?: 0
+			if (n > count) {
+				count = n
+			}
+		}
+		if (count == 0) {
+			return null
+		}
+		val latest = history.lastOrNull()?.let { field.seriesValues(it) }
+		val minIndex = latest?.indices?.minByOrNull { latest[it] } ?: -1
+		val maxIndex = latest?.indices?.maxByOrNull { latest[it] } ?: -1
+		val sets = ArrayList<LineDataSet>(count)
+		for (index in 0 until count) {
+			val entries = ArrayList<Entry>()
+			for (item in history) {
+				val values = field.seriesValues(item) ?: continue
+				if (index >= values.size) {
+					continue
+				}
+				val x = ((item.timeMs - t0) / 1000.0).toFloat()
+				entries.add(Entry(x, values[index].toFloat(), item))
+			}
+			if (entries.isEmpty()) {
+				continue
+			}
+			if (entries.size == 1) {
+				val only = entries[0]
+				entries.add(Entry(only.x + 1f, only.y, only.data))
+			}
+			val lineColor = seriesColor(index, count, minIndex, maxIndex, fallbackColor)
+			val set = LineDataSet(entries, (index + 1).toString())
+			set.setDrawCircles(false)
+			set.setDrawValues(false)
+			set.setDrawFilled(false)
+			set.lineWidth = if (index == minIndex || index == maxIndex) 2.2f else 1.15f
+			set.color = lineColor
+			set.highLightColor = lineColor
+			set.setHighlightLineWidth(1.2f)
+			set.setDrawHorizontalHighlightIndicator(false)
+			set.setDrawVerticalHighlightIndicator(index == 0)
+			set.mode = LineDataSet.Mode.LINEAR
+			sets.add(set)
+		}
+		if (sets.isEmpty()) {
+			return null
+		}
+		val data = LineData()
+		for (set in sets) {
+			data.addDataSet(set)
+		}
+		return data
+	}
+
+	private fun seriesColor(index: Int, count: Int, minIndex: Int, maxIndex: Int, fallback: Int): Int {
+		if (count <= 1) {
+			return fallback
+		}
+		if (index == minIndex && minIndex != maxIndex) {
+			return Color.rgb(229, 62, 62)
+		}
+		if (index == maxIndex && minIndex != maxIndex) {
+			return Color.rgb(46, 158, 79)
+		}
+		val hue = 200f + 140f * index / (count - 1).coerceAtLeast(1)
+		return Color.HSVToColor(floatArrayOf(hue % 360f, 0.55f, 0.82f))
 	}
 
 	private fun setupHistoryRebuildButton(root: View) {

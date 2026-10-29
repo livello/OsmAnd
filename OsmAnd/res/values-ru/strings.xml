@@ -4747,6 +4747,8 @@ UART BMS (JBD / ANT) + UART контроллера (FarDriver / VESC) + коле
     <string name="ev_bms_field_full_ah">Полная ёмкость А·ч</string>
     <string name="ev_bms_field_cycles">Циклы</string>
     <string name="ev_bms_field_min_cell">Минимум ячейки</string>
+    <string name="ev_bms_field_cells">Все ячейки</string>
+    <string name="ev_bms_field_temps">Все температуры</string>
     <string name="ev_bms_field_max_cell">Сильная ячейка</string>
     <string name="ev_bms_field_cell_imbalance">Разбаланс</string>
     <string name="ev_bms_field_used_ah">Расход заряда</string>

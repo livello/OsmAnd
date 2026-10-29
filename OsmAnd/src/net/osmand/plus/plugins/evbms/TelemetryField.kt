@@ -19,9 +19,11 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 	REMAINING_AH("remaining_ah", R.string.ev_bms_field_remaining_ah, R.string.ev_bms_field_group_battery, "📉"),
 	FULL_AH("full_ah", R.string.ev_bms_field_full_ah, R.string.ev_bms_field_group_battery, "📦"),
 	BMS_TEMP("bms_temp_c", R.string.ev_bms_widget_battery_temp, R.string.ev_bms_field_group_battery, "🌡️"),
+	TEMPS("temps_c", R.string.ev_bms_field_temps, R.string.ev_bms_field_group_battery, "🌡️"),
 	CYCLES("cycles", R.string.ev_bms_field_cycles, R.string.ev_bms_field_group_battery, "🔁"),
 	MIN_CELL("min_cell_v", R.string.ev_bms_field_min_cell, R.string.ev_bms_field_group_battery, "🔻"),
 	MAX_CELL("max_cell_v", R.string.ev_bms_field_max_cell, R.string.ev_bms_field_group_battery, "🔺"),
+	CELLS("cells_v", R.string.ev_bms_field_cells, R.string.ev_bms_field_group_battery, "🔢"),
 	CELL_IMBALANCE("cell_imbalance_v", R.string.ev_bms_field_cell_imbalance, R.string.ev_bms_field_group_battery, "⚖️"),
 	RANGE("range_km", R.string.ev_bms_field_range, R.string.ev_bms_field_group_battery, "📏"),
 	RANGE_WINDOW("range_window_km", R.string.ev_bms_field_range_window, R.string.ev_bms_field_group_ride, "📏"),
@@ -59,9 +61,11 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 			REMAINING_AH -> n(sample.remainingAh, "%.3f")
 			FULL_AH -> n(sample.fullAh, "%.3f")
 			BMS_TEMP -> n(sample.bmsTempC, "%.1f")
+			TEMPS -> joinSeries(sample.packTemperaturesC, "%.1f")
 			CYCLES -> sample.cycles?.toString().orEmpty()
 			MIN_CELL -> n(sample.minCellVoltageV, "%.3f")
 			MAX_CELL -> n(sample.maxCellVoltageV, "%.3f")
+			CELLS -> joinSeries(sample.cellVoltagesV, "%.3f")
 			CELL_IMBALANCE -> n(sample.cellImbalanceV, "%.4f")
 			CTRL_VOLTAGE -> n(sample.controllerVoltageV, "%.2f")
 			CTRL_CURRENT -> n(sample.controllerCurrentA, "%.2f")
@@ -105,9 +109,11 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 			REMAINING_AH -> unit(sample.remainingAh, "%.2f", "Ah", empty)
 			FULL_AH -> unit(sample.fullAh, "%.2f", "Ah", empty)
 			BMS_TEMP -> unit(sample.bmsTempC, "%.1f", "°C", empty)
+			TEMPS -> formatSeries(sample.packTemperaturesC, "%.1f", "°C", empty)
 			CYCLES -> sample.cycles?.toString() ?: empty
 			MIN_CELL -> unit(sample.minCellVoltageV, "%.3f", "V", empty)
 			MAX_CELL -> unit(sample.maxCellVoltageV, "%.3f", "V", empty)
+			CELLS -> formatSeries(sample.cellVoltagesV, "%.3f", "V", empty)
 			CELL_IMBALANCE -> sample.cellImbalanceV?.let {
 				String.format(Locale.US, "%.0f mV", it * 1000.0)
 			} ?: empty
@@ -145,6 +151,8 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 			CTRL_SPEED -> n(sample.farSpeedKmh?.let { kotlin.math.round(it * 2.0) / 2.0 }, "%.1f")
 			WHEEL_SPEED -> n(sample.wheelSpeedKmh?.let { kotlin.math.round(it * 2.0) / 2.0 }, "%.1f")
 			CADENCE -> n(sample.cadenceRpm?.let { kotlin.math.round(it) }, "%.0f")
+			CELLS -> joinSeries(sample.cellVoltagesV, "%.2f")
+			TEMPS -> joinSeries(sample.packTemperaturesC, "%.1f")
 			else -> csvValue(sample)
 		}
 	}
@@ -165,10 +173,10 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 	fun chartUnit(): String = when (this) {
 		GPS_SPEED, CTRL_SPEED, WHEEL_SPEED -> "km/h"
 		SOC, SOC_OCV -> "%"
-		VOLTAGE, CTRL_VOLTAGE, MIN_CELL, MAX_CELL -> "V"
+		VOLTAGE, CTRL_VOLTAGE, MIN_CELL, MAX_CELL, CELLS -> "V"
 		CURRENT, CTRL_CURRENT -> "A"
 		REMAINING_AH, FULL_AH, USED_AH -> "Ah"
-		BMS_TEMP, MOTOR_TEMP, CTRL_TEMP -> "°C"
+		BMS_TEMP, TEMPS, MOTOR_TEMP, CTRL_TEMP -> "°C"
 		CELL_IMBALANCE -> "V"
 		RANGE, RANGE_WINDOW, RANGE_PNZ, ODOMETER, FAR_TRIP, CHARGE_TRIP, WHEEL_ODOMETER, RANGE_RESERVE -> "km"
 		POWER -> "W"
@@ -180,7 +188,32 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 	}
 
 	fun allowsNegativeChart(): Boolean =
-		this == CURRENT || this == CTRL_CURRENT || this == RANGE_RESERVE
+		this == CURRENT || this == CTRL_CURRENT || this == RANGE_RESERVE || this == TEMPS
+
+	fun isMultiSeries(): Boolean = this == CELLS || this == TEMPS
+
+	fun seriesValues(sample: EvTelemetry): List<Double>? {
+		val raw = when (this) {
+			CELLS -> sample.cellVoltagesV
+			TEMPS -> sample.packTemperaturesC
+			else -> return null
+		}
+		val values = raw.filter { it.isFinite() }
+		return values.takeIf { it.isNotEmpty() }
+	}
+
+	fun chartCaption(ctx: Context, sample: EvTelemetry?): String {
+		val empty = ctx.getString(R.string.ev_bms_value_none)
+		val values = if (sample == null) null else seriesValues(sample)
+		if (values.isNullOrEmpty()) {
+			return empty
+		}
+		val fmt = if (this == TEMPS) "%.1f" else "%.3f"
+		val suffix = if (this == TEMPS) "°C" else "V"
+		val lo = values.minOrNull() ?: return empty
+		val hi = values.maxOrNull() ?: return empty
+		return String.format(Locale.US, "$fmt … $fmt $suffix", lo, hi)
+	}
 
 	fun chartValue(sample: EvTelemetry): Double? {
 		val raw = when (this) {
@@ -193,9 +226,11 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 			REMAINING_AH -> sample.remainingAh
 			FULL_AH -> sample.fullAh
 			BMS_TEMP -> sample.bmsTempC
+			TEMPS -> sample.packTemperaturesC.minOrNull()
 			CYCLES -> sample.cycles?.toDouble()
 			MIN_CELL -> sample.minCellVoltageV
 			MAX_CELL -> sample.maxCellVoltageV
+			CELLS -> sample.cellVoltagesV.minOrNull()
 			CELL_IMBALANCE -> sample.cellImbalanceV?.times(1000.0)
 			RANGE -> sample.remainingRangeKm
 			RANGE_WINDOW -> sample.windowRangeKm
@@ -227,7 +262,7 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 		private val CLOCK = SimpleDateFormat("HH:mm:ss", Locale.US)
 		val DEFAULT_IDS = listOf(
 			TIME_MS, LAT, LON, GPS_SPEED, SOC, VOLTAGE, CURRENT,
-			BMS_TEMP, MOTOR_TEMP, CTRL_TEMP, REMAINING_AH, FULL_AH, MIN_CELL,
+			BMS_TEMP, TEMPS, MOTOR_TEMP, CTRL_TEMP, REMAINING_AH, FULL_AH, MIN_CELL, CELLS,
 			POWER, RANGE, RANGE_WINDOW, RANGE_PNZ, CONSUMPTION, CHARGE_TRIP, WHEEL_SPEED, WHEEL_ODOMETER, CADENCE
 		).joinToString(",") { it.id }
 
@@ -270,6 +305,22 @@ enum class TelemetryField(val id: String, val titleRes: Int, val groupRes: Int, 
 		private fun unit(v: Double?, fmt: String, suffix: String, empty: String): String {
 			val raw = n(v, fmt)
 			return if (raw.isEmpty()) empty else "$raw $suffix"
+		}
+
+		private fun joinSeries(values: List<Double>, fmt: String): String {
+			if (values.isEmpty()) {
+				return ""
+			}
+			return values.joinToString(",") { n(it, fmt) }
+		}
+
+		private fun formatSeries(values: List<Double>, fmt: String, suffix: String, empty: String): String {
+			if (values.isEmpty()) {
+				return empty
+			}
+			return values.mapIndexed { index, value ->
+				String.format(Locale.US, "%2d  %s %s", index + 1, n(value, fmt), suffix)
+			}.joinToString("\n")
 		}
 
 		private fun formatDuration(ms: Long?, empty: String): String {

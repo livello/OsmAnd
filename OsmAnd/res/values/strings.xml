@@ -1316,6 +1316,8 @@ Layouts: <i>res/layout/ev_bms_*.xml</i>. Preferences: <i>res/xml/ev_bms_settings
     <string name="ev_bms_field_cycles">Cycles</string>
     <string name="ev_bms_field_min_cell">Min cell</string>
     <string name="ev_bms_field_max_cell">Strong cell</string>
+    <string name="ev_bms_field_cells">All cells</string>
+    <string name="ev_bms_field_temps">All temperatures</string>
     <string name="ev_bms_field_cell_imbalance">Cell imbalance</string>
     <string name="ev_bms_field_used_ah">Charge used</string>
     <string name="ev_bms_field_ctrl_voltage">Controller voltage</string>
