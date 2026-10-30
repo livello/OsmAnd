@@ -46,6 +46,18 @@
 		android:textSize="18sp" />
 
 	<TextView
+		android:id="@+id/tab_about"
+		android:layout_width="wrap_content"
+		android:layout_height="match_parent"
+		android:background="?attr/selectableItemBackgroundBorderless"
+		android:contentDescription="@string/lora_osmand_about_tab"
+		android:gravity="center"
+		android:includeFontPadding="false"
+		android:minWidth="40dp"
+		android:text="ℹ️"
+		android:textSize="18sp" />
+
+	<TextView
 		android:id="@+id/tab_messages"
 		android:layout_width="wrap_content"
 		android:layout_height="match_parent"

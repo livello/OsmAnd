@@ -27,8 +27,12 @@ import net.osmand.plus.views.mapwidgets.WidgetInfoCreator
 import net.osmand.plus.views.mapwidgets.WidgetType
 import net.osmand.plus.views.mapwidgets.WidgetsPanel
 import net.osmand.plus.views.mapwidgets.widgets.MapWidget
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.net.Uri
 import org.meshtastic.proto.Channel
 import org.meshtastic.proto.ChannelSettings
+import org.meshtastic.proto.DeviceMetrics
 import org.meshtastic.proto.NodeInfo
 import org.meshtastic.proto.Position
 import org.meshtastic.proto.User
@@ -57,12 +61,15 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		registerStringPreference(PREF_LAST_LAT, "").makeGlobal()
 	private val lastSentLonPref: CommonPreference<String> =
 		registerStringPreference(PREF_LAST_LON, "").makeGlobal()
+	private val hiddenNodesPref: CommonPreference<String> =
+		registerStringPreference(PREF_HIDDEN_NODES, "").makeGlobal().makeShared()
 
 	private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 	private val session = LoraSession(app, this)
 	private val tak = LoraTakClient(app, this)
 	private val speaker = LoraSpeaker(app)
 	private val bridgeNodes = LinkedHashMap<Int, NodeInfo>()
+	private val nodeRssi = HashMap<Int, Int>()
 	private val heardChat = LinkedHashSet<String>()
 	private var echoText: String = ""
 	private var echoAt: Long = 0L
@@ -309,11 +316,37 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		return node?.batteryPercent()
 	}
 
-	fun onlineCount(): Int {
-		val now = (System.currentTimeMillis() / 1000L).toInt()
-		return nodes.count { node ->
-			val heard = node.last_heard
-			heard > 0 && now - heard <= ONLINE_SEC
+	fun onlineCount(): Int = nodes.count { it.isMeshOnline() }
+
+	fun nodeShownOnMap(num: Int): Boolean = num !in hiddenNodes()
+
+	private fun hiddenNodes(): MutableSet<Int> {
+		return hiddenNodesPref.get().split(',').mapNotNull { it.toIntOrNull() }.toMutableSet()
+	}
+
+	fun setNodeShownOnMap(num: Int, shown: Boolean) {
+		val hidden = hiddenNodes()
+		if (shown) {
+			hidden.remove(num)
+		} else {
+			hidden.add(num)
+		}
+		hiddenNodesPref.set(hidden.joinToString(","))
+		refreshMap()
+		notifyUi()
+	}
+
+	fun rssiOf(num: Int): Int? = nodeRssi[num]
+
+	fun openNodeInMeshtastic(num: Int) {
+		val intent = Intent(Intent.ACTION_VIEW, Uri.parse("meshtastic://meshtastic/nodes/$num")).apply {
+			setPackage(LoraMessageListener.MESH_PACKAGE)
+			addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+		}
+		try {
+			app.startActivity(intent)
+		} catch (_: ActivityNotFoundException) {
+			app.showToastMessage(R.string.lora_osmand_node_open_failed)
 		}
 	}
 
@@ -321,7 +354,7 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		if (!SHOW_ON_MAP.get()) {
 			return emptyList()
 		}
-		return nodes.filter { it.meshLatLon() != null }
+		return nodes.filter { it.meshLatLon() != null && nodeShownOnMap(it.num) }
 	}
 
 	fun metersSinceSend(): Double? {
@@ -413,21 +446,50 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		}
 	}
 
-	override fun onTakNode(num: Int, shortName: String, longName: String, latitude: Double, longitude: Double) {
+	override fun onTakNode(update: TakNodeUpdate) {
+		val previous = bridgeNodes[update.num]
+		val previousMetrics = previous?.device_metrics
+		val telemetry = update.telemetry
 		val node = NodeInfo.Builder().apply {
-			this.num = num
+			num = update.num
 			user = User.Builder().apply {
-				short_name = shortName
-				long_name = longName
+				short_name = update.shortName
+				long_name = update.longName
 			}.build()
 			position = Position.Builder().apply {
-				latitude_i = (latitude * 1e7).toInt()
-				longitude_i = (longitude * 1e7).toInt()
+				latitude_i = (update.latitude * 1e7).toInt()
+				longitude_i = (update.longitude * 1e7).toInt()
+				val altitudeMeters = update.altitudeMeters ?: previous?.position?.altitude
+				if (altitudeMeters != null) {
+					altitude = altitudeMeters
+				}
 			}.build()
+			val battery = telemetry.batteryPercent ?: previousMetrics?.battery_level
+			val voltage = telemetry.voltage ?: previousMetrics?.voltage
+			val channelUtil = telemetry.channelUtil ?: previousMetrics?.channel_utilization
+			val airUtil = telemetry.airUtil ?: previousMetrics?.air_util_tx
+			if (battery != null || voltage != null || channelUtil != null || airUtil != null) {
+				device_metrics = DeviceMetrics.Builder().apply {
+					if (battery != null) {
+						battery_level = battery
+					}
+					if (voltage != null) {
+						this.voltage = voltage
+					}
+					if (channelUtil != null) {
+						channel_utilization = channelUtil
+					}
+					if (airUtil != null) {
+						air_util_tx = airUtil
+					}
+				}.build()
+			}
+			telemetry.snr?.let { snr = it } ?: previous?.snr?.let { snr = it }
 			last_heard = (System.currentTimeMillis() / 1000L).toInt()
 		}.build()
 		app.uiHandler.post {
-			bridgeNodes[num] = node
+			telemetry.rssi?.let { nodeRssi[update.num] = it }
+			bridgeNodes[update.num] = node
 			nodes = bridgeNodes.values.toList()
 			if (connected) {
 				statusText = app.getString(R.string.lora_osmand_tak_up, bridgeNodes.size)
@@ -632,9 +694,9 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		private const val PREF_LAST_MS = "lora_osmand_pos_last_ms"
 		private const val PREF_LAST_LAT = "lora_osmand_pos_last_lat"
 		private const val PREF_LAST_LON = "lora_osmand_pos_last_lon"
+		private const val PREF_HIDDEN_NODES = "lora_osmand_hidden_nodes"
 		private const val PRIMARY_CHANNEL = 0
 		private const val ECHO_MS = 8_000L
-		private const val ONLINE_SEC = 2 * 60 * 60
 		private const val MIN_SEND_GAP_MS = 15_000L
 		private const val FIX_MAX_AGE_MS = 30_000L
 

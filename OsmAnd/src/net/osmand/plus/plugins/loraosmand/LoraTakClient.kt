@@ -30,7 +30,7 @@ internal class LoraTakClient(
 ) {
 	interface Events {
 		fun onTakStatus(up: Boolean, detail: String)
-		fun onTakNode(num: Int, shortName: String, longName: String, latitude: Double, longitude: Double)
+		fun onTakNode(node: TakNodeUpdate)
 		fun onTakChat(sender: String, text: String)
 	}
 
@@ -163,7 +163,17 @@ internal class LoraTakClient(
 				}
 				val num = nodeNum(event.uid) ?: return
 				val (shortName, longName) = splitCallsign(event.callsign, num)
-				events.onTakNode(num, shortName, longName, event.latitude, event.longitude)
+				events.onTakNode(
+					TakNodeUpdate(
+						num = num,
+						shortName = shortName,
+						longName = longName,
+						latitude = event.latitude,
+						longitude = event.longitude,
+						altitudeMeters = event.altitudeMeters,
+						telemetry = parseRemarks(event.remarks),
+					),
+				)
 			}
 		}
 	}
@@ -176,6 +186,7 @@ internal class LoraTakClient(
 			var uid = ""
 			var lat: Double? = null
 			var lon: Double? = null
+			var altitude: Int? = null
 			var callsign: String? = null
 			var sender: String? = null
 			var remarks: String? = null
@@ -189,6 +200,9 @@ internal class LoraTakClient(
 						"point" -> {
 							lat = parser.getAttributeValue(null, "lat")?.toDoubleOrNull()
 							lon = parser.getAttributeValue(null, "lon")?.toDoubleOrNull()
+							altitude = parser.getAttributeValue(null, "hae")?.toDoubleOrNull()
+								?.takeIf { it in -500.0..20000.0 }
+								?.toInt()
 						}
 						"contact" -> callsign = parser.getAttributeValue(null, "callsign")
 						"__chat" -> sender = parser.getAttributeValue(null, "senderCallsign")
@@ -197,7 +211,7 @@ internal class LoraTakClient(
 				}
 				parser.next()
 			}
-			CotEvent(type, uid, lat, lon, callsign, sender, remarks)
+			CotEvent(type, uid, lat, lon, altitude, callsign, sender, remarks)
 		} catch (e: Exception) {
 			Log.i(TAG, "cot parse: ${e.message}")
 			null
@@ -263,11 +277,28 @@ internal class LoraTakClient(
 			.replace(">", "&gt;")
 	}
 
+	private fun parseRemarks(remarks: String?): TakTelemetry {
+		val text = remarks ?: return TakTelemetry()
+		return TakTelemetry(
+			batteryPercent = match(text, """Battery:\s*(-?\d+)%""")?.toIntOrNull(),
+			voltage = match(text, """Voltage:\s*(-?\d+(?:\.\d+)?)V""")?.toFloatOrNull(),
+			channelUtil = match(text, """Chan Util:\s*(-?\d+(?:\.\d+)?)%""")?.toFloatOrNull(),
+			airUtil = match(text, """Air Util Tx:\s*(-?\d+(?:\.\d+)?)%""")?.toFloatOrNull(),
+			rssi = match(text, """RSSI:\s*(-?\d+)\s*dBm""")?.toIntOrNull(),
+			snr = match(text, """SNR:\s*(-?\d+(?:\.\d+)?)\s*dB""")?.toFloatOrNull(),
+		)
+	}
+
+	private fun match(text: String, pattern: String): String? {
+		return Regex(pattern).find(text)?.groupValues?.getOrNull(1)
+	}
+
 	private data class CotEvent(
 		val type: String,
 		val uid: String,
 		val latitude: Double?,
 		val longitude: Double?,
+		val altitudeMeters: Int?,
 		val callsign: String?,
 		val sender: String?,
 		val remarks: String?,
@@ -285,3 +316,22 @@ internal class LoraTakClient(
 		private const val EVENT_END = "</event>"
 	}
 }
+
+data class TakTelemetry(
+	val batteryPercent: Int? = null,
+	val voltage: Float? = null,
+	val channelUtil: Float? = null,
+	val airUtil: Float? = null,
+	val rssi: Int? = null,
+	val snr: Float? = null,
+)
+
+data class TakNodeUpdate(
+	val num: Int,
+	val shortName: String,
+	val longName: String,
+	val latitude: Double,
+	val longitude: Double,
+	val altitudeMeters: Int?,
+	val telemetry: TakTelemetry,
+)

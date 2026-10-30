@@ -3,30 +3,38 @@ package net.osmand.plus.plugins.loraosmand
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import net.osmand.Location
 import android.os.Build
 import android.os.Bundle
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import android.text.TextUtils
+import android.text.format.DateUtils
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
+import android.graphics.Typeface
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.Insets
 import androidx.fragment.app.FragmentManager
+import net.osmand.plus.BuildConfig
 import net.osmand.plus.R
 import net.osmand.plus.base.MenuBottomSheetDialogFragment
 import net.osmand.plus.base.bottomsheetmenu.BaseBottomSheetItem
 import net.osmand.plus.plugins.PluginsHelper
 import net.osmand.plus.utils.AndroidUtils
-import java.text.DateFormat
-import java.util.Date
+import org.meshtastic.proto.NodeInfo
+import java.util.Locale
+import kotlin.math.roundToInt
 
 class LoraSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 
@@ -54,6 +62,8 @@ class LoraSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	private var currentTab = LoraSheetTab.SETTINGS
 	private var recognizer: SpeechRecognizer? = null
 	private val channelIndexes = ArrayList<Int>()
+	private var onlineOnly = false
+	private var visibleOnly = false
 	private val refresh = Runnable { if (view != null) bindLive() }
 
 	private val audioPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -104,6 +114,17 @@ class LoraSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		view.findViewById<View>(R.id.tab_settings).setOnClickListener { showTab(LoraSheetTab.SETTINGS) }
 		view.findViewById<View>(R.id.tab_nodes).setOnClickListener { showTab(LoraSheetTab.NODES) }
 		view.findViewById<View>(R.id.tab_messages).setOnClickListener { showTab(LoraSheetTab.MESSAGES) }
+		view.findViewById<View>(R.id.tab_about).setOnClickListener { showTab(LoraSheetTab.ABOUT) }
+		view.findViewById<View>(R.id.lora_osmand_filter_online).setOnClickListener {
+			onlineOnly = !onlineOnly
+			bindLive()
+		}
+		view.findViewById<View>(R.id.lora_osmand_filter_visible).setOnClickListener {
+			visibleOnly = !visibleOnly
+			bindLive()
+		}
+		view.findViewById<TextView>(R.id.lora_osmand_about_text).text =
+			getString(R.string.lora_osmand_about, BuildConfig.VERSION_NAME)
 		view.findViewById<View>(R.id.lora_osmand_channel_add).setOnClickListener { promptChannel() }
 		view.findViewById<ImageButton>(R.id.lora_osmand_mic).setOnClickListener { onMic() }
 		view.findViewById<ImageButton>(R.id.lora_osmand_send).setOnClickListener { sendComposed() }
@@ -138,32 +159,19 @@ class LoraSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		val root = view ?: return
 		root.findViewById<View>(R.id.lora_osmand_settings_container).visibility =
 			if (tab == LoraSheetTab.SETTINGS) View.VISIBLE else View.GONE
-		root.findViewById<View>(R.id.lora_osmand_nodes_scroll).visibility =
+		root.findViewById<View>(R.id.lora_osmand_nodes_page).visibility =
 			if (tab == LoraSheetTab.NODES) View.VISIBLE else View.GONE
 		root.findViewById<View>(R.id.lora_osmand_messages).visibility =
 			if (tab == LoraSheetTab.MESSAGES) View.VISIBLE else View.GONE
+		root.findViewById<View>(R.id.lora_osmand_about).visibility =
+			if (tab == LoraSheetTab.ABOUT) View.VISIBLE else View.GONE
 		bindLive()
 	}
 
 	private fun bindLive() {
 		val root = view ?: return
 		if (currentTab == LoraSheetTab.NODES) {
-			val list = root.findViewById<LinearLayout>(R.id.lora_osmand_nodes_list)
-			list.removeAllViews()
-			val nodes = plugin.nodes
-			if (nodes.isEmpty()) {
-				list.addView(line(getString(R.string.lora_osmand_no_nodes)))
-			}
-			for (node in nodes.sortedBy { it.shortLabel() }) {
-				val heard = if (node.last_heard > 0) {
-					DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(node.last_heard * 1000L))
-				} else {
-					"—"
-				}
-				val battery = node.batteryPercent()?.toString() ?: "—"
-				val where = node.meshLatLon()?.let { "${it.latitude}, ${it.longitude}" } ?: "—"
-				list.addView(line("${node.shortLabel()}  ${node.longLabel()}\n$heard · $battery% · $where"))
-			}
+			bindNodes(root)
 		}
 		if (currentTab == LoraSheetTab.MESSAGES) {
 			bindChannels(root.findViewById(R.id.lora_osmand_channel))
@@ -306,6 +314,128 @@ class LoraSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		recognizer?.destroy()
 		recognizer = null
 	}
+
+	private fun bindNodes(root: View) {
+		styleFilter(root.findViewById(R.id.lora_osmand_filter_online), onlineOnly)
+		styleFilter(root.findViewById(R.id.lora_osmand_filter_visible), visibleOnly)
+		val scroll = root.findViewById<ScrollView>(R.id.lora_osmand_nodes_scroll)
+		val saved = scroll.scrollY
+		val list = root.findViewById<LinearLayout>(R.id.lora_osmand_nodes_list)
+		list.removeAllViews()
+		val now = (System.currentTimeMillis() / 1000L).toInt()
+		val phone = app.locationProvider.lastKnownLocation
+		val nodes = plugin.nodes
+			.filter { !onlineOnly || it.isMeshOnline(now) }
+			.filter { !visibleOnly || plugin.nodeShownOnMap(it.num) }
+			.sortedWith(compareByDescending<NodeInfo> { it.isMeshOnline(now) }.thenByDescending { it.last_heard })
+		if (nodes.isEmpty()) {
+			list.addView(line(getString(R.string.lora_osmand_no_nodes)))
+		}
+		for (node in nodes) {
+			list.addView(nodeRow(node, phone))
+		}
+		scroll.post { scroll.scrollTo(0, saved) }
+	}
+
+	private fun styleFilter(view: TextView, active: Boolean) {
+		view.alpha = if (active) 1f else 0.35f
+	}
+
+	private fun nodeRow(node: NodeInfo, phone: net.osmand.Location?): View {
+		val ctx = requireContext()
+		val row = LinearLayout(ctx).apply {
+			orientation = LinearLayout.HORIZONTAL
+			gravity = Gravity.CENTER_VERTICAL
+			setPadding(0, dp(2), 0, dp(6))
+			setOnClickListener { plugin.openNodeInMeshtastic(node.num) }
+		}
+		row.addView(TextView(ctx).apply {
+			text = if (node.isMeshOnline()) "🟢" else "⚫"
+			textSize = 13f
+			gravity = Gravity.CENTER
+			layoutParams = LinearLayout.LayoutParams(dp(22), ViewGroup.LayoutParams.WRAP_CONTENT)
+		})
+		val column = LinearLayout(ctx).apply {
+			orientation = LinearLayout.VERTICAL
+			layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+		}
+		val shortName = node.shortLabel()
+		val longName = node.longLabel()
+		column.addView(TextView(ctx).apply {
+			text = if (longName == shortName) shortName else "$shortName  $longName"
+			textSize = 14f
+			maxLines = 1
+			ellipsize = TextUtils.TruncateAt.END
+			setTypeface(typeface, Typeface.BOLD)
+		})
+		val metrics = metricsLine(node, phone)
+		if (metrics.isNotEmpty()) {
+			column.addView(TextView(ctx).apply {
+				text = metrics
+				textSize = 12f
+				maxLines = 2
+			})
+		}
+		row.addView(column)
+		val shown = plugin.nodeShownOnMap(node.num)
+		row.addView(TextView(ctx).apply {
+			text = if (shown) "👁" else "🚫"
+			textSize = 16f
+			gravity = Gravity.CENTER
+			minWidth = dp(36)
+			contentDescription = getString(R.string.lora_osmand_show_node)
+			if (Build.VERSION.SDK_INT >= 26) {
+				tooltipText = getString(R.string.lora_osmand_show_node)
+			}
+			setOnClickListener { plugin.setNodeShownOnMap(node.num, !plugin.nodeShownOnMap(node.num)) }
+		})
+		return row
+	}
+
+	private fun metricsLine(node: NodeInfo, phone: net.osmand.Location?): String {
+		val parts = ArrayList<String>()
+		node.batteryPercent()?.let { parts.add(if (it < 20) "🪫$it%" else "🔋$it%") }
+		node.device_metrics?.voltage?.let {
+			parts.add("⚡" + String.format(Locale.getDefault(), "%.2fV", it))
+		}
+		if (node.snr != 0f) {
+			parts.add("📶" + String.format(Locale.getDefault(), "%.1f", node.snr))
+		}
+		plugin.rssiOf(node.num)?.let { parts.add("📡$it") }
+		node.hops_away?.takeIf { it > 0 }?.let { parts.add("🐇$it") }
+		val where = node.meshLatLon()
+		if (where != null && phone != null) {
+			val meters = metersBetween(where.latitude, where.longitude, phone.latitude, phone.longitude)
+			parts.add("📍" + formatDistance(meters))
+		}
+		node.position?.altitude?.let { parts.add("⛰$it") }
+		if (node.last_heard > 0) {
+			val heard = DateUtils.getRelativeTimeSpanString(
+				node.last_heard * 1000L,
+				System.currentTimeMillis(),
+				DateUtils.MINUTE_IN_MILLIS,
+				DateUtils.FORMAT_ABBREV_RELATIVE,
+			)
+			parts.add("🕐$heard")
+		}
+		node.device_metrics?.channel_utilization?.let {
+			parts.add("📊" + String.format(Locale.getDefault(), "%.0f%%", it))
+		}
+		node.device_metrics?.air_util_tx?.let {
+			parts.add("💨" + String.format(Locale.getDefault(), "%.0f%%", it))
+		}
+		return parts.joinToString("  ")
+	}
+
+	private fun formatDistance(meters: Double): String {
+		return if (meters < 1000) {
+			getString(R.string.lora_osmand_dist_m, meters.roundToInt())
+		} else {
+			getString(R.string.lora_osmand_dist_km, meters / 1000.0)
+		}
+	}
+
+	private fun dp(value: Int): Int = AndroidUtils.dpToPx(requireContext(), value.toFloat())
 
 	private fun line(text: String): TextView {
 		return TextView(requireContext()).apply {

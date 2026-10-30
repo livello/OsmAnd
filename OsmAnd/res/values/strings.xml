@@ -53,6 +53,44 @@
 	<string name="lora_osmand_notify_on">Channel text is read from Meshtastic and spoken offline</string>
 	<string name="lora_osmand_notify_off">Allow OsmAnd to read Meshtastic notifications so Long Fast text arrives here</string>
 	<string name="lora_osmand_radio_kept">Meshtastic keeps the radio. Positions and channel text come through it.</string>
+	<string name="lora_osmand_about_tab">About</string>
+	<string name="lora_osmand_filter_online">Online only</string>
+	<string name="lora_osmand_filter_visible">Shown on the map only</string>
+	<string name="lora_osmand_show_node">Show this node on the map</string>
+	<string name="lora_osmand_node_open_failed">Meshtastic did not open this node</string>
+	<string name="lora_osmand_dist_m">%1$dm</string>
+	<string name="lora_osmand_dist_km">%1$.1fkm</string>
+	<string name="lora_osmand_about"><![CDATA[Build %1$s. The number after 5.5.0 increases on every S200 X release build (file s200x.build). Compare it with the Android app info: matching digits mean this phone has that build.
+
+How it works
+
+While Meshtastic is installed, OsmAnd does not take Bluetooth. Meshtastic keeps the radio, so setup, channels and firmware stay there. lora-osmand only shows nodes and exchanges text.
+
+Nodes on the map
+
+In Meshtastic open Settings, then TAK Server. Older builds use Settings, Module config, TAK.
+Turn on the local TAK server.
+Turn on Mesh to CoT. Without it OsmAnd only receives nodes that have a TAK role.
+Set the TAK channel to Long Fast.
+The server listens only on 127.0.0.1 port 8089 and requires the client certificate. That certificate is already inside OsmAnd.
+Meshtastic publishes a node when it has a name, was heard recently and has coordinates. Your own node is not sent. Old positions are not back-filled: the list fills after the TAK socket connects.
+The eye on a row marks that node for the OsmAnd map. Only marked nodes are drawn, and only while the switch Show nodes on the map is on. New nodes start marked.
+The green circle at the top keeps nodes heard in the last 2 hours.
+The eye at the top keeps only nodes marked for the map.
+A tap on the row opens that node in Meshtastic.
+
+Messages
+
+In the plugin settings open Meshtastic notifications and allow OsmAnd to read them. Otherwise Long Fast text and weather never arrive: Meshtastic does not turn ordinary channel text into TAK, only into a conversation notification.
+A reply uses that notification reply action, so it lands on the channel you selected.
+If that channel has no notification yet, channel 0 can still be sent as GeoChat. It is delivered on the TAK channel, which should be Long Fast.
+Any other channel without a notification is not silently sent to Long Fast.
+Fresh incoming lines, about the last 20 seconds, are spoken offline. Notifications that were already on screen when access is granted are not read aloud. A message you just sent is not repeated.
+The microphone dictates Russian with on-device recognition and does not use the network.
+
+Voice
+
+OsmAnd navigation and mesh messages use the Google engine com.google.android.tts. The downloaded offline voice is selected, neural when it is installed. Mesh messages are always Russian and use a separate speech instance, so they do not replace the navigation voice.]]></string>
 	<string name="lora_osmand_mic_permission">Microphone permission is required for dictation. Nothing was sent.</string>
 	<string name="ev_bms_sync">Telemetry sync</string>
 	<string name="ev_bms_sync_desc">Two-way live sync of CSV, GPX, and every track from My Places over Wi‑Fi / hotspot. No password. Synchronize downloads the selected phone.</string>

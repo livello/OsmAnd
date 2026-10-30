@@ -131,9 +131,7 @@ internal class LoraMapLayer(
 		if (plugin.ownNodeNum() == node.num) {
 			return 0xFF1565C0.toInt()
 		}
-		val now = (System.currentTimeMillis() / 1000L).toInt()
-		val online = node.last_heard > 0 && now - node.last_heard <= 2 * 60 * 60
-		return if (online) 0xFF2E7D32.toInt() else 0xFF757575.toInt()
+		return if (node.isMeshOnline()) 0xFF2E7D32.toInt() else 0xFF757575.toInt()
 	}
 
 	private fun drawBadge(canvas: Canvas, x: Float, y: Float, label: String, color: Int, density: Float) {

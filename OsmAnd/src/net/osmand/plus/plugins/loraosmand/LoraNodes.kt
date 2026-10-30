@@ -38,6 +38,12 @@ internal fun Position.latLon(): MeshLatLon? {
 
 internal fun NodeInfo.meshLatLon(): MeshLatLon? = position?.latLon()
 
+internal const val MESH_ONLINE_SEC = 2 * 60 * 60
+
+internal fun NodeInfo.isMeshOnline(nowSec: Int = (System.currentTimeMillis() / 1000L).toInt()): Boolean {
+	return last_heard > 0 && nowSec - last_heard in 0..MESH_ONLINE_SEC
+}
+
 internal fun metersBetween(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
 	val out = FloatArray(1)
 	Location.distanceBetween(lat1, lon1, lat2, lon2, out)

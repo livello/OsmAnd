@@ -12,6 +12,28 @@ apply plugin: 'org.jetbrains.kotlin.plugin.compose'
 // APK_VERSION_SUFFIX - build number like #99999Z, appended (for dev builds) to Manifest's versionName as X.X.X#99999Z
 //                      Z means flavor: M=-master, D=-main-default, Des=-design, MQA=-main-qt-arm, MQDA=-main-qt-default-arm, S=-sherpafy
 // APP_EDITION        - date stamp of builds
+//
+// s200x.build is the local counter for Doogee installs. Each
+// assembleNightlyFreeOpenglArm64Release adds one, and versionName becomes
+// 5.5.0.N so the phone's app info shows which build is installed.
+
+def s200xBuildFile = file("s200x.build")
+def s200xBuild = 0
+if (s200xBuildFile.exists()) {
+	try {
+		s200xBuild = Integer.parseInt(s200xBuildFile.getText("UTF-8").trim())
+	} catch (NumberFormatException ignored) {
+		s200xBuild = 0
+	}
+}
+def s200xTask = gradle.startParameter.taskRequests.toString().toLowerCase()
+if (s200xTask.contains("assemblenightlyfreeopenglarm64release")
+		&& !gradle.startParameter.dryRun
+		&& System.getenv("S200X_NO_BUMP") != "1") {
+	s200xBuild += 1
+	s200xBuildFile.setText(s200xBuild + "\n", "UTF-8")
+	println("s200x build " + s200xBuild + " -> 5.5.0." + s200xBuild)
+}
 
 // 1. To be done Filter fonts
 // <unzip src="OsmAndCore_android.aar" dest=".">
@@ -53,9 +75,9 @@ android {
 
 	defaultConfig {
 		minSdkVersion osmand_minSdk
-		versionCode 5550
+		versionCode 5550000 + s200xBuild
 		versionCode System.getenv("APK_NUMBER_VERSION") ? System.getenv("APK_NUMBER_VERSION").toInteger() : versionCode
-		versionName "5.5.0"
+		versionName "5.5.0." + s200xBuild
 		versionName System.getenv("APK_VERSION")? System.getenv("APK_VERSION").toString(): versionName
 		versionName System.getenv("APK_VERSION_SUFFIX")? versionName + System.getenv("APK_VERSION_SUFFIX").toString(): versionName
 	}

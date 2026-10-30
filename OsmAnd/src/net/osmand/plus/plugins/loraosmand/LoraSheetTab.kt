@@ -3,7 +3,8 @@ package net.osmand.plus.plugins.loraosmand
 enum class LoraSheetTab {
 	SETTINGS,
 	NODES,
-	MESSAGES;
+	MESSAGES,
+	ABOUT;
 
 	companion object {
 		fun from(name: String?): LoraSheetTab {
