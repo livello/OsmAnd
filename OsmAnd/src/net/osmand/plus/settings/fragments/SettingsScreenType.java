@@ -10,6 +10,7 @@ import net.osmand.plus.plugins.externalsensors.ExternalSettingsWriteToTrackSetti
 import net.osmand.plus.plugins.externalsensors.dialogs.ExternalDevicesListFragment;
 import net.osmand.plus.plugins.monitoring.MonitoringSettingsFragment;
 import net.osmand.plus.plugins.evbms.EvBmsSettingsFragment;
+import net.osmand.plus.plugins.loraosmand.LoraSettingsFragment;
 import net.osmand.plus.plugins.torrentmaps.TorrentMapsSettingsFragment;
 import net.osmand.plus.plugins.voicegps.VoiceGpsSettingsFragment;
 import net.osmand.plus.plugins.odb.dialogs.OBDDevicesListFragment;
@@ -53,6 +54,7 @@ public enum SettingsScreenType {
 	VEHICLE_METRICS_SETTINGS(OBDDevicesListFragment.class.getName(), false, null, R.xml.antplus_settings, R.layout.global_preference_toolbar),
 	VEHICLE_CONNECTED_METRICS_SETTINGS(OBDMainFragment.class.getName(), false, null, R.xml.antplus_settings, R.layout.global_preference_toolbar),
 	EV_BMS_SETTINGS(EvBmsSettingsFragment.class.getName(), false, null, R.xml.ev_bms_settings, R.layout.global_preference_toolbar),
+	LORA_OSMAND_SETTINGS(LoraSettingsFragment.class.getName(), false, null, R.xml.lora_osmand_settings, R.layout.global_preference_toolbar),
 	TORRENT_MAPS_SETTINGS(TorrentMapsSettingsFragment.class.getName(), false, null, R.xml.torrent_maps_settings, R.layout.global_preference_toolbar),
 	VOICE_GPS_SETTINGS(VoiceGpsSettingsFragment.class.getName(), false, null, R.xml.voice_gps_settings, R.layout.global_preference_toolbar),
 	WEATHER_SETTINGS(WeatherSettingsFragment.class.getName(), true, ApplyQueryType.SNACK_BAR, R.xml.weather_settings, R.layout.profile_preference_toolbar),

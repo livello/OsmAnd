@@ -148,6 +148,7 @@ public interface OsmAndCustomizationConstants {
 	String PLUGIN_ANT_PLUS = "osmand.antplus";
 	String PLUGIN_VEHICLE_METRICS = "osmand.vehicle.metrics";
 	String PLUGIN_EV_BMS = "osmand.ev.bms";
+	String PLUGIN_LORA_OSMAND = "osmand.lora";
 	String PLUGIN_TORRENT_MAPS = "osmand.torrent.maps";
 	String PLUGIN_EV_VOICE_GPX = "osmand.ev.voice.gpx";
 	/** @deprecated use {@link #PLUGIN_EV_VOICE_GPX} */

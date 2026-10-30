@@ -48,6 +48,7 @@ import net.osmand.plus.plugins.mapillary.MapillaryPlugin;
 import net.osmand.plus.plugins.panoramax.PanoramaxPlugin;
 import net.osmand.plus.plugins.monitoring.OsmandMonitoringPlugin;
 import net.osmand.plus.plugins.evbms.EvBmsPlugin;
+import net.osmand.plus.plugins.loraosmand.LoraOsmAndPlugin;
 import net.osmand.aidlapi.OsmAndCustomizationConstants;
 import net.osmand.plus.plugins.voicegps.EvVoiceGpxStore;
 import net.osmand.plus.plugins.voicegps.VoiceGpsPlugin;
@@ -129,6 +130,7 @@ public class PluginsHelper {
 		allPlugins.add(new ExternalSensorsPlugin(app));
 		allPlugins.add(new VehicleMetricsPlugin(app));
 		allPlugins.add(new EvBmsPlugin(app));
+		allPlugins.add(new LoraOsmAndPlugin(app));
 		allPlugins.add(new VoiceGpsPlugin(app));
 		EvVoiceGpxStore.migrateLegacyPluginId(app, OsmAndCustomizationConstants.PLUGIN_EV_VOICE_GPX);
 		allPlugins.add(new TorrentMapsPlugin(app));

@@ -84,30 +84,46 @@ public class JsTtsCommandPlayer extends CommandPlayer {
 			ttsVoiceUsed = "-";
 			ttsRequests = 0;
 
-			final TextToSpeech[] textToSpeech = new TextToSpeech[1];
-			textToSpeech[0] = new TextToSpeech(app, status -> {
-				if (mTts != textToSpeech[0]) {
-					log.info("Obsolete TTS instance finished initializing. Shutting it down.");
-					if (textToSpeech[0] != null) {
-						textToSpeech[0].shutdown();
-					}
+			openEngine(GoogleNeuralTts.isInstalled(app) ? GoogleNeuralTts.ENGINE : null);
+		}
+	}
+
+	private void openEngine(@Nullable String enginePackage) {
+		final TextToSpeech[] slot = new TextToSpeech[1];
+		TextToSpeech.OnInitListener listener = status -> {
+			if (mTts != slot[0]) {
+				log.info("Obsolete TTS instance finished initializing. Shutting it down.");
+				if (slot[0] != null) {
+					slot[0].shutdown();
+				}
+				return;
+			}
+			if (status != TextToSpeech.SUCCESS) {
+				if (slot[0] != null) {
+					slot[0].shutdown();
+				}
+				mTts = null;
+				if (enginePackage != null) {
+					log.info("Google neural TTS did not start, using the default engine");
+					openEngine(null);
 					return;
 				}
-				if (status != TextToSpeech.SUCCESS) {
-					ttsVoiceStatus = "NO INIT SUCCESS";
-					internalClear();
-					app.showToastMessage(R.string.tts_initialization_error);
-				} else {
-					TextToSpeech tts = mTts;
-					if (tts != null) {
-						Locale locale = new LocaleBuilder(app, tts, language).buildLocale();
-						onSuccessfulTtsInit(locale, cSpeechRate);
-					}
-				}
-			});
-			mTts = textToSpeech[0];
-
-			mTts.setOnUtteranceCompletedListener(new OnUtteranceCompletedListener() {
+				ttsVoiceStatus = "NO INIT SUCCESS";
+				internalClear();
+				app.showToastMessage(R.string.tts_initialization_error);
+				return;
+			}
+			TextToSpeech tts = mTts;
+			if (tts != null) {
+				Locale locale = new LocaleBuilder(app, tts, language).buildLocale();
+				onSuccessfulTtsInit(locale, cSpeechRate);
+			}
+		};
+		slot[0] = enginePackage == null
+				? new TextToSpeech(app, listener)
+				: new TextToSpeech(app, listener, enginePackage);
+		mTts = slot[0];
+		mTts.setOnUtteranceCompletedListener(new OnUtteranceCompletedListener() {
 				// The call back is on a binder thread.
 				@Override
 				public synchronized void onUtteranceCompleted(String utteranceId) {
@@ -120,7 +136,6 @@ public class JsTtsCommandPlayer extends CommandPlayer {
 					}
 				}
 			});
-		}
 	}
 
 	private void onSuccessfulTtsInit(@NonNull Locale locale, float speechRate) {
@@ -159,6 +174,7 @@ public class JsTtsCommandPlayer extends CommandPlayer {
 					ttsVoiceStatus = "-".equals(ttsVoiceStatus)
 							? locale.getDisplayName() + ": LANG_COUNTRY_VAR_AVAILABLE"
 							: ttsVoiceStatus;
+					GoogleNeuralTts.applyOfflineVoice(mTts, locale);
 					ttsVoiceUsed = getVoiceUsed();
 					break;
 			}

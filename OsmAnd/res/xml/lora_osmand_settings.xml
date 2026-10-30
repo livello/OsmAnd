@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+
+	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
+		android:key="lora_osmand_autoconnect"
+		android:layout="@layout/preference_with_descr"
+		android:summaryOff="@string/shared_string_disabled"
+		android:summaryOn="@string/shared_string_enabled"
+		android:title="@string/lora_osmand_autoconnect" />
+
+	<Preference
+		android:key="lora_osmand_notify"
+		android:layout="@layout/preference_with_descr"
+		android:persistent="false"
+		android:title="@string/lora_osmand_notify_access" />
+
+	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
+		android:key="lora_osmand_show_map"
+		android:layout="@layout/preference_with_descr"
+		android:summaryOff="@string/shared_string_disabled"
+		android:summaryOn="@string/shared_string_enabled"
+		android:title="@string/lora_osmand_show_on_map" />
+
+	<Preference
+		android:key="lora_osmand_scan"
+		android:layout="@layout/preference_with_descr"
+		android:persistent="false"
+		android:title="@string/lora_osmand_scan" />
+
+	<Preference
+		android:key="lora_osmand_status"
+		android:layout="@layout/preference_with_descr"
+		android:persistent="false"
+		android:title="@string/lora_osmand_radio" />
+
+	<Preference
+		android:key="lora_osmand_interval"
+		android:layout="@layout/preference_with_descr"
+		android:persistent="false"
+		android:title="@string/lora_osmand_pos_interval" />
+
+	<Preference
+		android:key="lora_osmand_offset"
+		android:layout="@layout/preference_with_descr"
+		android:persistent="false"
+		android:title="@string/lora_osmand_pos_offset" />
+
+	<Preference
+		android:key="lora_osmand_pos_status"
+		android:layout="@layout/preference_with_descr"
+		android:persistent="false"
+		android:title="@string/lora_osmand_pos_status" />
+
+</PreferenceScreen>

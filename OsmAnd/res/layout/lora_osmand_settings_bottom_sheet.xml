@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+	android:id="@+id/lora_osmand_settings_host"
+	android:layout_width="match_parent"
+	android:layout_height="match_parent"
+	android:orientation="vertical">
+
+	<include layout="@layout/lora_osmand_sheet_header" />
+
+	<View
+		android:layout_width="match_parent"
+		android:layout_height="1dp"
+		android:background="?attr/divider_color_basic" />
+
+	<FrameLayout
+		android:layout_width="match_parent"
+		android:layout_height="0dp"
+		android:layout_weight="1">
+
+		<FrameLayout
+			android:id="@+id/lora_osmand_settings_container"
+			android:layout_width="match_parent"
+			android:layout_height="match_parent" />
+
+		<ScrollView
+			android:id="@+id/lora_osmand_nodes_scroll"
+			android:layout_width="match_parent"
+			android:layout_height="match_parent"
+			android:fillViewport="true"
+			android:visibility="gone">
+
+			<LinearLayout
+				android:id="@+id/lora_osmand_nodes_list"
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				android:orientation="vertical"
+				android:padding="@dimen/content_padding" />
+		</ScrollView>
+
+		<LinearLayout
+			android:id="@+id/lora_osmand_messages"
+			android:layout_width="match_parent"
+			android:layout_height="match_parent"
+			android:orientation="vertical"
+			android:padding="@dimen/content_padding"
+			android:visibility="gone">
+
+			<LinearLayout
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				android:gravity="center_vertical"
+				android:orientation="horizontal">
+
+				<Spinner
+					android:id="@+id/lora_osmand_channel"
+					android:layout_width="0dp"
+					android:layout_height="wrap_content"
+					android:layout_weight="1" />
+
+				<TextView
+					android:id="@+id/lora_osmand_channel_add"
+					android:layout_width="wrap_content"
+					android:layout_height="40dp"
+					android:background="?attr/selectableItemBackgroundBorderless"
+					android:gravity="center"
+					android:minWidth="40dp"
+					android:text="+"
+					android:textSize="22sp" />
+			</LinearLayout>
+
+			<ScrollView
+				android:layout_width="match_parent"
+				android:layout_height="0dp"
+				android:layout_weight="1"
+				android:fillViewport="true">
+
+				<TextView
+					android:id="@+id/lora_osmand_chat"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:textSize="15sp" />
+			</ScrollView>
+
+			<LinearLayout
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				android:gravity="center_vertical"
+				android:orientation="horizontal">
+
+				<EditText
+					android:id="@+id/lora_osmand_compose"
+					android:layout_width="0dp"
+					android:layout_height="wrap_content"
+					android:layout_weight="1"
+					android:hint="@string/lora_osmand_message_hint"
+					android:imeOptions="actionSend"
+					android:inputType="textCapSentences|textMultiLine"
+					android:maxLines="4" />
+
+				<ImageButton
+					android:id="@+id/lora_osmand_mic"
+					android:layout_width="48dp"
+					android:layout_height="48dp"
+					android:background="?attr/selectableItemBackgroundBorderless"
+					android:contentDescription="@string/lora_osmand_dictate"
+					android:src="@drawable/ic_action_micro_dark" />
+
+				<ImageButton
+					android:id="@+id/lora_osmand_send"
+					android:layout_width="48dp"
+					android:layout_height="48dp"
+					android:background="?attr/selectableItemBackgroundBorderless"
+					android:contentDescription="@string/lora_osmand_send"
+					android:src="@drawable/ic_action_gdirections_dark" />
+			</LinearLayout>
+		</LinearLayout>
+	</FrameLayout>
+</LinearLayout>
