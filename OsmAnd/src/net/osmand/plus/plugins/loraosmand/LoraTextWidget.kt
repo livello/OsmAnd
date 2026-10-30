@@ -1,9 +1,11 @@
 package net.osmand.plus.plugins.loraosmand
 
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import net.osmand.plus.utils.AndroidUtils
 import net.osmand.plus.activities.MapActivity
 import net.osmand.plus.helpers.AndroidUiHelper
 import net.osmand.plus.plugins.PluginsHelper
@@ -62,7 +64,10 @@ class LoraTextWidget(
 		val text = when (field) {
 			Field.BATTERY -> plugin.batteryPercent()?.toString() ?: NO_VALUE
 			Field.NODES -> if (plugin.connected) plugin.onlineCount().toString() else NO_VALUE
-			Field.MESSAGE -> "✉"
+			Field.MESSAGE -> "${plugin.chatTotal()} · ${plugin.chatUnread()}"
+		}
+		if (field == Field.MESSAGE) {
+			applyUnreadGlow(plugin.chatUnread() > 0)
 		}
 		if (text != cache) {
 			setText(text, null)
@@ -76,6 +81,20 @@ class LoraTextWidget(
 		(widgetName as? OutlinedTextContainer)?.setTextColor(color)
 		LoraWidgetChrome.applySideLayout(view, panel)
 		LoraWidgetChrome.bindTap(this)
+	}
+
+	private fun applyUnreadGlow(on: Boolean) {
+		val icon = imageView ?: return
+		if (!on) {
+			icon.background = null
+			return
+		}
+		val stroke = AndroidUtils.dpToPx(icon.context, 2f)
+		icon.background = GradientDrawable().apply {
+			shape = GradientDrawable.OVAL
+			setColor(0x55FF6D00)
+			setStroke(stroke, 0xFFFF6D00.toInt())
+		}
 	}
 
 	override fun getOnClickListener(): View.OnClickListener {

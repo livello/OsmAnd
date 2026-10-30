@@ -3,13 +3,11 @@ package net.osmand.plus.plugins.loraosmand
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
-import net.osmand.Location
 import android.os.Build
 import android.os.Bundle
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.text.TextUtils
-import android.text.format.DateUtils
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -33,8 +31,6 @@ import net.osmand.plus.base.bottomsheetmenu.BaseBottomSheetItem
 import net.osmand.plus.plugins.PluginsHelper
 import net.osmand.plus.utils.AndroidUtils
 import org.meshtastic.proto.NodeInfo
-import java.util.Locale
-import kotlin.math.roundToInt
 
 class LoraSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 
@@ -174,6 +170,7 @@ class LoraSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			bindNodes(root)
 		}
 		if (currentTab == LoraSheetTab.MESSAGES) {
+			plugin.markChatRead()
 			bindChannels(root.findViewById(R.id.lora_osmand_channel))
 			val chat = root.findViewById<TextView>(R.id.lora_osmand_chat)
 			chat.text = plugin.chat.joinToString("\n") { line ->
@@ -323,7 +320,6 @@ class LoraSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		val list = root.findViewById<LinearLayout>(R.id.lora_osmand_nodes_list)
 		list.removeAllViews()
 		val now = (System.currentTimeMillis() / 1000L).toInt()
-		val phone = app.locationProvider.lastKnownLocation
 		val nodes = plugin.nodes
 			.filter { !onlineOnly || it.isMeshOnline(now) }
 			.filter { !visibleOnly || plugin.nodeShownOnMap(it.num) }
@@ -332,7 +328,7 @@ class LoraSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			list.addView(line(getString(R.string.lora_osmand_no_nodes)))
 		}
 		for (node in nodes) {
-			list.addView(nodeRow(node, phone))
+			list.addView(nodeRow(node))
 		}
 		scroll.post { scroll.scrollTo(0, saved) }
 	}
@@ -341,7 +337,7 @@ class LoraSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		view.alpha = if (active) 1f else 0.35f
 	}
 
-	private fun nodeRow(node: NodeInfo, phone: net.osmand.Location?): View {
+	private fun nodeRow(node: NodeInfo): View {
 		val ctx = requireContext()
 		val row = LinearLayout(ctx).apply {
 			orientation = LinearLayout.HORIZONTAL
@@ -368,7 +364,7 @@ class LoraSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			ellipsize = TextUtils.TruncateAt.END
 			setTypeface(typeface, Typeface.BOLD)
 		})
-		val metrics = metricsLine(node, phone)
+		val metrics = formatNodeMetrics(ctx, plugin, node)
 		if (metrics.isNotEmpty()) {
 			column.addView(TextView(ctx).apply {
 				text = metrics
@@ -390,49 +386,6 @@ class LoraSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			setOnClickListener { plugin.setNodeShownOnMap(node.num, !plugin.nodeShownOnMap(node.num)) }
 		})
 		return row
-	}
-
-	private fun metricsLine(node: NodeInfo, phone: net.osmand.Location?): String {
-		val parts = ArrayList<String>()
-		node.batteryPercent()?.let { parts.add(if (it < 20) "🪫$it%" else "🔋$it%") }
-		node.device_metrics?.voltage?.let {
-			parts.add("⚡" + String.format(Locale.getDefault(), "%.2fV", it))
-		}
-		if (node.snr != 0f) {
-			parts.add("📶" + String.format(Locale.getDefault(), "%.1f", node.snr))
-		}
-		plugin.rssiOf(node.num)?.let { parts.add("📡$it") }
-		node.hops_away?.takeIf { it > 0 }?.let { parts.add("🐇$it") }
-		val where = node.meshLatLon()
-		if (where != null && phone != null) {
-			val meters = metersBetween(where.latitude, where.longitude, phone.latitude, phone.longitude)
-			parts.add("📍" + formatDistance(meters))
-		}
-		node.position?.altitude?.let { parts.add("⛰$it") }
-		if (node.last_heard > 0) {
-			val heard = DateUtils.getRelativeTimeSpanString(
-				node.last_heard * 1000L,
-				System.currentTimeMillis(),
-				DateUtils.MINUTE_IN_MILLIS,
-				DateUtils.FORMAT_ABBREV_RELATIVE,
-			)
-			parts.add("🕐$heard")
-		}
-		node.device_metrics?.channel_utilization?.let {
-			parts.add("📊" + String.format(Locale.getDefault(), "%.0f%%", it))
-		}
-		node.device_metrics?.air_util_tx?.let {
-			parts.add("💨" + String.format(Locale.getDefault(), "%.0f%%", it))
-		}
-		return parts.joinToString("  ")
-	}
-
-	private fun formatDistance(meters: Double): String {
-		return if (meters < 1000) {
-			getString(R.string.lora_osmand_dist_m, meters.roundToInt())
-		} else {
-			getString(R.string.lora_osmand_dist_km, meters / 1000.0)
-		}
 	}
 
 	private fun dp(value: Int): Int = AndroidUtils.dpToPx(requireContext(), value.toFloat())

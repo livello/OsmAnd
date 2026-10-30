@@ -11,6 +11,17 @@
     <string name="lora_osmand_widget_message_desc">Открыть отправку сообщения</string>
     <string name="lora_osmand_autoconnect">Подключаться автоматически</string>
     <string name="lora_osmand_show_on_map">Показывать ноды на карте</string>
+    <string name="lora_osmand_marker_style">Стиль ноды на карте</string>
+    <string name="lora_osmand_marker_size">Размер ноды на карте</string>
+    <string name="lora_osmand_marker_font">Размер имени ноды</string>
+    <string name="lora_osmand_style_circle">Круг</string>
+    <string name="lora_osmand_style_meshtastic">Meshtastic</string>
+    <string name="lora_osmand_style_pin">Метка</string>
+    <string name="lora_osmand_style_plate">Плашка</string>
+    <string name="lora_osmand_style_dot">Точка и имя</string>
+    <string name="lora_osmand_percent">%1$d%%</string>
+    <string name="lora_osmand_font_sp">%1$d sp</string>
+    <string name="lora_osmand_open_node">Открыть в Meshtastic</string>
     <string name="lora_osmand_scan">Найти рацию</string>
     <string name="lora_osmand_scan_summary">Поиск рации Meshtastic</string>
     <string name="lora_osmand_radio">Рация</string>

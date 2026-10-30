@@ -14,6 +14,24 @@
 		android:persistent="false"
 		android:title="@string/lora_osmand_notify_access" />
 
+	<Preference
+		android:key="lora_osmand_marker_style"
+		android:layout="@layout/preference_with_descr"
+		android:persistent="false"
+		android:title="@string/lora_osmand_marker_style" />
+
+	<Preference
+		android:key="lora_osmand_marker_size"
+		android:layout="@layout/preference_with_descr"
+		android:persistent="false"
+		android:title="@string/lora_osmand_marker_size" />
+
+	<Preference
+		android:key="lora_osmand_marker_font"
+		android:layout="@layout/preference_with_descr"
+		android:persistent="false"
+		android:title="@string/lora_osmand_marker_font" />
+
 	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
 		android:key="lora_osmand_show_map"
 		android:layout="@layout/preference_with_descr"

@@ -22,6 +22,17 @@
 	<string name="lora_osmand_widget_message_desc">Open the message composer</string>
 	<string name="lora_osmand_autoconnect">Connect automatically</string>
 	<string name="lora_osmand_show_on_map">Show nodes on the map</string>
+	<string name="lora_osmand_marker_style">Node style on the map</string>
+	<string name="lora_osmand_marker_size">Node size on the map</string>
+	<string name="lora_osmand_marker_font">Node name size</string>
+	<string name="lora_osmand_style_circle">Circle</string>
+	<string name="lora_osmand_style_meshtastic">Meshtastic</string>
+	<string name="lora_osmand_style_pin">Pin</string>
+	<string name="lora_osmand_style_plate">Plate</string>
+	<string name="lora_osmand_style_dot">Dot and name</string>
+	<string name="lora_osmand_percent">%1$d%%</string>
+	<string name="lora_osmand_font_sp">%1$d sp</string>
+	<string name="lora_osmand_open_node">Open in Meshtastic</string>
 	<string name="lora_osmand_scan">Find radio</string>
 	<string name="lora_osmand_scan_summary">Scan for a Meshtastic radio</string>
 	<string name="lora_osmand_radio">Radio</string>

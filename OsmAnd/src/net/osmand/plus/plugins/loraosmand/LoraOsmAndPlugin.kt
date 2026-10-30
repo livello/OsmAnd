@@ -47,6 +47,12 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		registerBooleanPreference(PREF_AUTO, true).makeGlobal().makeShared()
 	val SHOW_ON_MAP: CommonPreference<Boolean> =
 		registerBooleanPreference(PREF_SHOW_MAP, true).makeGlobal().makeShared()
+	val MARKER_STYLE: CommonPreference<String> =
+		registerStringPreference(PREF_MARKER_STYLE, LoraMarkerStyle.CIRCLE.id).makeGlobal().makeShared()
+	val MARKER_SIZE: CommonPreference<Int> =
+		registerIntPreference(PREF_MARKER_SIZE, 100).makeGlobal().makeShared()
+	val MARKER_FONT: CommonPreference<Int> =
+		registerIntPreference(PREF_MARKER_FONT, 11).makeGlobal().makeShared()
 	val DEVICE_ADDRESS: CommonPreference<String> =
 		registerStringPreference(PREF_ADDRESS, "").makeGlobal().makeShared()
 	val DEVICE_NAME: CommonPreference<String> =
@@ -73,6 +79,7 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 	private val heardChat = LinkedHashSet<String>()
 	private var echoText: String = ""
 	private var echoAt: Long = 0L
+	private var readIncoming: Int = 0
 	private val uiListeners = CopyOnWriteArrayList<Runnable>()
 
 	@Volatile var statusText: String = ""
@@ -337,6 +344,41 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 	}
 
 	fun rssiOf(num: Int): Int? = nodeRssi[num]
+
+	fun phoneLocation(): net.osmand.Location? = app.locationProvider.lastKnownLocation
+
+	fun markerStyle(): LoraMarkerStyle = LoraMarkerStyle.from(MARKER_STYLE.get())
+
+	fun setMarkerStyle(style: LoraMarkerStyle) {
+		MARKER_STYLE.set(style.id)
+		refreshMap()
+		notifyUi()
+	}
+
+	fun setMarkerSize(percent: Int) {
+		MARKER_SIZE.set(percent.coerceIn(50, 200))
+		refreshMap()
+		notifyUi()
+	}
+
+	fun setMarkerFont(sp: Int) {
+		MARKER_FONT.set(sp.coerceIn(8, 32))
+		refreshMap()
+		notifyUi()
+	}
+
+	fun chatTotal(): Int = chat.size
+
+	fun chatUnread(): Int = (chat.count { !it.outgoing } - readIncoming).coerceAtLeast(0)
+
+	fun markChatRead() {
+		val incoming = chat.count { !it.outgoing }
+		if (incoming == readIncoming) {
+			return
+		}
+		readIncoming = incoming
+		notifyUi()
+	}
 
 	fun openNodeInMeshtastic(num: Int) {
 		val intent = Intent(Intent.ACTION_VIEW, Uri.parse("meshtastic://meshtastic/nodes/$num")).apply {
@@ -636,6 +678,7 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		for (listener in uiListeners) {
 			listener.run()
 		}
+		refreshMap()
 	}
 
 	private fun startMeshBridge() {
@@ -687,6 +730,9 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 	companion object {
 		const val PREF_AUTO = "lora_osmand_autoconnect"
 		const val PREF_SHOW_MAP = "lora_osmand_show_map"
+		const val PREF_MARKER_STYLE = "lora_osmand_marker_style"
+		const val PREF_MARKER_SIZE = "lora_osmand_marker_size"
+		const val PREF_MARKER_FONT = "lora_osmand_marker_font"
 		const val PREF_ADDRESS = "lora_osmand_device_address"
 		const val PREF_NAME = "lora_osmand_device_name"
 		const val PREF_INTERVAL = "lora_osmand_pos_interval_sec"
@@ -702,5 +748,7 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 
 		val INTERVAL_CHOICES = intArrayOf(0, 30, 60, 120, 300, 900, 1800)
 		val OFFSET_CHOICES = intArrayOf(0, 50, 100, 250, 500, 1000)
+		val MARKER_SIZE_CHOICES = intArrayOf(50, 75, 100, 125, 150, 200)
+		val MARKER_FONT_CHOICES = intArrayOf(8, 10, 11, 12, 14, 18, 24)
 	}
 }

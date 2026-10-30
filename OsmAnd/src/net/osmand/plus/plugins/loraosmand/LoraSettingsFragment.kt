@@ -80,6 +80,28 @@ class LoraSettingsFragment : BaseSettingsFragment() {
 				) { plugin.setPositionInterval(it) }
 				return true
 			}
+			"lora_osmand_marker_style" -> {
+				pickStyle()
+				return true
+			}
+			"lora_osmand_marker_size" -> {
+				pickNumber(
+					R.string.lora_osmand_marker_size,
+					LoraOsmAndPlugin.MARKER_SIZE_CHOICES,
+					plugin.MARKER_SIZE.get(),
+					{ getString(R.string.lora_osmand_percent, it) },
+				) { plugin.setMarkerSize(it) }
+				return true
+			}
+			"lora_osmand_marker_font" -> {
+				pickNumber(
+					R.string.lora_osmand_marker_font,
+					LoraOsmAndPlugin.MARKER_FONT_CHOICES,
+					plugin.MARKER_FONT.get(),
+					{ getString(R.string.lora_osmand_font_sp, it) },
+				) { plugin.setMarkerFont(it) }
+				return true
+			}
 			"lora_osmand_offset" -> {
 				pickNumber(
 					R.string.lora_osmand_pos_offset,
@@ -108,6 +130,11 @@ class LoraSettingsFragment : BaseSettingsFragment() {
 		} else {
 			plugin.statusText.ifBlank { getString(R.string.lora_osmand_disconnected) }
 		}
+		findPreference<Preference>("lora_osmand_marker_style")?.summary = styleLabel(plugin.markerStyle())
+		findPreference<Preference>("lora_osmand_marker_size")?.summary =
+			getString(R.string.lora_osmand_percent, plugin.MARKER_SIZE.get())
+		findPreference<Preference>("lora_osmand_marker_font")?.summary =
+			getString(R.string.lora_osmand_font_sp, plugin.MARKER_FONT.get())
 		findPreference<Preference>("lora_osmand_interval")?.summary = formatInterval(plugin.POS_INTERVAL_SEC.get())
 		findPreference<Preference>("lora_osmand_offset")?.summary = formatOffset(plugin.POS_OFFSET_M.get())
 		val sent = plugin.lastSentMs()
@@ -145,6 +172,28 @@ class LoraSettingsFragment : BaseSettingsFragment() {
 		adapter.clear()
 		adapter.addAll(plugin.foundRadios.map { "${it.name}  ${it.rssi}" })
 		adapter.notifyDataSetChanged()
+	}
+
+	private fun pickStyle() {
+		val styles = LoraMarkerStyle.entries
+		AlertDialog.Builder(requireContext())
+			.setTitle(R.string.lora_osmand_marker_style)
+			.setItems(styles.map { styleLabel(it) }.toTypedArray()) { _, which ->
+				plugin.setMarkerStyle(styles[which])
+			}
+			.setNegativeButton(R.string.shared_string_cancel, null)
+			.show()
+	}
+
+	private fun styleLabel(style: LoraMarkerStyle): String {
+		val id = when (style) {
+			LoraMarkerStyle.CIRCLE -> R.string.lora_osmand_style_circle
+			LoraMarkerStyle.MESHTASTIC -> R.string.lora_osmand_style_meshtastic
+			LoraMarkerStyle.PIN -> R.string.lora_osmand_style_pin
+			LoraMarkerStyle.PLATE -> R.string.lora_osmand_style_plate
+			LoraMarkerStyle.DOT -> R.string.lora_osmand_style_dot
+		}
+		return getString(id)
 	}
 
 	private fun pickNumber(title: Int, presets: IntArray, current: Int, label: (Int) -> String, apply: (Int) -> Unit) {
