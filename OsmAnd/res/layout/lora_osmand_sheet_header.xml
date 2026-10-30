@@ -30,7 +30,9 @@
 		android:background="?attr/selectableItemBackgroundBorderless"
 		android:gravity="center"
 		android:includeFontPadding="false"
-		android:minWidth="40dp"
+		android:minWidth="32dp"
+		android:paddingStart="3dp"
+		android:paddingEnd="3dp"
 		android:text="⚙️"
 		android:textSize="18sp" />
 
@@ -41,7 +43,9 @@
 		android:background="?attr/selectableItemBackgroundBorderless"
 		android:gravity="center"
 		android:includeFontPadding="false"
-		android:minWidth="40dp"
+		android:minWidth="32dp"
+		android:paddingStart="3dp"
+		android:paddingEnd="3dp"
 		android:text="📡"
 		android:textSize="18sp" />
 
@@ -53,7 +57,9 @@
 		android:contentDescription="@string/lora_osmand_about_tab"
 		android:gravity="center"
 		android:includeFontPadding="false"
-		android:minWidth="40dp"
+		android:minWidth="32dp"
+		android:paddingStart="3dp"
+		android:paddingEnd="3dp"
 		android:text="ℹ️"
 		android:textSize="18sp" />
 
@@ -64,7 +70,8 @@
 		android:background="?attr/selectableItemBackgroundBorderless"
 		android:gravity="center"
 		android:includeFontPadding="false"
-		android:minWidth="40dp"
+		android:minWidth="32dp"
+		android:paddingStart="3dp"
 		android:paddingEnd="6dp"
 		android:text="✉️"
 		android:textSize="18sp" />

@@ -1,72 +1,113 @@
 <?xml version="1.0" encoding="utf-8"?>
-<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+	android:title="@string/lora_osmand_plugin_name">
+
+	<Preference
+		android:key="lora_cat_link"
+		android:layout="@layout/ev_bms_preference_category_divider"
+		android:persistent="false"
+		android:selectable="true"
+		android:title="@string/lora_osmand_cat_link" />
 
 	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
 		android:key="lora_osmand_autoconnect"
-		android:layout="@layout/preference_with_descr"
+		android:layout="@layout/ev_bms_preference_switch"
 		android:summaryOff="@string/shared_string_disabled"
 		android:summaryOn="@string/shared_string_enabled"
 		android:title="@string/lora_osmand_autoconnect" />
 
 	<Preference
 		android:key="lora_osmand_notify"
-		android:layout="@layout/preference_with_descr"
+		android:layout="@layout/ev_bms_preference_with_descr"
 		android:persistent="false"
 		android:title="@string/lora_osmand_notify_access" />
 
 	<Preference
-		android:key="lora_osmand_marker_style"
-		android:layout="@layout/preference_with_descr"
-		android:persistent="false"
-		android:title="@string/lora_osmand_marker_style" />
-
-	<Preference
-		android:key="lora_osmand_marker_size"
-		android:layout="@layout/preference_with_descr"
-		android:persistent="false"
-		android:title="@string/lora_osmand_marker_size" />
-
-	<Preference
-		android:key="lora_osmand_marker_font"
-		android:layout="@layout/preference_with_descr"
-		android:persistent="false"
-		android:title="@string/lora_osmand_marker_font" />
-
-	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
-		android:key="lora_osmand_show_map"
-		android:layout="@layout/preference_with_descr"
-		android:summaryOff="@string/shared_string_disabled"
-		android:summaryOn="@string/shared_string_enabled"
-		android:title="@string/lora_osmand_show_on_map" />
-
-	<Preference
 		android:key="lora_osmand_scan"
-		android:layout="@layout/preference_with_descr"
+		android:layout="@layout/ev_bms_preference_with_descr"
 		android:persistent="false"
 		android:title="@string/lora_osmand_scan" />
 
 	<Preference
 		android:key="lora_osmand_status"
-		android:layout="@layout/preference_with_descr"
+		android:layout="@layout/ev_bms_preference_with_descr"
 		android:persistent="false"
 		android:title="@string/lora_osmand_radio" />
 
 	<Preference
+		android:key="lora_cat_map"
+		android:layout="@layout/ev_bms_preference_category_divider"
+		android:persistent="false"
+		android:selectable="true"
+		android:title="@string/lora_osmand_cat_map" />
+
+	<Preference
+		android:key="lora_osmand_marker_style"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:persistent="false"
+		android:title="@string/lora_osmand_marker_style" />
+
+	<Preference
+		android:key="lora_osmand_marker_size"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:persistent="false"
+		android:title="@string/lora_osmand_marker_size" />
+
+	<Preference
+		android:key="lora_osmand_marker_font"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:persistent="false"
+		android:title="@string/lora_osmand_marker_font" />
+
+	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
+		android:key="lora_osmand_show_map"
+		android:layout="@layout/ev_bms_preference_switch"
+		android:summaryOff="@string/shared_string_disabled"
+		android:summaryOn="@string/shared_string_enabled"
+		android:title="@string/lora_osmand_show_on_map" />
+
+	<Preference
+		android:key="lora_cat_me"
+		android:layout="@layout/ev_bms_preference_category_divider"
+		android:persistent="false"
+		android:selectable="true"
+		android:title="@string/lora_osmand_cat_me" />
+
+	<Preference
 		android:key="lora_osmand_interval"
-		android:layout="@layout/preference_with_descr"
+		android:layout="@layout/ev_bms_preference_with_descr"
 		android:persistent="false"
 		android:title="@string/lora_osmand_pos_interval" />
 
 	<Preference
 		android:key="lora_osmand_offset"
-		android:layout="@layout/preference_with_descr"
+		android:layout="@layout/ev_bms_preference_with_descr"
 		android:persistent="false"
 		android:title="@string/lora_osmand_pos_offset" />
 
 	<Preference
 		android:key="lora_osmand_pos_status"
-		android:layout="@layout/preference_with_descr"
+		android:layout="@layout/ev_bms_preference_with_descr"
 		android:persistent="false"
 		android:title="@string/lora_osmand_pos_status" />
+
+	<Preference
+		android:key="lora_cat_tracks"
+		android:layout="@layout/ev_bms_preference_category_divider"
+		android:persistent="false"
+		android:selectable="true"
+		android:title="@string/lora_osmand_cat_tracks" />
+
+	<Preference
+		android:key="lora_osmand_track_interval"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:persistent="false"
+		android:title="@string/lora_osmand_track_interval" />
+
+	<Preference
+		android:key="lora_osmand_track_offset"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:persistent="false"
+		android:title="@string/lora_osmand_track_offset" />
 
 </PreferenceScreen>

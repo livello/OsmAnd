@@ -9,9 +9,11 @@ import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import androidx.appcompat.app.AlertDialog
 import androidx.preference.Preference
+import androidx.preference.PreferenceViewHolder
 import net.osmand.plus.R
 import net.osmand.plus.plugins.PluginsHelper
 import net.osmand.plus.settings.fragments.BaseSettingsFragment
+import net.osmand.plus.utils.AndroidUtils
 import java.text.DateFormat
 import java.util.Date
 import kotlin.math.roundToInt
@@ -20,6 +22,16 @@ class LoraSettingsFragment : BaseSettingsFragment() {
 
 	companion object {
 		const val EMBEDDED_KEY = "lora_osmand_settings_embedded"
+
+		val SETTINGS_JUMPS = listOf(
+			Jump("lora_cat_link", "📻", R.string.lora_osmand_cat_link),
+			Jump("lora_cat_map", "🗺️", R.string.lora_osmand_cat_map),
+			Jump("lora_cat_me", "📍", R.string.lora_osmand_cat_me),
+			Jump("lora_cat_tracks", "〰️", R.string.lora_osmand_cat_tracks),
+		)
+		private val CATEGORY_KEYS = SETTINGS_JUMPS.map { it.key }.toSet()
+
+		data class Jump(val key: String, val emoji: String, val titleRes: Int)
 	}
 
 	private val plugin = PluginsHelper.requirePlugin(LoraOsmAndPlugin::class.java)
@@ -36,11 +48,15 @@ class LoraSettingsFragment : BaseSettingsFragment() {
 		val view = super.onCreateView(inflater, container, savedInstanceState)!!
 		if (arguments?.getBoolean(EMBEDDED_KEY) == true) {
 			view.findViewById<View>(R.id.appbar)?.visibility = View.GONE
+			view.setPadding(view.paddingLeft, 0, view.paddingRight, view.paddingBottom)
+			setJumpInset(true)
 		}
 		return view
 	}
 
 	override fun setupPreferences() {
+		decorateAll()
+		applyCategoryCollapse()
 		bindDynamic()
 	}
 
@@ -53,6 +69,31 @@ class LoraSettingsFragment : BaseSettingsFragment() {
 	override fun onPause() {
 		plugin.removeUiListener(refresh)
 		super.onPause()
+	}
+
+	override fun onBindPreferenceViewHolder(preference: Preference, holder: PreferenceViewHolder) {
+		super.onBindPreferenceViewHolder(preference, holder)
+		val key = preference.key ?: return
+		if (key !in CATEGORY_KEYS) {
+			return
+		}
+		holder.itemView.isClickable = true
+		holder.itemView.setOnClickListener { toggleSettingsGroup(key) }
+	}
+
+	fun scrollToSettingsGroup(key: String) {
+		expandSettingsGroup(key)
+		val pref = findPreference<Preference>(key) ?: return
+		scrollToPreference(pref)
+	}
+
+	fun setJumpInset(visible: Boolean) {
+		if (arguments?.getBoolean(EMBEDDED_KEY) != true) {
+			return
+		}
+		val list = listView ?: return
+		val bottom = AndroidUtils.dpToPx(app, if (visible) 48f else 8f)
+		list.setPadding(list.paddingLeft, list.paddingTop, list.paddingRight, bottom)
 	}
 
 	override fun onPreferenceClick(preference: Preference): Boolean {
@@ -78,6 +119,15 @@ class LoraSettingsFragment : BaseSettingsFragment() {
 					plugin.POS_INTERVAL_SEC.get(),
 					::formatInterval,
 				) { plugin.setPositionInterval(it) }
+				return true
+			}
+			"lora_osmand_track_interval" -> {
+				pickNumber(
+					R.string.lora_osmand_track_interval,
+					LoraOsmAndPlugin.INTERVAL_CHOICES,
+					plugin.TRACK_INTERVAL_SEC.get(),
+					::formatInterval,
+				) { plugin.TRACK_INTERVAL_SEC.set(it) }
 				return true
 			}
 			"lora_osmand_marker_style" -> {
@@ -111,8 +161,98 @@ class LoraSettingsFragment : BaseSettingsFragment() {
 				) { plugin.setPositionOffset(it) }
 				return true
 			}
+			"lora_osmand_track_offset" -> {
+				pickNumber(
+					R.string.lora_osmand_track_offset,
+					LoraOsmAndPlugin.OFFSET_CHOICES,
+					plugin.TRACK_OFFSET_M.get(),
+					::formatOffset,
+				) { plugin.TRACK_OFFSET_M.set(it) }
+				return true
+			}
 		}
 		return super.onPreferenceClick(preference)
+	}
+
+	override fun onPreferenceChange(preference: Preference, newValue: Any?): Boolean {
+		val ok = super.onPreferenceChange(preference, newValue)
+		if (preference.key == LoraOsmAndPlugin.PREF_SHOW_MAP) {
+			view?.post { app.osmandMap.mapView.refreshMap() }
+		}
+		return ok
+	}
+
+	private fun decorateAll() {
+		decorate("lora_osmand_autoconnect", "🔄", R.drawable.ic_action_signal)
+		decorate("lora_osmand_notify", "🔔", R.drawable.ic_action_notification)
+		decorate("lora_osmand_scan", "🔎", R.drawable.ic_action_search_dark)
+		decorate("lora_osmand_status", "📡", R.drawable.ic_action_signal)
+		decorate("lora_osmand_marker_style", "🎨", R.drawable.ic_action_appearance)
+		decorate("lora_osmand_marker_size", "🔘", R.drawable.ic_action_map_magnifier)
+		decorate("lora_osmand_marker_font", "🔤", R.drawable.ic_action_map_text_size)
+		decorate("lora_osmand_show_map", "🗺️", R.drawable.ic_action_map_style)
+		decorate("lora_osmand_interval", "⏱️", R.drawable.ic_action_time_span)
+		decorate("lora_osmand_offset", "📏", R.drawable.ic_action_distance)
+		decorate("lora_osmand_pos_status", "📌", R.drawable.ic_action_gdirections_dark)
+		decorate("lora_osmand_track_interval", "⏱️", R.drawable.ic_action_time_span)
+		decorate("lora_osmand_track_offset", "📏", R.drawable.ic_action_distance)
+	}
+
+	private fun decorate(key: String, emoji: String, iconRes: Int) {
+		val pref = findPreference<Preference>(key) ?: return
+		val title = pref.title?.toString().orEmpty()
+		if (title.isNotEmpty() && !title.startsWith(emoji)) {
+			pref.title = "$emoji  $title"
+		}
+		pref.icon = getContentIcon(iconRes)
+	}
+
+	private fun decorateCategory(key: String, emoji: String, expanded: Boolean) {
+		val pref = findPreference<Preference>(key) ?: return
+		val jump = SETTINGS_JUMPS.firstOrNull { it.key == key }
+		val label = if (jump != null) getString(jump.titleRes) else pref.title?.toString().orEmpty()
+		pref.title = "$emoji  $label  ${if (expanded) "▾" else "▸"}"
+		pref.isSelectable = true
+		pref.onPreferenceClickListener = Preference.OnPreferenceClickListener {
+			toggleSettingsGroup(key)
+			true
+		}
+	}
+
+	private fun expandSettingsGroup(key: String) {
+		val keys = plugin.settingsGroups()
+		if (keys.add(key)) {
+			plugin.saveSettingsGroups(keys)
+			applyCategoryCollapse()
+		}
+	}
+
+	private fun toggleSettingsGroup(key: String) {
+		val keys = plugin.settingsGroups()
+		if (!keys.add(key)) {
+			keys.remove(key)
+		}
+		plugin.saveSettingsGroups(keys)
+		applyCategoryCollapse()
+	}
+
+	private fun applyCategoryCollapse() {
+		val screen = preferenceScreen ?: return
+		val expanded = plugin.settingsGroups()
+		var current: String? = null
+		for (i in 0 until screen.preferenceCount) {
+			val pref = screen.getPreference(i)
+			val key = pref.key
+			if (key != null && key in CATEGORY_KEYS) {
+				current = key
+				val emoji = SETTINGS_JUMPS.firstOrNull { it.key == key }?.emoji ?: ""
+				decorateCategory(key, emoji, key in expanded)
+				continue
+			}
+			if (current != null) {
+				pref.isVisible = current in expanded
+			}
+		}
 	}
 
 	private fun bindDynamic() {
@@ -137,6 +277,8 @@ class LoraSettingsFragment : BaseSettingsFragment() {
 			getString(R.string.lora_osmand_font_sp, plugin.MARKER_FONT.get())
 		findPreference<Preference>("lora_osmand_interval")?.summary = formatInterval(plugin.POS_INTERVAL_SEC.get())
 		findPreference<Preference>("lora_osmand_offset")?.summary = formatOffset(plugin.POS_OFFSET_M.get())
+		findPreference<Preference>("lora_osmand_track_interval")?.summary = formatInterval(plugin.TRACK_INTERVAL_SEC.get())
+		findPreference<Preference>("lora_osmand_track_offset")?.summary = formatOffset(plugin.TRACK_OFFSET_M.get())
 		val sent = plugin.lastSentMs()
 		val whenText = if (sent <= 0L) {
 			getString(R.string.lora_osmand_never_sent)

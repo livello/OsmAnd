@@ -43,12 +43,15 @@ import kotlin.coroutines.suspendCoroutine
 
 data class FoundRadio(val name: String, val address: String, val rssi: Int)
 
+enum class LoraDelivery { INCOMING, SENDING, SENT, FAILED }
+
 data class LoraChatLine(
 	val timeMs: Long,
 	val fromName: String,
 	val text: String,
 	val outgoing: Boolean,
 	val channel: Int,
+	val delivery: LoraDelivery = LoraDelivery.INCOMING,
 )
 
 /**

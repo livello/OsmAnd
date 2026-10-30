@@ -12,8 +12,8 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
+import android.graphics.drawable.GradientDrawable
 import android.widget.EditText
-import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Spinner
@@ -21,8 +21,13 @@ import android.widget.TextView
 import android.graphics.Typeface
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.widget.SwitchCompat
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.Insets
+import androidx.core.text.HtmlCompat
+import net.osmand.plus.utils.ColorUtilities
+import java.text.DateFormat
+import java.util.Date
 import androidx.fragment.app.FragmentManager
 import net.osmand.plus.BuildConfig
 import net.osmand.plus.R
@@ -60,6 +65,9 @@ class LoraSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	private val channelIndexes = ArrayList<Int>()
 	private var onlineOnly = false
 	private var visibleOnly = false
+	private var chatSignature = ""
+	private var composeDialog: AlertDialog? = null
+	private var composeField: EditText? = null
 	private val refresh = Runnable { if (view != null) bindLive() }
 
 	private val audioPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -119,15 +127,17 @@ class LoraSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			visibleOnly = !visibleOnly
 			bindLive()
 		}
-		view.findViewById<TextView>(R.id.lora_osmand_about_text).text =
-			getString(R.string.lora_osmand_about, BuildConfig.VERSION_NAME)
-		view.findViewById<View>(R.id.lora_osmand_channel_add).setOnClickListener { promptChannel() }
-		view.findViewById<ImageButton>(R.id.lora_osmand_mic).setOnClickListener { onMic() }
-		view.findViewById<ImageButton>(R.id.lora_osmand_send).setOnClickListener { sendComposed() }
-		view.findViewById<EditText>(R.id.lora_osmand_compose).setOnEditorActionListener { _, _, _ ->
-			sendComposed()
-			true
-		}
+		val about = view.findViewById<TextView>(R.id.lora_osmand_about_text)
+		about.setTextColor(ColorUtilities.getPrimaryTextColor(requireContext(), nightMode))
+		about.text = HtmlCompat.fromHtml(
+			getString(R.string.lora_osmand_about, BuildConfig.VERSION_NAME),
+			HtmlCompat.FROM_HTML_MODE_LEGACY,
+		)
+		val speak = view.findViewById<SwitchCompat>(R.id.lora_osmand_speak_switch)
+		speak.isChecked = plugin.SPEAK_CHAT.get()
+		speak.setOnCheckedChangeListener { _, checked -> plugin.SPEAK_CHAT.set(checked) }
+		view.findViewById<View>(R.id.lora_osmand_compose_open).setOnClickListener { showComposeDialog() }
+		buildJumpBar(view)
 		if (childFragmentManager.findFragmentByTag(SETTINGS_TAG) == null) {
 			val fragment = LoraSettingsFragment()
 			fragment.arguments = Bundle().apply { putBoolean(LoraSettingsFragment.EMBEDDED_KEY, true) }
@@ -141,6 +151,7 @@ class LoraSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	override fun onResume() {
 		super.onResume()
 		plugin.addUiListener(refresh)
+		plugin.pullMeshMessages()
 		bindLive()
 	}
 
@@ -150,7 +161,15 @@ class LoraSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		super.onPause()
 	}
 
+	override fun onDestroyView() {
+		composeDialog?.dismiss()
+		composeDialog = null
+		composeField = null
+		super.onDestroyView()
+	}
+
 	fun showTab(tab: LoraSheetTab) {
+		val openingMessages = tab == LoraSheetTab.MESSAGES && currentTab != tab
 		currentTab = tab
 		val root = view ?: return
 		root.findViewById<View>(R.id.lora_osmand_settings_container).visibility =
@@ -161,6 +180,13 @@ class LoraSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			if (tab == LoraSheetTab.MESSAGES) View.VISIBLE else View.GONE
 		root.findViewById<View>(R.id.lora_osmand_about).visibility =
 			if (tab == LoraSheetTab.ABOUT) View.VISIBLE else View.GONE
+		root.findViewById<View>(R.id.lora_osmand_jumps).visibility =
+			if (tab == LoraSheetTab.SETTINGS) View.VISIBLE else View.GONE
+		(childFragmentManager.findFragmentByTag(SETTINGS_TAG) as? LoraSettingsFragment)
+			?.setJumpInset(tab == LoraSheetTab.SETTINGS)
+		if (openingMessages) {
+			plugin.pullMeshMessages()
+		}
 		bindLive()
 	}
 
@@ -171,12 +197,7 @@ class LoraSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		}
 		if (currentTab == LoraSheetTab.MESSAGES) {
 			plugin.markChatRead()
-			bindChannels(root.findViewById(R.id.lora_osmand_channel))
-			val chat = root.findViewById<TextView>(R.id.lora_osmand_chat)
-			chat.text = plugin.chat.joinToString("\n") { line ->
-				val mark = if (line.outgoing) "→" else "←"
-				"$mark ${line.fromName}: ${line.text}"
-			}
+			bindMessages(root)
 		}
 	}
 
@@ -206,32 +227,168 @@ class LoraSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		}
 	}
 
-	private fun selectedChannel(): Int {
-		val spinner = view?.findViewById<Spinner>(R.id.lora_osmand_channel) ?: return 0
+	private fun selectedChannel(spinner: Spinner?): Int {
+		if (spinner == null) {
+			return 0
+		}
 		return channelIndexes.getOrNull(spinner.selectedItemPosition) ?: 0
 	}
 
-	private fun sendComposed() {
-		val field = view?.findViewById<EditText>(R.id.lora_osmand_compose) ?: return
-		val text = field.text?.toString().orEmpty()
-		if (text.isBlank()) {
-			return
+	private fun showComposeDialog() {
+		val ctx = requireContext()
+		composeDialog?.dismiss()
+		val content = layoutInflater.inflate(R.layout.lora_osmand_compose_dialog, null)
+		val spinner = content.findViewById<Spinner>(R.id.lora_compose_channel)
+		val field = content.findViewById<EditText>(R.id.lora_compose_text)
+		composeField = field
+		bindChannels(spinner)
+		content.findViewById<View>(R.id.lora_compose_close).setOnClickListener {
+			composeDialog?.dismiss()
 		}
-		plugin.sendChat(text, selectedChannel())
-		field.setText("")
+		content.findViewById<View>(R.id.lora_compose_mic).setOnClickListener { onMic() }
+		content.findViewById<View>(R.id.lora_compose_send).setOnClickListener {
+			val text = field.text?.toString().orEmpty()
+			if (text.isBlank()) {
+				return@setOnClickListener
+			}
+			plugin.sendChat(text, selectedChannel(spinner))
+			field.setText("")
+			composeDialog?.dismiss()
+		}
+		field.setOnEditorActionListener { _, _, _ ->
+			content.findViewById<View>(R.id.lora_compose_send).performClick()
+			true
+		}
+		val dialog = AlertDialog.Builder(ctx).setView(content).create()
+		dialog.setOnDismissListener {
+			if (composeDialog === dialog) {
+				composeDialog = null
+				composeField = null
+			}
+			stopRecognizer()
+		}
+		composeDialog = dialog
+		dialog.show()
+		val bg = ColorUtilities.getListBgColor(app, nightMode)
+		dialog.window?.setBackgroundDrawable(GradientDrawable().apply {
+			setColor(bg)
+			cornerRadius = dp(18).toFloat()
+		})
+		val width = (resources.displayMetrics.widthPixels * 0.9f).toInt()
+		dialog.window?.setLayout(width, ViewGroup.LayoutParams.WRAP_CONTENT)
+		dialog.window?.setGravity(Gravity.CENTER)
 	}
 
-	private fun promptChannel() {
-		val input = EditText(requireContext())
-		input.hint = getString(R.string.lora_osmand_channel_name)
-		AlertDialog.Builder(requireContext())
-			.setTitle(R.string.lora_osmand_channel_create)
-			.setView(input)
-			.setPositiveButton(R.string.shared_string_add) { _, _ ->
-				plugin.createChannel(input.text?.toString().orEmpty())
+	private fun bindMessages(root: View) {
+		val status = root.findViewById<TextView>(R.id.lora_osmand_message_status)
+		val link = if (plugin.notificationAccess()) {
+			getString(R.string.lora_osmand_link_on)
+		} else {
+			getString(R.string.lora_osmand_link_off)
+		}
+		val tak = if (plugin.connected) getString(R.string.lora_osmand_tak_on) else getString(R.string.lora_osmand_tak_off)
+		val seen = plugin.lastMeshNoticeMs
+		val whenText = if (seen <= 0L) {
+			getString(R.string.lora_osmand_mesh_quiet)
+		} else {
+			DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(seen))
+		}
+		status.text = getString(R.string.lora_osmand_messages_status, link, tak, whenText)
+		val signature = plugin.chat.joinToString("|") { "${it.timeMs}:${it.delivery}:${it.text}" }
+		if (signature == chatSignature && root.findViewById<LinearLayout>(R.id.lora_osmand_chat).childCount > 0) {
+			return
+		}
+		chatSignature = signature
+		val scroll = root.findViewById<ScrollView>(R.id.lora_osmand_chat_scroll)
+		val nearBottom = scroll.getChildAt(0) == null ||
+			scroll.getChildAt(0).bottom <= scroll.height + scroll.scrollY + dp(48)
+		val saved = scroll.scrollY
+		val list = root.findViewById<LinearLayout>(R.id.lora_osmand_chat)
+		list.removeAllViews()
+		if (plugin.chat.isEmpty()) {
+			list.addView(line(getString(R.string.lora_osmand_no_messages)))
+		}
+		for (entry in plugin.chat) {
+			list.addView(messageRow(entry))
+		}
+		scroll.post {
+			if (nearBottom) {
+				scroll.fullScroll(View.FOCUS_DOWN)
+			} else {
+				scroll.scrollTo(0, saved)
 			}
-			.setNegativeButton(R.string.shared_string_cancel, null)
-			.show()
+		}
+	}
+
+	private fun messageRow(entry: LoraChatLine): View {
+		val ctx = requireContext()
+		val row = LinearLayout(ctx).apply {
+			orientation = LinearLayout.HORIZONTAL
+			gravity = Gravity.CENTER_VERTICAL
+			setPadding(0, dp(4), 0, dp(4))
+		}
+		val column = LinearLayout(ctx).apply {
+			orientation = LinearLayout.VERTICAL
+			layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+		}
+		val mark = if (entry.outgoing) "→" else "←"
+		val state = when (entry.delivery) {
+			LoraDelivery.SENDING -> "⏳"
+			LoraDelivery.SENT -> "✅"
+			LoraDelivery.FAILED -> "⚠️"
+			LoraDelivery.INCOMING -> ""
+		}
+		column.addView(TextView(ctx).apply {
+			text = "$mark ${entry.fromName}"
+			textSize = 13f
+			setTypeface(typeface, Typeface.BOLD)
+			setTextColor(ColorUtilities.getPrimaryTextColor(ctx, nightMode))
+		})
+		column.addView(TextView(ctx).apply {
+			text = entry.text
+			textSize = 15f
+			setTextColor(ColorUtilities.getPrimaryTextColor(ctx, nightMode))
+		})
+		row.addView(column)
+		if (state.isNotEmpty()) {
+			row.addView(emojiButton(state, contentFor(entry.delivery)) {})
+		}
+		row.addView(emojiButton("🔊", getString(R.string.lora_osmand_speak_line)) {
+			plugin.speakLine(entry.fromName, entry.text)
+		})
+		return row
+	}
+
+	private fun contentFor(delivery: LoraDelivery): String {
+		val id = when (delivery) {
+			LoraDelivery.SENDING -> R.string.lora_osmand_status_sending
+			LoraDelivery.SENT -> R.string.lora_osmand_status_sent
+			LoraDelivery.FAILED -> R.string.lora_osmand_status_failed
+			LoraDelivery.INCOMING -> R.string.lora_osmand_speak_line
+		}
+		return getString(id)
+	}
+
+	private fun buildJumpBar(root: View) {
+		val row = root.findViewById<LinearLayout>(R.id.lora_osmand_jump_row)
+		row.removeAllViews()
+		for (jump in LoraSettingsFragment.SETTINGS_JUMPS) {
+			row.addView(TextView(requireContext()).apply {
+				text = jump.emoji
+				textSize = 18f
+				gravity = Gravity.CENTER
+				minWidth = dp(40)
+				layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
+				contentDescription = getString(jump.titleRes)
+				if (Build.VERSION.SDK_INT >= 26) {
+					tooltipText = getString(jump.titleRes)
+				}
+				setOnClickListener {
+					(childFragmentManager.findFragmentByTag(SETTINGS_TAG) as? LoraSettingsFragment)
+						?.scrollToSettingsGroup(jump.key)
+				}
+			})
+		}
 	}
 
 	private fun onMic() {
@@ -295,7 +452,7 @@ class LoraSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 
 	private fun applyTranscript(results: Bundle?) {
 		val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull() ?: return
-		view?.findViewById<EditText>(R.id.lora_osmand_compose)?.setText(text)
+		composeField?.setText(text)
 	}
 
 	private fun recognitionIntent(): Intent {
@@ -373,6 +530,14 @@ class LoraSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			})
 		}
 		row.addView(column)
+		val recording = plugin.isTrackRecording(node.num)
+		row.addView(emojiButton(if (recording) "🔴" else "⚪", getString(R.string.lora_osmand_track_record)) {
+			plugin.setTrackRecording(node.num, !plugin.isTrackRecording(node.num))
+		})
+		val trackShown = plugin.isTrackShown(node.num)
+		row.addView(emojiButton(if (trackShown) "〰️" else "〰️", getString(R.string.lora_osmand_track_show)) {
+			plugin.setTrackShown(node.num, !plugin.isTrackShown(node.num))
+		}.also { it.alpha = if (trackShown) 1f else 0.35f })
 		val shown = plugin.nodeShownOnMap(node.num)
 		row.addView(TextView(ctx).apply {
 			text = if (shown) "👁" else "🚫"
@@ -386,6 +551,20 @@ class LoraSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			setOnClickListener { plugin.setNodeShownOnMap(node.num, !plugin.nodeShownOnMap(node.num)) }
 		})
 		return row
+	}
+
+	private fun emojiButton(emoji: String, description: String, click: () -> Unit): TextView {
+		return TextView(requireContext()).apply {
+			text = emoji
+			textSize = 16f
+			gravity = Gravity.CENTER
+			minWidth = dp(36)
+			contentDescription = description
+			if (Build.VERSION.SDK_INT >= 26) {
+				tooltipText = description
+			}
+			setOnClickListener { click() }
+		}
 	}
 
 	private fun dp(value: Int): Int = AndroidUtils.dpToPx(requireContext(), value.toFloat())

@@ -146,7 +146,7 @@ internal class LoraMapLayer(
 				append(':')
 				append(node.shortLabel())
 				append(':')
-				append(colorFor(node))
+				append(iconColor(style, node, plugin.ownNodeNum()))
 				append(':')
 				append(node.isMeshOnline())
 			}
@@ -216,7 +216,7 @@ internal class LoraMapLayer(
 
 	private fun drawBadge(canvas: Canvas, node: NodeInfo, label: String, radius: Float, font: Float, night: Boolean) {
 		val style = plugin.markerStyle()
-		val color = if (style == LoraMarkerStyle.MESHTASTIC) meshColor(node) else colorFor(node)
+		val color = iconColor(style, node, plugin.ownNodeNum())
 		text.textSize = font
 		text.color = Color.WHITE
 		text.textAlign = Paint.Align.CENTER
@@ -307,19 +307,18 @@ internal class LoraMapLayer(
 		}
 	}
 
-	private fun colorFor(node: NodeInfo): Int {
-		if (plugin.ownNodeNum() == node.num) {
-			return 0xFF1565C0.toInt()
-		}
-		return if (node.isMeshOnline()) 0xFF2E7D32.toInt() else 0xFF757575.toInt()
-	}
-
-	private fun meshColor(node: NodeInfo): Int {
-		val index = (node.num.toUInt() % MESH_COLORS.size.toUInt()).toInt()
-		return MESH_COLORS[index]
-	}
-
 	companion object {
+		fun iconColor(style: LoraMarkerStyle, node: NodeInfo, ownNum: Int?): Int {
+			if (style == LoraMarkerStyle.MESHTASTIC) {
+				val index = (node.num.toUInt() % MESH_COLORS.size.toUInt()).toInt()
+				return MESH_COLORS[index]
+			}
+			if (ownNum != null && ownNum == node.num) {
+				return 0xFF1565C0.toInt()
+			}
+			return if (node.isMeshOnline()) 0xFF2E7D32.toInt() else 0xFF757575.toInt()
+		}
+
 		private val MESH_COLORS = intArrayOf(
 			0xFF1E88E5.toInt(),
 			0xFF43A047.toInt(),

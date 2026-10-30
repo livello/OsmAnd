@@ -5,7 +5,9 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
+import android.os.Looper
 import android.provider.Settings
+import android.service.notification.NotificationListenerService
 import androidx.core.text.HtmlCompat
 import androidx.fragment.app.FragmentActivity
 import kotlinx.coroutines.CoroutineScope
@@ -69,11 +71,26 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		registerStringPreference(PREF_LAST_LON, "").makeGlobal()
 	private val hiddenNodesPref: CommonPreference<String> =
 		registerStringPreference(PREF_HIDDEN_NODES, "").makeGlobal().makeShared()
+	private val recordedNodesPref: CommonPreference<String> =
+		registerStringPreference(PREF_RECORDED_NODES, "").makeGlobal().makeShared()
+	private val shownTracksPref: CommonPreference<String> =
+		registerStringPreference(PREF_SHOWN_TRACKS, "").makeGlobal().makeShared()
+	private val settingsGroupsPref: CommonPreference<String> =
+		registerStringPreference(PREF_SETTINGS_GROUPS, DEFAULT_GROUPS).makeGlobal().makeShared()
+	val SPEAK_CHAT: CommonPreference<Boolean> =
+		registerBooleanPreference(PREF_SPEAK, true).makeGlobal().makeShared()
+	val TRACK_INTERVAL_SEC: CommonPreference<Int> =
+		registerIntPreference(PREF_TRACK_INTERVAL, 60).makeGlobal().makeShared()
+	val TRACK_OFFSET_M: CommonPreference<Int> =
+		registerIntPreference(PREF_TRACK_OFFSET, 50).makeGlobal().makeShared()
+	private val readIncomingPref: CommonPreference<Int> =
+		registerIntPreference(PREF_READ_INCOMING, 0).makeGlobal()
 
 	private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 	private val session = LoraSession(app, this)
 	private val tak = LoraTakClient(app, this)
 	private val speaker = LoraSpeaker(app)
+	private val tracks = LoraNodeTracks(app, this)
 	private val bridgeNodes = LinkedHashMap<Int, NodeInfo>()
 	private val nodeRssi = HashMap<Int, Int>()
 	private val heardChat = LinkedHashSet<String>()
@@ -87,6 +104,7 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 	@Volatile var nodes: List<NodeInfo> = emptyList()
 	@Volatile var channels: List<Channel> = emptyList()
 	@Volatile var foundRadios: List<FoundRadio> = emptyList()
+	@Volatile var lastMeshNoticeMs: Long = 0L
 	val chat = ArrayList<LoraChatLine>()
 
 	private var mapActivity: MapActivity? = null
@@ -94,6 +112,7 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 	private var anchorLat: Double? = null
 	private var anchorLon: Double? = null
 	private var pendingSend: Boolean = false
+	private var listenerRebound: Boolean = false
 	private var appliedSchedule: String? = null
 	private val positionTick = Runnable { tickPosition() }
 
@@ -123,10 +142,13 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 
 	override fun init(app: OsmandApplication, activity: Activity?): Boolean {
 		restoreAnchor()
+		loadChat()
 		app.locationProvider.addLocationListener(this)
 		schedulePositionTick()
 		if (usesMeshApp()) {
-			startMeshBridge()
+			rebindListenerOnce()
+			ensureBackground()
+			app.uiHandler.post { LoraMessageListener.pullActive() }
 		}
 		return true
 	}
@@ -135,6 +157,7 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		super.disable(app)
 		app.locationProvider.removeLocationListener(this)
 		app.uiHandler.removeCallbacks(positionTick)
+		LoraBridgeService.stop(app)
 		tak.stop()
 		speaker.shutdown()
 		session.disconnect()
@@ -170,7 +193,7 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 			if (session.isConnected()) {
 				session.disconnect()
 			}
-			startMeshBridge()
+			ensureBackground()
 		} else if (AUTO_CONNECT.get() && DEVICE_ADDRESS.get().isNotBlank() && !session.isConnected()) {
 			session.connect(DEVICE_ADDRESS.get())
 		}
@@ -276,17 +299,19 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		if (body.isEmpty()) {
 			return
 		}
+		val stamp = System.currentTimeMillis()
+		echoText = body
+		echoAt = stamp
+		chat.add(LoraChatLine(stamp, app.getString(R.string.lora_osmand_me), body, true, channelIndex, LoraDelivery.SENDING))
+		trimChat()
+		notifyUi()
 		if (usesMeshApp()) {
 			scope.launch(Dispatchers.IO) {
 				val viaReply = LoraMeshInbox.reply(channelIndex, body)
 				val sent = viaReply || (channelIndex == PRIMARY_CHANNEL && tak.sendGeoChat(body))
 				app.uiHandler.post {
-					if (sent) {
-						echoText = body
-						echoAt = System.currentTimeMillis()
-						chat.add(LoraChatLine(echoAt, app.getString(R.string.lora_osmand_me), body, true, channelIndex))
-						notifyUi()
-					} else {
+					markDelivery(stamp, if (sent) LoraDelivery.SENT else LoraDelivery.FAILED)
+					if (!sent) {
 						app.showToastMessage(R.string.lora_osmand_send_failed)
 					}
 				}
@@ -295,12 +320,24 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		}
 		scope.launch {
 			val result = session.sendText(body, channelIndex)
-			if (result.isSuccess) {
-				chat.add(LoraChatLine(System.currentTimeMillis(), app.getString(R.string.lora_osmand_me), body, true, channelIndex))
-				notifyUi()
-			} else {
+			markDelivery(stamp, if (result.isSuccess) LoraDelivery.SENT else LoraDelivery.FAILED)
+			if (result.isFailure) {
 				app.showToastMessage(result.exceptionOrNull()?.message ?: app.getString(R.string.lora_osmand_send_failed))
 			}
+			notifyUi()
+		}
+	}
+
+	fun speakLine(sender: String, text: String) {
+		speaker.speak(sender, text)
+	}
+
+	private fun markDelivery(stamp: Long, delivery: LoraDelivery) {
+		val index = chat.indexOfLast { it.timeMs == stamp && it.outgoing }
+		if (index >= 0) {
+			chat[index] = chat[index].copy(delivery = delivery)
+			saveChat()
+			notifyUi()
 		}
 	}
 
@@ -343,6 +380,56 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		notifyUi()
 	}
 
+	fun isTrackRecording(num: Int): Boolean = num in nodeSet(recordedNodesPref)
+
+	fun setTrackRecording(num: Int, record: Boolean) {
+		val nums = nodeSet(recordedNodesPref)
+		if (record) nums.add(num) else nums.remove(num)
+		recordedNodesPref.set(nums.joinToString(","))
+		if (record) {
+			nodes.firstOrNull { it.num == num }?.let { tracks.consider(it) }
+		}
+		notifyUi()
+	}
+
+	fun isTrackShown(num: Int): Boolean = num in nodeSet(shownTracksPref)
+
+	fun setTrackShown(num: Int, shown: Boolean) {
+		val nums = nodeSet(shownTracksPref)
+		if (shown) nums.add(num) else nums.remove(num)
+		shownTracksPref.set(nums.joinToString(","))
+		tracks.refreshVisibility(num)
+		if (shown && findTrackFile(num) == null) {
+			app.showToastMessage(R.string.lora_osmand_track_empty)
+		}
+		notifyUi()
+	}
+
+	fun settingsGroups(): MutableSet<String> {
+		val raw = settingsGroupsPref.get()
+		if (raw == "-") {
+			return mutableSetOf()
+		}
+		if (raw.isBlank()) {
+			return DEFAULT_GROUPS.split(',').toMutableSet()
+		}
+		return raw.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toMutableSet()
+	}
+
+	fun saveSettingsGroups(keys: Set<String>) {
+		settingsGroupsPref.set(if (keys.isEmpty()) "-" else keys.sorted().joinToString(","))
+	}
+
+	private fun nodeSet(pref: CommonPreference<String>): MutableSet<Int> {
+		return pref.get().split(',').mapNotNull { it.toIntOrNull() }.toMutableSet()
+	}
+
+	private fun findTrackFile(num: Int): java.io.File? {
+		val hex = num.toUInt().toString(16).padStart(8, '0')
+		val folder = java.io.File(app.getAppPath(net.osmand.IndexConstants.GPX_RECORDED_INDEX_DIR), LoraNodeTracks.DIR)
+		return folder.listFiles()?.firstOrNull { it.name.endsWith("_$hex.gpx") }
+	}
+
 	fun rssiOf(num: Int): Int? = nodeRssi[num]
 
 	fun phoneLocation(): net.osmand.Location? = app.locationProvider.lastKnownLocation
@@ -351,6 +438,7 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 
 	fun setMarkerStyle(style: LoraMarkerStyle) {
 		MARKER_STYLE.set(style.id)
+		tracks.recolor(nodes, style, ownNodeNum())
 		refreshMap()
 		notifyUi()
 	}
@@ -377,7 +465,12 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 			return
 		}
 		readIncoming = incoming
+		readIncomingPref.set(incoming)
 		notifyUi()
+	}
+
+	fun pullMeshMessages() {
+		LoraMessageListener.pullActive()
 	}
 
 	fun openNodeInMeshtastic(num: Int) {
@@ -450,6 +543,7 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 			return
 		}
 		this.nodes = nodes
+		nodes.forEach { tracks.consider(it) }
 		refreshMap()
 		notifyUi()
 	}
@@ -533,6 +627,7 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 			telemetry.rssi?.let { nodeRssi[update.num] = it }
 			bridgeNodes[update.num] = node
 			nodes = bridgeNodes.values.toList()
+			tracks.consider(node)
 			if (connected) {
 				statusText = app.getString(R.string.lora_osmand_tak_up, bridgeNodes.size)
 			}
@@ -546,6 +641,10 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 	}
 
 	fun noteChannel(index: Int, name: String?) {
+		if (Looper.myLooper() != Looper.getMainLooper()) {
+			app.uiHandler.post { noteChannel(index, name) }
+			return
+		}
 		val label = name?.trim().orEmpty().ifBlank {
 			if (index == PRIMARY_CHANNEL) app.getString(R.string.lora_osmand_long_fast) else "($index)"
 		}
@@ -565,7 +664,27 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		notifyUi()
 	}
 
-	fun ingestChat(sender: String, text: String, channel: Int, speak: Boolean) {
+	fun noteMeshNotice() {
+		lastMeshNoticeMs = System.currentTimeMillis()
+	}
+
+	fun ensureBackground() {
+		if (!isActive || !usesMeshApp()) {
+			return
+		}
+		ensureMeshLink()
+		LoraBridgeService.start(app)
+	}
+
+	fun ensureMeshLink() {
+		startMeshBridge()
+	}
+
+	fun ingestChat(sender: String, text: String, channel: Int, speak: Boolean, timeMs: Long = System.currentTimeMillis()) {
+		if (Looper.myLooper() != Looper.getMainLooper()) {
+			app.uiHandler.post { ingestChat(sender, text, channel, speak, timeMs) }
+			return
+		}
 		if (text == echoText && System.currentTimeMillis() - echoAt < ECHO_MS) {
 			return
 		}
@@ -576,11 +695,81 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		while (heardChat.size > 400) {
 			heardChat.remove(heardChat.first())
 		}
-		chat.add(LoraChatLine(System.currentTimeMillis(), sender, text, false, channel))
-		if (speak) {
+		chat.add(LoraChatLine(timeMs, sender, text, false, channel))
+		chat.sortBy { it.timeMs }
+		trimChat()
+		saveChat()
+		if (speak && SPEAK_CHAT.get()) {
 			speaker.speak(sender, text)
 		}
 		notifyUi()
+	}
+
+	private fun loadChat() {
+		val file = chatFile()
+		if (!file.exists()) {
+			readIncoming = readIncomingPref.get()
+			return
+		}
+		try {
+			val array = org.json.JSONArray(file.readText())
+			for (i in 0 until array.length()) {
+				val item = array.getJSONObject(i)
+				val line = LoraChatLine(
+					timeMs = item.optLong("t"),
+					fromName = item.optString("from"),
+					text = item.optString("text"),
+					outgoing = item.optBoolean("out"),
+					channel = item.optInt("ch"),
+					delivery = runCatching { LoraDelivery.valueOf(item.optString("st")) }.getOrDefault(LoraDelivery.INCOMING),
+				)
+				if (line.text.isBlank()) {
+					continue
+				}
+				heardChat.add("${line.channel}|${line.fromName}|${line.text}")
+				chat.add(line)
+			}
+			chat.sortBy { it.timeMs }
+		} catch (_: Exception) {
+		}
+		readIncoming = readIncomingPref.get().coerceAtMost(chat.count { !it.outgoing })
+	}
+
+	private fun saveChat() {
+		val array = org.json.JSONArray()
+		for (line in chat) {
+			array.put(org.json.JSONObject().apply {
+				put("t", line.timeMs)
+				put("from", line.fromName)
+				put("text", line.text)
+				put("out", line.outgoing)
+				put("ch", line.channel)
+				put("st", line.delivery.name)
+			})
+		}
+		try {
+			chatFile().writeText(array.toString())
+		} catch (_: Exception) {
+		}
+	}
+
+	private fun chatFile(): java.io.File = java.io.File(app.filesDir, "lora-osmand-chat.json")
+
+	private fun trimChat() {
+		while (chat.size > 200) {
+			chat.removeAt(0)
+		}
+	}
+
+	private fun rebindListenerOnce() {
+		if (listenerRebound || !notificationAccess()) {
+			return
+		}
+		listenerRebound = true
+		try {
+			NotificationListenerService.requestRebind(ComponentName(app, LoraMessageListener::class.java))
+		} catch (_: Exception) {
+		}
 	}
 
 	private fun schedulePositionTick() {
@@ -741,6 +930,14 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		private const val PREF_LAST_LAT = "lora_osmand_pos_last_lat"
 		private const val PREF_LAST_LON = "lora_osmand_pos_last_lon"
 		private const val PREF_HIDDEN_NODES = "lora_osmand_hidden_nodes"
+		private const val PREF_RECORDED_NODES = "lora_osmand_recorded_nodes"
+		private const val PREF_SHOWN_TRACKS = "lora_osmand_shown_tracks"
+		private const val PREF_SETTINGS_GROUPS = "lora_osmand_settings_groups"
+		private const val PREF_SPEAK = "lora_osmand_speak_chat"
+		private const val PREF_TRACK_INTERVAL = "lora_osmand_track_interval_sec"
+		private const val PREF_TRACK_OFFSET = "lora_osmand_track_offset_m"
+		private const val PREF_READ_INCOMING = "lora_osmand_chat_read"
+		private const val DEFAULT_GROUPS = "lora_cat_link,lora_cat_map,lora_cat_me,lora_cat_tracks"
 		private const val PRIMARY_CHANNEL = 0
 		private const val ECHO_MS = 8_000L
 		private const val MIN_SEND_GAP_MS = 15_000L
