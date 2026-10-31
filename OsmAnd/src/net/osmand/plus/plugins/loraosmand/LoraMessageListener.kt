@@ -45,7 +45,6 @@ class LoraMessageListener : NotificationListenerService() {
 		} catch (error: Throwable) {
 			Log.w(TAG, "ingest failed", error)
 		}
-		PluginsHelper.getPlugin(LoraOsmAndPlugin::class.java)?.onListenerReady()
 	}
 
 	private fun ingest(sbn: StatusBarNotification) {
