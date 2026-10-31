@@ -267,7 +267,15 @@ HTTP: `GET /health`, `GET /files`, `GET /file/<path>`. Serves `ev_telemetry` CSV
 
 ---
 
-## 8. File map
+## 8. Cells, recovery, and history
+
+Each published sample stores the full `cellVoltagesV` list and every pack temperature, not only min/max cell and one temperature. CSV and GPX include them when those fields are selected.
+
+If the process is killed, the next start restores the open CSV/GPX and the charge or distance-on-charge session. History rows are not rebuilt during startup. On the History tab, **Rebuild charge and trip history from telemetry** recomputes charge and ride rows from the recorded files. That repair runs off the UI thread.
+
+Numeric settings accept a typed value inside the range shown on the control, as well as the slider.
+
+## 9. File map
 
 | File | Role |
 |---|---|
