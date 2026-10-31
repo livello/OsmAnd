@@ -279,16 +279,17 @@ internal object LoraMeshInbox {
 		}
 	}
 
-	fun reply(channel: Int, text: String): Boolean {
+	fun reply(context: android.content.Context, channel: Int, text: String): Boolean {
 		val reply = synchronized(replies) { replies[channel] } ?: return false
 		return try {
 			val fillIn = Intent()
 			val results = Bundle()
 			results.putCharSequence(reply.resultKey, text)
 			RemoteInput.addResultsToIntent(arrayOf(RemoteInput.Builder(reply.resultKey).build()), fillIn, results)
-			reply.pending.send(null, 0, fillIn)
+			reply.pending.send(context, 0, fillIn)
 			true
-		} catch (_: PendingIntent.CanceledException) {
+		} catch (error: Exception) {
+			Log.w("LoraOsmAnd", "reply failed", error)
 			synchronized(replies) { replies.remove(channel) }
 			false
 		}

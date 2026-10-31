@@ -321,7 +321,7 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		notifyUi()
 		if (usesMeshApp()) {
 			scope.launch(Dispatchers.IO) {
-				val viaReply = LoraMeshInbox.reply(channelIndex, body)
+				val viaReply = LoraMeshInbox.reply(app, channelIndex, body)
 				val viaTak = !viaReply && channelIndex == PRIMARY_CHANNEL && tak.sendGeoChat(body)
 				val sent = viaReply || viaTak
 				Log.i(TAG, "send ch=$channelIndex reply=$viaReply tak=$viaTak text=${body.take(48)}")
