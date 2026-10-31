@@ -375,7 +375,7 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		}
 	}
 
-	fun messageStyle(): LoraMessageStyle = LoraMessageStyle.from(MESSAGE_STYLE.get())
+	internal fun messageStyle(): LoraMessageStyle = LoraMessageStyle.from(MESSAGE_STYLE.get())
 
 	private fun spokenPhrase(sender: String, text: String): String {
 		val body = speechText(text)

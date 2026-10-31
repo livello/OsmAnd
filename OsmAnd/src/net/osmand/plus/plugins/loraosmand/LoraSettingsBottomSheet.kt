@@ -447,9 +447,9 @@ class LoraSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 				setColor(if (entry.outgoing) 0x3327AE60 else if (nightMode) 0xFF2C2C2C.toInt() else 0xFFE7F3FF.toInt())
 			}
 		}
-		val text = messageText(entry.text, 15f)
-		text.maxWidth = (resources.displayMetrics.widthPixels * 0.72f).toInt()
-		bubble.addView(text)
+		val body = messageText(entry.text, 15f)
+		body.maxWidth = (resources.displayMetrics.widthPixels * 0.72f).toInt()
+		bubble.addView(body)
 		column.addView(bubble)
 		column.addView(TextView(ctx).apply {
 			val mark = deliveryMark(entry)
