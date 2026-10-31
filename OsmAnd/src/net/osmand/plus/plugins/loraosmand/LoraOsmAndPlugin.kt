@@ -83,8 +83,12 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		registerStringPreference(PREF_SHOWN_TRACKS, "").makeGlobal().makeShared()
 	private val settingsGroupsPref: CommonPreference<String> =
 		registerStringPreference(PREF_SETTINGS_GROUPS, DEFAULT_GROUPS).makeGlobal().makeShared()
+	private val messagesGroupSeeded: CommonPreference<Boolean> =
+		registerBooleanPreference(PREF_MESSAGES_GROUP_SEEDED, false).makeGlobal()
 	val SPEAK_CHAT: CommonPreference<Boolean> =
 		registerBooleanPreference(PREF_SPEAK, true).makeGlobal().makeShared()
+	val SPEAK_RECENT: CommonPreference<Int> =
+		registerIntPreference(PREF_SPEAK_RECENT, 5).makeGlobal().makeShared()
 	val TRACK_INTERVAL_SEC: CommonPreference<Int> =
 		registerIntPreference(PREF_TRACK_INTERVAL, 60).makeGlobal().makeShared()
 	val TRACK_OFFSET_M: CommonPreference<Int> =
@@ -188,6 +192,9 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		val existing = layer ?: LoraMapLayer(app, this).also { layer = it }
 		if (!mapView.layers.contains(existing)) {
 			mapView.addLayer(existing, 5.5f)
+		}
+		if (mapActivity != null) {
+			existing.setMapActivity(mapActivity)
 		}
 	}
 
@@ -348,6 +355,25 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		speaker.speak(sender, text)
 	}
 
+	fun speakRecent() {
+		val count = SPEAK_RECENT.get().coerceIn(1, 20)
+		for (line in chat.takeLast(count)) {
+			speaker.speak(line.fromName, line.text)
+		}
+	}
+
+	fun nodeMatching(sender: String): NodeInfo? {
+		return nodes.firstOrNull { LoraMarkerHit.namesMatch(sender, it.shortLabel(), it.longLabel()) }
+	}
+
+	/** Centers the map on a node that already has coordinates. Returns false when it does not. */
+	fun focusNode(node: NodeInfo): Boolean {
+		val latLng = node.meshLatLon() ?: return false
+		app.mapViewTrackingUtilities.setMapLinkedToLocation(false)
+		app.osmandMap.mapView.setLatLon(latLng.latitude, latLng.longitude)
+		return true
+	}
+
 	private fun markDelivery(stamp: Long, delivery: LoraDelivery) {
 		val index = chat.indexOfLast { it.timeMs == stamp && it.outgoing }
 		if (index >= 0) {
@@ -428,12 +454,20 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 	fun settingsGroups(): MutableSet<String> {
 		val raw = settingsGroupsPref.get()
 		if (raw == "-") {
+			messagesGroupSeeded.set(true)
 			return mutableSetOf()
 		}
-		if (raw.isBlank()) {
-			return DEFAULT_GROUPS.split(',').toMutableSet()
+		val keys = if (raw.isBlank()) {
+			DEFAULT_GROUPS.split(',').toMutableSet()
+		} else {
+			raw.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toMutableSet()
 		}
-		return raw.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toMutableSet()
+		if (!messagesGroupSeeded.get()) {
+			keys.add("lora_cat_messages")
+			messagesGroupSeeded.set(true)
+			settingsGroupsPref.set(keys.sorted().joinToString(","))
+		}
+		return keys
 	}
 
 	fun saveSettingsGroups(keys: Set<String>) {
@@ -1092,12 +1126,14 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		private const val PREF_RECORDED_NODES = "lora_osmand_recorded_nodes"
 		private const val PREF_SHOWN_TRACKS = "lora_osmand_shown_tracks"
 		private const val PREF_SETTINGS_GROUPS = "lora_osmand_settings_groups"
+		private const val PREF_MESSAGES_GROUP_SEEDED = "lora_osmand_messages_group_seeded"
 		private const val PREF_SPEAK = "lora_osmand_speak_chat"
+		private const val PREF_SPEAK_RECENT = "lora_osmand_speak_recent"
 		private const val PREF_TRACK_INTERVAL = "lora_osmand_track_interval_sec"
 		private const val PREF_TRACK_OFFSET = "lora_osmand_track_offset_m"
 		private const val PREF_READ_INCOMING = "lora_osmand_chat_read"
 		private const val PREF_TRACK_FILES = "lora_osmand_track_files"
-		private const val DEFAULT_GROUPS = "lora_cat_link,lora_cat_map,lora_cat_me,lora_cat_tracks"
+		private const val DEFAULT_GROUPS = "lora_cat_link,lora_cat_map,lora_cat_me,lora_cat_tracks,lora_cat_messages"
 		private const val WAKE_MS = 15L * 60L * 1000L
 		private const val WAKE_REQUEST = 8768
 		private const val TAG = "LoraOsmAnd"
@@ -1110,5 +1146,6 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		val OFFSET_CHOICES = intArrayOf(0, 50, 100, 250, 500, 1000)
 		val MARKER_SIZE_CHOICES = intArrayOf(50, 75, 100, 125, 150, 200)
 		val MARKER_FONT_CHOICES = intArrayOf(8, 10, 11, 12, 14, 18, 24)
+		val SPEAK_RECENT_CHOICES = intArrayOf(1, 3, 5, 10, 20)
 	}
 }

@@ -71,16 +71,47 @@ internal class LoraMapLayer(
 		val point = result.point
 		val tileBox = result.tileBox
 		val renderer = mapRenderer
-		val radius = touchRadius(tileBox.density)
+		val radius = touchRadius(tileBox.density).coerceAtLeast(48f * tileBox.density)
+		val polygon = if (renderer != null) {
+			NativeUtilities.getPolygon31FromPixelAndRadius(renderer, point, radius)
+		} else {
+			null
+		}
+		var nearest: NodeInfo? = null
+		var nearestDistance = Float.MAX_VALUE
 		for (node in plugin.positionedNodes()) {
 			val latLng = node.meshLatLon() ?: continue
-			val pixel = NativeUtilities.getPixelFromLatLon(renderer, tileBox, latLng.latitude, latLng.longitude)
+			val pixel = NativeUtilities.getElevatedPixelFromLatLon(renderer, tileBox, latLng.latitude, latLng.longitude)
 			val dx = pixel.x - point.x
 			val dy = pixel.y - point.y
-			if (dx * dx + dy * dy <= radius * radius) {
-				result.collect(node, this)
+			val byPixel = LoraMarkerHit.contains(point.x, point.y, pixel.x, pixel.y, radius)
+			val byPolygon = polygon != null &&
+				NativeUtilities.isPointInsidePolygon(latLng.latitude, latLng.longitude, polygon)
+			if (!byPixel && !byPolygon) {
+				continue
+			}
+			val distance = if (byPixel) dx * dx + dy * dy else radius * radius
+			if (distance < nearestDistance) {
+				nearest = node
+				nearestDistance = distance
 			}
 		}
+		if (nearest != null) {
+			result.collect(nearest, this)
+		}
+	}
+
+	override fun getPointOrder(`object`: Any?): Long {
+		return if (`object` is NodeInfo) LoraMarkerHit.SELECTION_ORDER else super.getPointOrder(`object`)
+	}
+
+	override fun getSelectionPointOrder(selectedObject: Any?): Long {
+		return if (selectedObject is NodeInfo) LoraMarkerHit.SELECTION_ORDER else 0L
+	}
+
+	override fun runExclusiveAction(o: Any?, unknownLocation: Boolean): Boolean {
+		val node = o as? NodeInfo ?: return false
+		return showNodeMenu(node)
 	}
 
 	override fun collectMapSymbolByExtraId(extraId: Int, result: MapSelectionResult): Boolean {
@@ -105,7 +136,11 @@ internal class LoraMapLayer(
 
 	override fun showMenuAction(o: Any?): Boolean {
 		val node = o as? NodeInfo ?: return false
-		val activity = mapView?.context as? MapActivity ?: return false
+		return showNodeMenu(node)
+	}
+
+	private fun showNodeMenu(node: NodeInfo): Boolean {
+		val activity = mapActivity ?: return false
 		val online = if (node.isMeshOnline()) "🟢" else "⚫"
 		val metrics = formatNodeMetrics(activity, plugin, node)
 		val body = if (metrics.isEmpty()) online else "$online\n$metrics"
@@ -209,7 +244,7 @@ internal class LoraMapLayer(
 			val bitmap = badgeBitmap(node, night)
 			val marker = MapMarkerBuilder()
 				.setIsAccuracyCircleSupported(false)
-				.setBaseOrder(getPointsOrder())
+				.setBaseOrder(getPointsOrder() - 2_000)
 				.setPinIcon(NativeUtilities.createSkImageFromBitmap(bitmap))
 				.setPinIconVerticalAlignment(MapMarker.PinIconVerticalAlignment.CenterVertical)
 				.setPinIconHorisontalAlignment(MapMarker.PinIconHorisontalAlignment.CenterHorizontal)

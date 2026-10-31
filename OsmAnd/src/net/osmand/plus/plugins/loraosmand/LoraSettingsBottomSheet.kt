@@ -27,7 +27,9 @@ import androidx.core.graphics.Insets
 import androidx.core.text.HtmlCompat
 import net.osmand.plus.utils.ColorUtilities
 import java.text.DateFormat
+import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.Locale
 import androidx.fragment.app.FragmentManager
 import net.osmand.plus.BuildConfig
 import net.osmand.plus.R
@@ -66,6 +68,7 @@ class LoraSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	private var onlineOnly = false
 	private var visibleOnly = false
 	private var chatSignature = ""
+	private var parkMessages = false
 	private var composeDialog: AlertDialog? = null
 	private var composeField: EditText? = null
 	private val refresh = Runnable { if (view != null) bindLive() }
@@ -137,6 +140,7 @@ class LoraSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		speak.isChecked = plugin.SPEAK_CHAT.get()
 		speak.setOnCheckedChangeListener { _, checked -> plugin.SPEAK_CHAT.set(checked) }
 		view.findViewById<View>(R.id.lora_osmand_compose_open).setOnClickListener { showComposeDialog() }
+		view.findViewById<View>(R.id.lora_osmand_speak_recent).setOnClickListener { plugin.speakRecent() }
 		buildJumpBar(view)
 		if (childFragmentManager.findFragmentByTag(SETTINGS_TAG) == null) {
 			val fragment = LoraSettingsFragment()
@@ -185,6 +189,7 @@ class LoraSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		(childFragmentManager.findFragmentByTag(SETTINGS_TAG) as? LoraSettingsFragment)
 			?.setJumpInset(tab == LoraSheetTab.SETTINGS)
 		if (openingMessages) {
+			parkMessages = true
 			plugin.pullMeshMessages()
 		}
 		bindLive()
@@ -295,11 +300,16 @@ class LoraSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		}
 		status.text = getString(R.string.lora_osmand_messages_status, link, tak, whenText)
 		val signature = plugin.chat.joinToString("|") { "${it.timeMs}:${it.delivery}:${it.text}" }
+		val scroll = root.findViewById<ScrollView>(R.id.lora_osmand_chat_scroll)
+		val park = parkMessages
 		if (signature == chatSignature && root.findViewById<LinearLayout>(R.id.lora_osmand_chat).childCount > 0) {
+			if (park) {
+				parkMessages = false
+				scroll.post { revealMessages(scroll, 0) }
+			}
 			return
 		}
 		chatSignature = signature
-		val scroll = root.findViewById<ScrollView>(R.id.lora_osmand_chat_scroll)
 		val nearBottom = scroll.getChildAt(0) == null ||
 			scroll.getChildAt(0).bottom <= scroll.height + scroll.scrollY + dp(48)
 		val saved = scroll.scrollY
@@ -312,12 +322,43 @@ class LoraSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			list.addView(messageRow(entry))
 		}
 		scroll.post {
-			if (nearBottom) {
+			if (park) {
+				parkMessages = false
+				revealMessages(scroll, 0)
+			} else if (nearBottom) {
 				scroll.fullScroll(View.FOCUS_DOWN)
 			} else {
 				scroll.scrollTo(0, saved)
 			}
 		}
+	}
+
+	private fun revealMessages(scroll: ScrollView, attempt: Int) {
+		if (attempt > 4) {
+			return
+		}
+		val column = scroll.getChildAt(0) ?: return
+		val header = column.findViewById<View>(R.id.lora_osmand_messages_header) ?: return
+		val chat = column.findViewById<View>(R.id.lora_osmand_chat) ?: return
+		val headerBottom = header.bottom
+		if (headerBottom == 0 || scroll.height == 0) {
+			scroll.post { revealMessages(scroll, attempt + 1) }
+			return
+		}
+		val needed = headerBottom + scroll.height - (column.height - column.paddingBottom)
+		val pad = needed.coerceAtLeast(0)
+		if (column.paddingBottom != pad) {
+			column.setPadding(0, 0, 0, pad)
+			scroll.post { revealMessages(scroll, attempt + 1) }
+			return
+		}
+		val maxScroll = (column.height - scroll.height).coerceAtLeast(0)
+		val target = if (chat.height > scroll.height) {
+			maxScroll
+		} else {
+			headerBottom.coerceAtMost(maxScroll)
+		}
+		scroll.scrollTo(0, target)
 	}
 
 	private fun messageRow(entry: LoraChatLine): View {
@@ -327,9 +368,18 @@ class LoraSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			gravity = Gravity.CENTER_VERTICAL
 			setPadding(0, dp(4), 0, dp(4))
 		}
-		val column = LinearLayout(ctx).apply {
+		val body = LinearLayout(ctx).apply {
 			orientation = LinearLayout.VERTICAL
 			layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+			setPadding(dp(8), dp(6), dp(8), dp(6))
+			background = GradientDrawable().apply {
+				setColor(ColorUtilities.getActivityBgColor(ctx, nightMode))
+				setStroke(dp(1).coerceAtLeast(1), ColorUtilities.getSecondaryTextColor(ctx, nightMode))
+				cornerRadius = dp(8).toFloat()
+			}
+			isClickable = true
+			contentDescription = getString(R.string.lora_osmand_speak_line)
+			setOnClickListener { plugin.speakLine(entry.fromName, entry.text) }
 		}
 		val mark = if (entry.outgoing) "→" else "←"
 		val state = when (entry.delivery) {
@@ -338,25 +388,85 @@ class LoraSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 			LoraDelivery.FAILED -> "⚠️"
 			LoraDelivery.INCOMING -> ""
 		}
-		column.addView(TextView(ctx).apply {
-			text = "$mark ${entry.fromName}"
-			textSize = 13f
-			setTypeface(typeface, Typeface.BOLD)
-			setTextColor(ColorUtilities.getPrimaryTextColor(ctx, nightMode))
-		})
-		column.addView(TextView(ctx).apply {
-			text = entry.text
+		val time = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(entry.timeMs))
+		val age = messageAge(entry.timeMs)
+		val meta = TextView(ctx).apply {
+			text = buildString {
+				append(time)
+				append("  ")
+				append(age)
+				if (state.isNotEmpty()) {
+					append("  ")
+					append(state)
+				}
+			}
+			textSize = 12f
+			setTextColor(ColorUtilities.getSecondaryTextColor(ctx, nightMode))
+			contentDescription = contentFor(entry.delivery)
+		}
+		val message = TextView(ctx).apply {
+			text = "$mark ${entry.fromName}: ${entry.text}"
 			textSize = 15f
 			setTextColor(ColorUtilities.getPrimaryTextColor(ctx, nightMode))
-		})
-		row.addView(column)
-		if (state.isNotEmpty()) {
-			row.addView(emojiButton(state, contentFor(entry.delivery)) {})
 		}
-		row.addView(emojiButton("🔊", getString(R.string.lora_osmand_speak_line)) {
-			plugin.speakLine(entry.fromName, entry.text)
-		})
+		val screen = resources.displayMetrics.widthPixels
+		val mapWidth = if (entry.outgoing) 0 else dp(48)
+		val chrome = dp(16) * 2 + dp(8) * 2 + mapWidth + dp(12)
+		val paint = message.paint
+		val metaWidth = meta.paint.measureText(meta.text.toString())
+		val textWidth = paint.measureText(message.text.toString())
+		val oneLine = textWidth + metaWidth + dp(8) <= (screen - chrome).coerceAtLeast(dp(80))
+		if (oneLine) {
+			body.orientation = LinearLayout.HORIZONTAL
+			body.gravity = Gravity.CENTER_VERTICAL
+			meta.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+			message.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+				marginStart = dp(8)
+			}
+			message.maxLines = 1
+			message.ellipsize = TextUtils.TruncateAt.END
+		}
+		body.addView(meta)
+		body.addView(message)
+		row.addView(body)
+		if (!entry.outgoing) {
+			val mapButton = emojiButton("🗺️", getString(R.string.lora_osmand_show_sender)) {
+				showSenderOnMap(entry)
+			}
+			mapButton.layoutParams = LinearLayout.LayoutParams(dp(48), ViewGroup.LayoutParams.MATCH_PARENT)
+			row.addView(mapButton)
+			row.post {
+				val height = body.height
+				if (height > 0 && mapButton.height != height) {
+					mapButton.layoutParams.height = height
+					mapButton.requestLayout()
+				}
+			}
+		}
 		return row
+	}
+
+	private fun messageAge(timeMs: Long): String {
+		val minutes = ((System.currentTimeMillis() - timeMs).coerceAtLeast(0L) / 60_000L).toInt()
+		return when {
+			minutes < 60 -> getString(R.string.lora_osmand_age_min, minutes)
+			minutes < 60 * 24 -> getString(R.string.lora_osmand_age_hour, minutes / 60)
+			else -> getString(R.string.lora_osmand_age_day, minutes / (60 * 24))
+		}
+	}
+
+	private fun showSenderOnMap(entry: LoraChatLine) {
+		if (entry.outgoing) {
+			app.showToastMessage(R.string.lora_osmand_location_unknown)
+			return
+		}
+		val node = plugin.nodeMatching(entry.fromName)
+		if (node?.meshLatLon() == null) {
+			app.showToastMessage(R.string.lora_osmand_location_unknown)
+			return
+		}
+		dismissAllowingStateLoss()
+		plugin.focusNode(node)
 	}
 
 	private fun contentFor(delivery: LoraDelivery): String {

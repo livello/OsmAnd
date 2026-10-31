@@ -110,4 +110,17 @@
 		android:persistent="false"
 		android:title="@string/lora_osmand_track_offset" />
 
+	<Preference
+		android:key="lora_cat_messages"
+		android:layout="@layout/ev_bms_preference_category_divider"
+		android:persistent="false"
+		android:selectable="true"
+		android:title="@string/lora_osmand_cat_messages" />
+
+	<Preference
+		android:key="lora_osmand_speak_count"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:persistent="false"
+		android:title="@string/lora_osmand_speak_count" />
+
 </PreferenceScreen>

@@ -104,41 +104,6 @@
 			android:orientation="vertical"
 			android:visibility="gone">
 
-			<LinearLayout
-				android:layout_width="match_parent"
-				android:layout_height="wrap_content"
-				android:background="?attr/list_background_color"
-				android:gravity="center_vertical"
-				android:minHeight="36dp"
-				android:orientation="horizontal"
-				android:paddingStart="@dimen/content_padding"
-				android:paddingEnd="@dimen/content_padding_half">
-
-				<TextView
-					android:layout_width="0dp"
-					android:layout_height="wrap_content"
-					android:layout_weight="1"
-					android:text="@string/lora_osmand_speak_auto"
-					android:textColor="?android:textColorPrimary"
-					android:textSize="@dimen/default_list_text_size" />
-
-				<androidx.appcompat.widget.SwitchCompat
-					android:id="@+id/lora_osmand_speak_switch"
-					android:layout_width="wrap_content"
-					android:layout_height="wrap_content" />
-			</LinearLayout>
-
-			<TextView
-				android:id="@+id/lora_osmand_message_status"
-				android:layout_width="match_parent"
-				android:layout_height="wrap_content"
-				android:paddingStart="@dimen/content_padding"
-				android:paddingTop="4dp"
-				android:paddingEnd="@dimen/content_padding"
-				android:paddingBottom="4dp"
-				android:textColor="?android:textColorSecondary"
-				android:textSize="@dimen/default_desc_text_size" />
-
 			<ScrollView
 				android:id="@+id/lora_osmand_chat_scroll"
 				android:layout_width="match_parent"
@@ -147,21 +112,90 @@
 				android:fillViewport="true">
 
 				<LinearLayout
-					android:id="@+id/lora_osmand_chat"
+					android:id="@+id/lora_osmand_messages_column"
 					android:layout_width="match_parent"
 					android:layout_height="wrap_content"
-					android:orientation="vertical"
-					android:padding="@dimen/content_padding" />
+					android:orientation="vertical">
+
+					<LinearLayout
+						android:id="@+id/lora_osmand_messages_header"
+						android:layout_width="match_parent"
+						android:layout_height="wrap_content"
+						android:orientation="vertical">
+
+						<LinearLayout
+							android:layout_width="match_parent"
+							android:layout_height="wrap_content"
+							android:gravity="center_vertical"
+							android:minHeight="36dp"
+							android:orientation="horizontal"
+							android:paddingStart="@dimen/content_padding"
+							android:paddingEnd="@dimen/content_padding_half">
+
+							<TextView
+								android:layout_width="0dp"
+								android:layout_height="wrap_content"
+								android:layout_weight="1"
+								android:text="@string/lora_osmand_speak_auto"
+								android:textColor="?android:textColorPrimary"
+								android:textSize="@dimen/default_list_text_size" />
+
+							<androidx.appcompat.widget.SwitchCompat
+								android:id="@+id/lora_osmand_speak_switch"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content" />
+						</LinearLayout>
+
+						<TextView
+							android:id="@+id/lora_osmand_message_status"
+							android:layout_width="match_parent"
+							android:layout_height="wrap_content"
+							android:paddingStart="@dimen/content_padding"
+							android:paddingTop="4dp"
+							android:paddingEnd="@dimen/content_padding"
+							android:paddingBottom="8dp"
+							android:textColor="?android:textColorSecondary"
+							android:textSize="@dimen/default_desc_text_size" />
+					</LinearLayout>
+
+					<LinearLayout
+						android:id="@+id/lora_osmand_chat"
+						android:layout_width="match_parent"
+						android:layout_height="wrap_content"
+						android:orientation="vertical"
+						android:paddingStart="@dimen/content_padding"
+						android:paddingEnd="@dimen/content_padding"
+						android:paddingBottom="@dimen/content_padding" />
+				</LinearLayout>
 			</ScrollView>
 
-			<TextView
-				android:id="@+id/lora_osmand_compose_open"
+			<LinearLayout
 				android:layout_width="match_parent"
 				android:layout_height="48dp"
-				android:background="?attr/selectableItemBackground"
-				android:gravity="center"
-				android:text="@string/lora_osmand_compose"
-				android:textSize="16sp" />
+				android:gravity="center_vertical"
+				android:orientation="horizontal">
+
+				<TextView
+					android:id="@+id/lora_osmand_speak_recent"
+					android:layout_width="56dp"
+					android:layout_height="match_parent"
+					android:background="?attr/selectableItemBackground"
+					android:contentDescription="@string/lora_osmand_speak_recent"
+					android:gravity="center"
+					android:text="🔊"
+					android:textSize="20sp"
+					android:tooltipText="@string/lora_osmand_speak_recent" />
+
+				<TextView
+					android:id="@+id/lora_osmand_compose_open"
+					android:layout_width="0dp"
+					android:layout_height="match_parent"
+					android:layout_weight="1"
+					android:background="?attr/selectableItemBackground"
+					android:gravity="center"
+					android:text="@string/lora_osmand_compose"
+					android:textSize="16sp" />
+			</LinearLayout>
 		</LinearLayout>
 	</FrameLayout>
 

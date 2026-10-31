@@ -28,6 +28,7 @@ class LoraSettingsFragment : BaseSettingsFragment() {
 			Jump("lora_cat_map", "🗺️", R.string.lora_osmand_cat_map),
 			Jump("lora_cat_me", "📍", R.string.lora_osmand_cat_me),
 			Jump("lora_cat_tracks", "〰️", R.string.lora_osmand_cat_tracks),
+			Jump("lora_cat_messages", "✉️", R.string.lora_osmand_cat_messages),
 		)
 		private val CATEGORY_KEYS = SETTINGS_JUMPS.map { it.key }.toSet()
 
@@ -170,6 +171,15 @@ class LoraSettingsFragment : BaseSettingsFragment() {
 				) { plugin.TRACK_OFFSET_M.set(it) }
 				return true
 			}
+			"lora_osmand_speak_count" -> {
+				pickNumber(
+					R.string.lora_osmand_speak_count,
+					LoraOsmAndPlugin.SPEAK_RECENT_CHOICES,
+					plugin.SPEAK_RECENT.get(),
+					{ getString(R.string.lora_osmand_speak_count_value, it) },
+				) { plugin.SPEAK_RECENT.set(it.coerceIn(1, 20)) }
+				return true
+			}
 		}
 		return super.onPreferenceClick(preference)
 	}
@@ -196,6 +206,7 @@ class LoraSettingsFragment : BaseSettingsFragment() {
 		decorate("lora_osmand_pos_status", "📌", R.drawable.ic_action_gdirections_dark)
 		decorate("lora_osmand_track_interval", "⏱️", R.drawable.ic_action_time_span)
 		decorate("lora_osmand_track_offset", "📏", R.drawable.ic_action_distance)
+		decorate("lora_osmand_speak_count", "🔊", R.drawable.ic_action_micro_dark)
 	}
 
 	private fun decorate(key: String, emoji: String, iconRes: Int) {
@@ -279,6 +290,8 @@ class LoraSettingsFragment : BaseSettingsFragment() {
 		findPreference<Preference>("lora_osmand_offset")?.summary = formatOffset(plugin.POS_OFFSET_M.get())
 		findPreference<Preference>("lora_osmand_track_interval")?.summary = formatInterval(plugin.TRACK_INTERVAL_SEC.get())
 		findPreference<Preference>("lora_osmand_track_offset")?.summary = formatOffset(plugin.TRACK_OFFSET_M.get())
+		findPreference<Preference>("lora_osmand_speak_count")?.summary =
+			getString(R.string.lora_osmand_speak_count_value, plugin.SPEAK_RECENT.get())
 		val sent = plugin.lastSentMs()
 		val whenText = if (sent <= 0L) {
 			getString(R.string.lora_osmand_never_sent)
