@@ -172,9 +172,10 @@ public enum WidgetType {
 	EV_HIKE("ev_hike", R.string.ev_bms_widget_hike, R.string.ev_bms_widget_hike_desc, R.drawable.ic_action_trekking_dark, R.drawable.ic_action_trekking_dark, 0, EV_BMS, RIGHT),
 	EV_SPEEDOMETER("ev_speedometer", R.string.ev_bms_widget_speedometer, R.string.ev_bms_widget_speedometer_desc, R.drawable.widget_obd_speed_day, R.drawable.widget_obd_speed_night, 0, EV_BMS, TOP),
 
-	LORA_OSMAND_BATTERY("lora_osmand_battery", R.string.lora_osmand_widget_battery, R.string.lora_osmand_widget_battery_desc, R.drawable.widget_obd_fuel_remaining_day, R.drawable.widget_obd_fuel_remaining_night, 0, LORA_OSMAND, RIGHT),
-	LORA_OSMAND_NODES("lora_osmand_nodes", R.string.lora_osmand_widget_nodes, R.string.lora_osmand_widget_nodes_desc, R.drawable.widget_marker_day, R.drawable.widget_marker_night, 0, LORA_OSMAND, RIGHT),
-	LORA_OSMAND_MESSAGE("lora_osmand_message", R.string.lora_osmand_widget_message, R.string.lora_osmand_widget_message_desc, R.drawable.ic_action_message, R.drawable.ic_action_message, 0, LORA_OSMAND, RIGHT),
+	LORA_OSMAND_BATTERY("lora_osmand_battery", R.string.lora_osmand_widget_battery, R.string.lora_osmand_widget_battery_desc, R.drawable.widget_lora_battery, R.drawable.widget_lora_battery, 0, LORA_OSMAND, RIGHT),
+	LORA_OSMAND_NODES("lora_osmand_nodes", R.string.lora_osmand_widget_nodes, R.string.lora_osmand_widget_nodes_desc, R.drawable.widget_lora_nodes, R.drawable.widget_lora_nodes, 0, LORA_OSMAND, RIGHT),
+	LORA_OSMAND_MESSAGE("lora_osmand_message", R.string.lora_osmand_widget_message, R.string.lora_osmand_widget_message_desc, R.drawable.widget_lora_message, R.drawable.widget_lora_message, 0, LORA_OSMAND, RIGHT),
+	LORA_OSMAND_SPEAK("lora_osmand_speak", R.string.lora_osmand_widget_speak, R.string.lora_osmand_widget_speak_desc, R.drawable.widget_lora_speak, R.drawable.widget_lora_speak, 0, LORA_OSMAND, RIGHT),
 
 	TORRENTS_MAPS("torrents_maps", R.string.torrent_maps_widget, R.string.torrent_maps_widget_desc, R.drawable.ic_action_gsave_dark, R.drawable.ic_action_gsave_dark, 0, TORRENT_MAPS, RIGHT),
 

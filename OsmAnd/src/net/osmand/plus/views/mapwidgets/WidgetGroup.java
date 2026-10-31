@@ -36,7 +36,7 @@ public enum WidgetGroup {
 	ANT_PLUS(R.string.external_sensor_widgets, 0, R.drawable.widget_sensor_external_day, R.drawable.widget_sensor_external_night, 0),
 	VEHICLE_METRICS(R.string.obd_widget_group, 0, R.drawable.widget_obd_vehicle_info_day, R.drawable.widget_obd_vehicle_info_night, 0),
 	EV_BMS(R.string.ev_bms_widget_group, 0, R.drawable.widget_obd_vehicle_info_day, R.drawable.widget_obd_vehicle_info_night, 0),
-	LORA_OSMAND(R.string.lora_osmand_widget_group, 0, R.drawable.ic_action_signal, R.drawable.ic_action_signal, 0),
+	LORA_OSMAND(R.string.lora_osmand_widget_group, 0, R.drawable.widget_lora_radio, R.drawable.widget_lora_radio, 0),
 	TORRENT_MAPS(R.string.torrent_maps_widget_group, 0, R.drawable.ic_action_gsave_dark, R.drawable.ic_action_gsave_dark, 0),
 	WEATHER(R.string.shared_string_weather, R.string.weather_widget_group_desc, R.drawable.widget_weather_umbrella_day, R.drawable.widget_weather_umbrella_night, 0),
 	SUNRISE_SUNSET(R.string.map_widget_sun_position, R.string.map_widget_group_sunrise_sunset_desc, R.drawable.widget_sunset_day, R.drawable.widget_sunset_night, 0),

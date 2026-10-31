@@ -123,4 +123,31 @@
 		android:persistent="false"
 		android:title="@string/lora_osmand_speak_count" />
 
+	<Preference
+		android:key="lora_osmand_message_style"
+		android:layout="@layout/ev_bms_preference_with_descr"
+		android:persistent="false"
+		android:title="@string/lora_osmand_message_style" />
+
+	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
+		android:key="lora_osmand_speak_name"
+		android:layout="@layout/ev_bms_preference_switch"
+		android:summaryOff="@string/shared_string_disabled"
+		android:summaryOn="@string/shared_string_enabled"
+		android:title="@string/lora_osmand_speak_name" />
+
+	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
+		android:key="lora_osmand_speak_short"
+		android:layout="@layout/ev_bms_preference_switch"
+		android:summaryOff="@string/shared_string_disabled"
+		android:summaryOn="@string/shared_string_enabled"
+		android:title="@string/lora_osmand_speak_short" />
+
+	<net.osmand.plus.settings.preferences.SwitchPreferenceEx
+		android:key="lora_osmand_speak_plain"
+		android:layout="@layout/ev_bms_preference_switch"
+		android:summaryOff="@string/shared_string_disabled"
+		android:summaryOn="@string/shared_string_enabled"
+		android:title="@string/lora_osmand_speak_plain" />
+
 </PreferenceScreen>

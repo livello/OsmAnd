@@ -35,6 +35,14 @@ internal object LoraWidgetChrome {
 		val root = widget.view
 		val plugin = PluginsHelper.getPlugin(LoraOsmAndPlugin::class.java)
 		val message = widget.widgetType == WidgetType.LORA_OSMAND_MESSAGE
+		val speak = widget.widgetType == WidgetType.LORA_OSMAND_SPEAK
+		if (speak && plugin != null) {
+			root.setTag(R.id.ev_widget_map_passthrough, null)
+			root.setOnClickListener { plugin.speakRecent() }
+			root.isClickable = true
+			root.isLongClickable = false
+			return
+		}
 		val opensSheet = message || isTopLoraWidget(widget)
 		if (opensSheet && plugin != null) {
 			root.setTag(R.id.ev_widget_map_passthrough, null)
@@ -76,7 +84,7 @@ internal object LoraWidgetChrome {
 			}
 		}
 		if (panel == null) {
-			return widget.widgetType != WidgetType.LORA_OSMAND_MESSAGE
+			return opensSettings(widget.widgetType)
 		}
 		for (info in registry.getWidgetsForPanel(panel)) {
 			if (info.pageIndex != myPage) {
@@ -85,12 +93,18 @@ internal object LoraWidgetChrome {
 			if (!info.isEnabledForAppMode(appMode, layoutMode) || !info.widget.isViewVisible) {
 				continue
 			}
-			if (!isLoraWidget(info.widget.widgetType) || info.widget.widgetType == WidgetType.LORA_OSMAND_MESSAGE) {
+			if (!opensSettings(info.widget.widgetType)) {
 				continue
 			}
 			return info.widget === widget
 		}
-		return widget.widgetType != WidgetType.LORA_OSMAND_MESSAGE
+		return opensSettings(widget.widgetType)
+	}
+
+	private fun opensSettings(type: WidgetType?): Boolean {
+		return isLoraWidget(type) &&
+			type != WidgetType.LORA_OSMAND_MESSAGE &&
+			type != WidgetType.LORA_OSMAND_SPEAK
 	}
 
 	fun applySideLayout(root: View, panel: WidgetsPanel) {

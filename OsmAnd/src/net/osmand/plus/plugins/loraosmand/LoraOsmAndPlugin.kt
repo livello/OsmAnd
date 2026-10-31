@@ -89,6 +89,14 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		registerBooleanPreference(PREF_SPEAK, true).makeGlobal().makeShared()
 	val SPEAK_RECENT: CommonPreference<Int> =
 		registerIntPreference(PREF_SPEAK_RECENT, 5).makeGlobal().makeShared()
+	val MESSAGE_STYLE: CommonPreference<String> =
+		registerStringPreference(PREF_MESSAGE_STYLE, LoraMessageStyle.LORA.id).makeGlobal().makeShared()
+	val SPEAK_NAME: CommonPreference<Boolean> =
+		registerBooleanPreference(PREF_SPEAK_NAME, true).makeGlobal().makeShared()
+	val SPEAK_SHORT: CommonPreference<Boolean> =
+		registerBooleanPreference(PREF_SPEAK_SHORT, false).makeGlobal().makeShared()
+	val SPEAK_PLAIN: CommonPreference<Boolean> =
+		registerBooleanPreference(PREF_SPEAK_PLAIN, false).makeGlobal().makeShared()
 	val TRACK_INTERVAL_SEC: CommonPreference<Int> =
 		registerIntPreference(PREF_TRACK_INTERVAL, 60).makeGlobal().makeShared()
 	val TRACK_OFFSET_M: CommonPreference<Int> =
@@ -137,6 +145,7 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		WidgetsAvailabilityHelper.regWidgetVisibility(WidgetType.LORA_OSMAND_BATTERY, null)
 		WidgetsAvailabilityHelper.regWidgetVisibility(WidgetType.LORA_OSMAND_NODES, null)
 		WidgetsAvailabilityHelper.regWidgetVisibility(WidgetType.LORA_OSMAND_MESSAGE, null)
+		WidgetsAvailabilityHelper.regWidgetVisibility(WidgetType.LORA_OSMAND_SPEAK, null)
 		seedRightPanel()
 	}
 
@@ -255,6 +264,7 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 			WidgetType.LORA_OSMAND_BATTERY -> LoraTextWidget.Field.BATTERY
 			WidgetType.LORA_OSMAND_NODES -> LoraTextWidget.Field.NODES
 			WidgetType.LORA_OSMAND_MESSAGE -> LoraTextWidget.Field.MESSAGE
+			WidgetType.LORA_OSMAND_SPEAK -> LoraTextWidget.Field.SPEAK
 			else -> return null
 		}
 		return LoraTextWidget(mapActivity, widgetType, field, customId, widgetsPanel)
@@ -352,14 +362,41 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 	}
 
 	fun speakLine(sender: String, text: String) {
-		speaker.speak(sender, text)
+		speaker.speakPhrase(spokenPhrase(sender, text))
 	}
 
 	fun speakRecent() {
+		if (chat.isEmpty()) {
+			return
+		}
 		val count = SPEAK_RECENT.get().coerceIn(1, 20)
 		for (line in chat.takeLast(count)) {
-			speaker.speak(line.fromName, line.text)
+			speakLine(line.fromName, line.text)
 		}
+	}
+
+	fun messageStyle(): LoraMessageStyle = LoraMessageStyle.from(MESSAGE_STYLE.get())
+
+	private fun spokenPhrase(sender: String, text: String): String {
+		val body = speechText(text)
+		if (!SPEAK_NAME.get()) {
+			return body
+		}
+		val node = nodeMatching(sender)
+		val rawName = if (SPEAK_SHORT.get() && node != null) node.shortLabel() else sender
+		val name = speechText(rawName)
+		if (name.isBlank()) {
+			return body
+		}
+		return "$name. $body"
+	}
+
+	private fun speechText(raw: String): String {
+		val trimmed = raw.trim()
+		if (!SPEAK_PLAIN.get()) {
+			return trimmed
+		}
+		return trimmed.replace(Regex("[_\\-/*]+"), " ").replace(Regex("\\s+"), " ").trim()
 	}
 
 	fun nodeMatching(sender: String): NodeInfo? {
@@ -1079,6 +1116,7 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 			WidgetType.LORA_OSMAND_BATTERY.id,
 			WidgetType.LORA_OSMAND_NODES.id,
 			WidgetType.LORA_OSMAND_MESSAGE.id,
+			WidgetType.LORA_OSMAND_SPEAK.id,
 		)
 		for (mode in ApplicationMode.allPossibleValues()) {
 			for (layout in ScreenLayoutMode.entries) {
@@ -1129,6 +1167,10 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		private const val PREF_MESSAGES_GROUP_SEEDED = "lora_osmand_messages_group_seeded"
 		private const val PREF_SPEAK = "lora_osmand_speak_chat"
 		private const val PREF_SPEAK_RECENT = "lora_osmand_speak_recent"
+		private const val PREF_MESSAGE_STYLE = "lora_osmand_message_style"
+		private const val PREF_SPEAK_NAME = "lora_osmand_speak_name"
+		private const val PREF_SPEAK_SHORT = "lora_osmand_speak_short"
+		private const val PREF_SPEAK_PLAIN = "lora_osmand_speak_plain"
 		private const val PREF_TRACK_INTERVAL = "lora_osmand_track_interval_sec"
 		private const val PREF_TRACK_OFFSET = "lora_osmand_track_offset_m"
 		private const val PREF_READ_INCOMING = "lora_osmand_chat_read"

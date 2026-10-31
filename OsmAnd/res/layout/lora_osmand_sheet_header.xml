@@ -50,6 +50,19 @@
 		android:textSize="18sp" />
 
 	<TextView
+		android:id="@+id/tab_messages"
+		android:layout_width="wrap_content"
+		android:layout_height="match_parent"
+		android:background="?attr/selectableItemBackgroundBorderless"
+		android:gravity="center"
+		android:includeFontPadding="false"
+		android:minWidth="32dp"
+		android:paddingStart="3dp"
+		android:paddingEnd="3dp"
+		android:text="✉️"
+		android:textSize="18sp" />
+
+	<TextView
 		android:id="@+id/tab_about"
 		android:layout_width="wrap_content"
 		android:layout_height="match_parent"
@@ -59,21 +72,8 @@
 		android:includeFontPadding="false"
 		android:minWidth="32dp"
 		android:paddingStart="3dp"
-		android:paddingEnd="3dp"
-		android:text="ℹ️"
-		android:textSize="18sp" />
-
-	<TextView
-		android:id="@+id/tab_messages"
-		android:layout_width="wrap_content"
-		android:layout_height="match_parent"
-		android:background="?attr/selectableItemBackgroundBorderless"
-		android:gravity="center"
-		android:includeFontPadding="false"
-		android:minWidth="32dp"
-		android:paddingStart="3dp"
 		android:paddingEnd="6dp"
-		android:text="✉️"
+		android:text="ℹ️"
 		android:textSize="18sp" />
 
 </LinearLayout>

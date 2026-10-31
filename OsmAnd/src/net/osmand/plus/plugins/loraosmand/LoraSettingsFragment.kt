@@ -171,6 +171,10 @@ class LoraSettingsFragment : BaseSettingsFragment() {
 				) { plugin.TRACK_OFFSET_M.set(it) }
 				return true
 			}
+			"lora_osmand_message_style" -> {
+				pickMessageStyle()
+				return true
+			}
 			"lora_osmand_speak_count" -> {
 				pickNumber(
 					R.string.lora_osmand_speak_count,
@@ -207,6 +211,10 @@ class LoraSettingsFragment : BaseSettingsFragment() {
 		decorate("lora_osmand_track_interval", "⏱️", R.drawable.ic_action_time_span)
 		decorate("lora_osmand_track_offset", "📏", R.drawable.ic_action_distance)
 		decorate("lora_osmand_speak_count", "🔊", R.drawable.ic_action_micro_dark)
+		decorate("lora_osmand_message_style", "💬", R.drawable.ic_action_appearance)
+		decorate("lora_osmand_speak_name", "🏷️", R.drawable.ic_action_micro_dark)
+		decorate("lora_osmand_speak_short", "✂️", R.drawable.ic_action_micro_dark)
+		decorate("lora_osmand_speak_plain", "🔤", R.drawable.ic_action_micro_dark)
 	}
 
 	private fun decorate(key: String, emoji: String, iconRes: Int) {
@@ -292,6 +300,8 @@ class LoraSettingsFragment : BaseSettingsFragment() {
 		findPreference<Preference>("lora_osmand_track_offset")?.summary = formatOffset(plugin.TRACK_OFFSET_M.get())
 		findPreference<Preference>("lora_osmand_speak_count")?.summary =
 			getString(R.string.lora_osmand_speak_count_value, plugin.SPEAK_RECENT.get())
+		findPreference<Preference>("lora_osmand_message_style")?.summary =
+			getString(plugin.messageStyle().titleRes)
 		val sent = plugin.lastSentMs()
 		val whenText = if (sent <= 0L) {
 			getString(R.string.lora_osmand_never_sent)
@@ -327,6 +337,18 @@ class LoraSettingsFragment : BaseSettingsFragment() {
 		adapter.clear()
 		adapter.addAll(plugin.foundRadios.map { "${it.name}  ${it.rssi}" })
 		adapter.notifyDataSetChanged()
+	}
+
+	private fun pickMessageStyle() {
+		val styles = LoraMessageStyle.entries
+		AlertDialog.Builder(requireContext())
+			.setTitle(R.string.lora_osmand_message_style)
+			.setItems(styles.map { getString(it.titleRes) }.toTypedArray()) { _, which ->
+				plugin.MESSAGE_STYLE.set(styles[which].id)
+				bindDynamic()
+			}
+			.setNegativeButton(R.string.shared_string_cancel, null)
+			.show()
 	}
 
 	private fun pickStyle() {

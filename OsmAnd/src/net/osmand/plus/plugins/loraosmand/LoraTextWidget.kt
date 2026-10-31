@@ -24,7 +24,7 @@ class LoraTextWidget(
 	widgetsPanel: WidgetsPanel?,
 ) : SimpleWidget(mapActivity, widgetType, customId, widgetsPanel) {
 
-	enum class Field { BATTERY, NODES, MESSAGE }
+	enum class Field { BATTERY, NODES, MESSAGE, SPEAK }
 
 	private val plugin = PluginsHelper.requirePlugin(LoraOsmAndPlugin::class.java)
 	private var cache: String? = null
@@ -65,6 +65,7 @@ class LoraTextWidget(
 			Field.BATTERY -> plugin.batteryPercent()?.toString() ?: NO_VALUE
 			Field.NODES -> if (plugin.connected) plugin.onlineCount().toString() else NO_VALUE
 			Field.MESSAGE -> "${plugin.chatTotal()} · ${plugin.chatUnread()}"
+			Field.SPEAK -> plugin.SPEAK_RECENT.get().coerceIn(1, 20).toString()
 		}
 		if (field == Field.MESSAGE) {
 			applyUnreadGlow(plugin.chatUnread() > 0)
@@ -99,9 +100,12 @@ class LoraTextWidget(
 
 	override fun getOnClickListener(): View.OnClickListener {
 		return View.OnClickListener {
-			val tab = if (field == Field.MESSAGE) LoraSheetTab.MESSAGES else LoraSheetTab.SETTINGS
-			if (field == Field.MESSAGE || LoraWidgetChrome.isTopLoraWidget(this)) {
-				plugin.showSettings(mapActivity, tab)
+			when (field) {
+				Field.MESSAGE -> plugin.showSettings(mapActivity, LoraSheetTab.MESSAGES)
+				Field.SPEAK -> plugin.speakRecent()
+				else -> if (LoraWidgetChrome.isTopLoraWidget(this)) {
+					plugin.showSettings(mapActivity, LoraSheetTab.SETTINGS)
+				}
 			}
 		}
 	}

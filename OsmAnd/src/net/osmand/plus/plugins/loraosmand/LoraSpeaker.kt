@@ -40,13 +40,20 @@ internal class LoraSpeaker(private val app: OsmandApplication) {
 	}
 
 	fun speak(sender: String, text: String) {
-		val phrase = "$sender. $text"
-		val current = engine
-		if (current != null && ready) {
-			say(current, phrase)
+		speakPhrase("$sender. $text")
+	}
+
+	fun speakPhrase(phrase: String) {
+		val spoken = phrase.trim()
+		if (spoken.isEmpty()) {
 			return
 		}
-		waiting.add(phrase)
+		val current = engine
+		if (current != null && ready) {
+			say(current, spoken)
+			return
+		}
+		waiting.add(spoken)
 		if (current == null) {
 			val google = !usedDefault && GoogleNeuralTts.isInstalled(app)
 			open(if (google) GoogleNeuralTts.ENGINE else null)
