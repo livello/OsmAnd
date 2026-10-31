@@ -65,10 +65,15 @@ class LoraMessageListener : NotificationListenerService() {
 		rememberReply(channel, notification)
 		val conversation = style?.conversationTitle?.toString()?.takeIf { it.isNotBlank() }
 		plugin.noteChannel(channel, conversation)
+		val userName = style?.user?.name?.toString()?.trim().orEmpty()
+		val userKey = style?.user?.key?.trim().orEmpty()
+		if (userName.isNotEmpty()) {
+			plugin.noteSelfName(userName)
+		}
 		val now = System.currentTimeMillis()
-		val live = lines(notification, Notification.EXTRA_MESSAGES)
+		val live = lines(notification, Notification.EXTRA_MESSAGES, userName, userKey)
 		val backlog = if (Build.VERSION.SDK_INT >= 26) {
-			lines(notification, Notification.EXTRA_HISTORIC_MESSAGES)
+			lines(notification, Notification.EXTRA_HISTORIC_MESSAGES, userName, userKey)
 		} else {
 			emptyList()
 		}
@@ -76,16 +81,30 @@ class LoraMessageListener : NotificationListenerService() {
 			val text = notification.extras?.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.trim().orEmpty()
 			val sender = notification.extras?.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim().orEmpty()
 			if (text.isNotEmpty()) {
-				plugin.ingestChat(sender.ifBlank { "mesh" }, text, channel, true, now)
+				plugin.ingestChat(
+					sender.ifBlank { "mesh" },
+					text,
+					channel,
+					true,
+					now,
+					fromSelf = localSender(userName, userKey, sender, null),
+				)
 			}
 			return
 		}
 		for (line in backlog) {
-			plugin.ingestChat(line.sender.ifBlank { "mesh" }, line.text, channel, false, line.timeMs)
+			plugin.ingestChat(line.sender.ifBlank { "mesh" }, line.text, channel, false, line.timeMs, fromSelf = line.fromSelf)
 		}
 		for (line in live) {
 			val fresh = now - line.timeMs < FRESH_MS
-			plugin.ingestChat(line.sender.ifBlank { "mesh" }, line.text, channel, fresh, line.timeMs)
+			plugin.ingestChat(
+				line.sender.ifBlank { "mesh" },
+				line.text,
+				channel,
+				fresh,
+				line.timeMs,
+				fromSelf = line.fromSelf,
+			)
 		}
 		val newest = (live.lastOrNull() ?: backlog.lastOrNull())?.text?.take(40)
 		Log.i(TAG, "mesh ch=$channel live=${live.size} backlog=${backlog.size} newest=$newest")
@@ -102,7 +121,7 @@ class LoraMessageListener : NotificationListenerService() {
 		return channelId == "my_broadcasts" || channelId == "my_messages"
 	}
 
-	private fun lines(notification: Notification, key: String): List<MeshLine> {
+	private fun lines(notification: Notification, key: String, userName: String, userKey: String): List<MeshLine> {
 		val raw = messageBundles(notification, key) ?: return emptyList()
 		if (Build.VERSION.SDK_INT >= 30) {
 			try {
@@ -112,15 +131,12 @@ class LoraMessageListener : NotificationListenerService() {
 					if (text.isEmpty()) {
 						return@mapNotNull null
 					}
-					val sender = if (Build.VERSION.SDK_INT >= 28) {
-						message.senderPerson?.name?.toString()?.trim().orEmpty()
-					} else {
-						""
-					}.ifBlank {
+					val person = if (Build.VERSION.SDK_INT >= 28) message.senderPerson else null
+					val sender = person?.name?.toString()?.trim().orEmpty().ifBlank {
 						@Suppress("DEPRECATION")
 						message.sender?.toString()?.trim().orEmpty()
 					}
-					MeshLine(sender, text, message.timestamp)
+					MeshLine(sender, text, message.timestamp, localSender(userName, userKey, sender, person?.key))
 				}
 				if (mapped.isNotEmpty()) {
 					return mapped
@@ -136,12 +152,38 @@ class LoraMessageListener : NotificationListenerService() {
 			if (text.isEmpty()) {
 				continue
 			}
+			val person = messagePerson(bundle)
 			val sender = bundle.getCharSequence("sender")?.toString()?.trim().orEmpty().ifBlank {
-				personName(bundle)
+				person?.name?.toString()?.trim().orEmpty()
 			}
-			lines.add(MeshLine(sender, text, bundle.getLong("time")))
+			lines.add(MeshLine(sender, text, bundle.getLong("time"), localSender(userName, userKey, sender, person?.key)))
 		}
 		return lines
+	}
+
+	private fun localSender(userName: String, userKey: String, sender: String, senderKey: String?): Boolean {
+		if (userKey.isNotEmpty() && userKey == senderKey) {
+			return true
+		}
+		if (userName.isEmpty()) {
+			return false
+		}
+		if (sender.isBlank()) {
+			return true
+		}
+		return sender.equals(userName, ignoreCase = true)
+	}
+
+	private fun messagePerson(bundle: Bundle): android.app.Person? {
+		if (Build.VERSION.SDK_INT < 28) {
+			return null
+		}
+		return if (Build.VERSION.SDK_INT >= 33) {
+			bundle.getParcelable("sender_person", android.app.Person::class.java)
+		} else {
+			@Suppress("DEPRECATION")
+			bundle.getParcelable("sender_person")
+		}
 	}
 
 	private fun messageBundles(notification: Notification, key: String): Array<out android.os.Parcelable>? {
@@ -157,19 +199,6 @@ class LoraMessageListener : NotificationListenerService() {
 		}
 		@Suppress("DEPRECATION")
 		return extras.getParcelableArray(key)
-	}
-
-	private fun personName(bundle: Bundle): String {
-		if (Build.VERSION.SDK_INT < 28) {
-			return ""
-		}
-		val person = if (Build.VERSION.SDK_INT >= 33) {
-			bundle.getParcelable("sender_person", android.app.Person::class.java)
-		} else {
-			@Suppress("DEPRECATION")
-			bundle.getParcelable<android.app.Person>("sender_person")
-		}
-		return person?.name?.toString()?.trim().orEmpty()
 	}
 
 	private fun pullHiddenHistory() {
@@ -268,7 +297,7 @@ class LoraMessageListener : NotificationListenerService() {
 	}
 }
 
-private data class MeshLine(val sender: String, val text: String, val timeMs: Long)
+private data class MeshLine(val sender: String, val text: String, val timeMs: Long, val fromSelf: Boolean)
 
 internal object LoraMeshInbox {
 	private val replies = HashMap<Int, Reply>()

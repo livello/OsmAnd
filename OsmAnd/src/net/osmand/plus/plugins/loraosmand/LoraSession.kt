@@ -52,6 +52,8 @@ data class LoraChatLine(
 	val outgoing: Boolean,
 	val channel: Int,
 	val delivery: LoraDelivery = LoraDelivery.INCOMING,
+	val packetId: Int? = null,
+	val messageId: String? = null,
 )
 
 /**
@@ -69,6 +71,7 @@ internal class LoraSession(
 		fun onNodes(nodes: List<NodeInfo>)
 		fun onChannels(channels: List<Channel>)
 		fun onChat(line: LoraChatLine)
+		fun onLocalEcho(packetId: Int)
 		fun onScan(devices: List<FoundRadio>)
 	}
 
@@ -150,7 +153,9 @@ internal class LoraSession(
 		}
 	}
 
-	suspend fun sendText(text: String, channelIndex: Int): Result<Unit> {
+	fun allocatePacketId(): Int = nextId()
+
+	suspend fun sendText(text: String, channelIndex: Int, packetId: Int): Result<Unit> {
 		if (!linkUp) {
 			return Result.failure(IllegalStateException("not connected"))
 		}
@@ -158,7 +163,7 @@ internal class LoraSession(
 			portnum = PortNum.TEXT_MESSAGE_APP
 			payload = ByteString.of(*text.encodeToByteArray())
 		}.build()
-		return writePacket(data, channelIndex, BROADCAST)
+		return writePacket(data, channelIndex, BROADCAST, packetId)
 	}
 
 	suspend fun createChannel(name: String): Result<String> = adminMutex.withLock {
@@ -272,12 +277,17 @@ internal class LoraSession(
 
 	private suspend fun snapshotChannels(): List<Channel> = onGatt { channels.values.toList() }
 
-	private suspend fun writePacket(data: Data, channel: Int, destination: Int): Result<Unit> {
+	private suspend fun writePacket(
+		data: Data,
+		channel: Int,
+		destination: Int,
+		packetId: Int = nextId(),
+	): Result<Unit> {
 		val packet = MeshPacket.Builder().apply {
 			to = destination
 			this.channel = channel
 			decoded = data
-			id = nextId()
+			id = packetId
 			hop_limit = 3
 		}.build()
 		return writeBytes(ToRadio.ADAPTER.encode(ToRadio.Builder().apply { this.packet = packet }.build()))
@@ -559,17 +569,27 @@ internal class LoraSession(
 		val data = packet.decoded ?: return
 		when (data.portnum) {
 			PortNum.TEXT_MESSAGE_APP -> {
-				if (ownNode != 0 && packet.from == ownNode) {
-					return
-				}
 				val text = data.payload.utf8()
 				if (text.isBlank()) {
+					return
+				}
+				if (packet.from == 0 || (ownNode != 0 && packet.from == ownNode)) {
+					emit { listener.onLocalEcho(packet.id) }
 					return
 				}
 				val node = nodes[packet.from]
 				val name = node?.shortLabel() ?: ("!" + packet.from.toUInt().toString(16))
 				emit {
-					listener.onChat(LoraChatLine(System.currentTimeMillis(), name, text, false, packet.channel))
+					listener.onChat(
+						LoraChatLine(
+							System.currentTimeMillis(),
+							name,
+							text,
+							false,
+							packet.channel,
+							packetId = packet.id.takeIf { it != 0 },
+						),
+					)
 				}
 			}
 			PortNum.ADMIN_APP -> {

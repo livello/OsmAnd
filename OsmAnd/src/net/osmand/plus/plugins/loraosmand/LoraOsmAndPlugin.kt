@@ -114,8 +114,10 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 	private val bridgeNodes = LinkedHashMap<Int, NodeInfo>()
 	private val nodeRssi = HashMap<Int, Int>()
 	private val heardChat = LinkedHashSet<String>()
-	private var echoText: String = ""
-	private var echoAt: Long = 0L
+	private val pendingSends = ArrayList<LoraChatDedupe.Slot>()
+	private val seenPacketIds = LinkedHashSet<Int>()
+	private val seenMessageIds = LinkedHashSet<String>()
+	private val selfNames = LinkedHashSet<String>()
 	private var readIncoming: Int = 0
 	private val uiListeners = CopyOnWriteArrayList<Runnable>()
 
@@ -167,6 +169,10 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 	override fun getSettingsScreenType(): SettingsScreenType = SettingsScreenType.LORA_OSMAND_SETTINGS
 
 	override fun init(app: OsmandApplication, activity: Activity?): Boolean {
+		val dedupeErrors = LoraChatDedupe.selfCheck()
+		if (dedupeErrors.isNotEmpty()) {
+			Log.e(TAG, "chat dedupe: ${dedupeErrors.joinToString("; ")}")
+		}
 		restoreAnchor()
 		loadChat()
 		app.locationProvider.addLocationListener(this)
@@ -331,18 +337,31 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 			return
 		}
 		val stamp = System.currentTimeMillis()
-		echoText = body
-		echoAt = stamp
-		chat.add(LoraChatLine(stamp, app.getString(R.string.lora_osmand_me), body, true, channelIndex, LoraDelivery.SENDING))
+		val packetId = if (usesMeshApp()) null else session.allocatePacketId()
+		rememberSend(channelIndex, body, stamp, packetId, null)
+		chat.add(LoraChatLine(stamp, app.getString(R.string.lora_osmand_me), body, true, channelIndex, LoraDelivery.SENDING, packetId))
 		trimChat()
+		saveChat()
 		notifyUi()
 		if (usesMeshApp()) {
 			scope.launch(Dispatchers.IO) {
 				val viaReply = LoraMeshInbox.reply(app, channelIndex, body)
-				val viaTak = !viaReply && channelIndex == PRIMARY_CHANNEL && tak.sendGeoChat(body)
+				val takId: String?
+				val viaTak = if (!viaReply && channelIndex == PRIMARY_CHANNEL) {
+					val id = LoraTakClient.newChatId(body)
+					takId = id
+					app.uiHandler.post { attachOutboundId(stamp, id) }
+					tak.sendGeoChat(body, id)
+				} else {
+					takId = null
+					false
+				}
 				val sent = viaReply || viaTak
 				Log.i(TAG, "send ch=$channelIndex reply=$viaReply tak=$viaTak text=${body.take(48)}")
 				app.uiHandler.post {
+					if (!viaTak && takId != null) {
+						detachOutboundId(takId)
+					}
 					markDelivery(stamp, if (sent) LoraDelivery.SENT else LoraDelivery.FAILED)
 					if (!sent) {
 						app.showToastMessage(R.string.lora_osmand_send_failed)
@@ -352,7 +371,7 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 			return
 		}
 		scope.launch {
-			val result = session.sendText(body, channelIndex)
+			val result = session.sendText(body, channelIndex, packetId ?: session.allocatePacketId())
 			markDelivery(stamp, if (result.isSuccess) LoraDelivery.SENT else LoraDelivery.FAILED)
 			if (result.isFailure) {
 				app.showToastMessage(result.exceptionOrNull()?.message ?: app.getString(R.string.lora_osmand_send_failed))
@@ -680,8 +699,21 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		if (usesMeshApp()) {
 			return
 		}
-		chat.add(line)
-		notifyUi()
+		if (collapseEcho(line.fromName, line.text, line.channel, line.timeMs, line.packetId, line.messageId, false)) {
+			Log.i(TAG, "echo collapsed radio ch=${line.channel} from=${line.fromName} ${line.text.take(48)}")
+			return
+		}
+		appendIncoming(line, false)
+	}
+
+	override fun onLocalEcho(packetId: Int) {
+		if (packetId == 0) {
+			return
+		}
+		app.uiHandler.post {
+			pendingSends.find { it.packetId == packetId }?.consumed = true
+			seenPacketIds.add(packetId)
+		}
 	}
 
 	override fun onScan(devices: List<FoundRadio>) {
@@ -756,8 +788,8 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		}
 	}
 
-	override fun onTakChat(sender: String, text: String) {
-		app.uiHandler.post { ingestChat(sender, text, PRIMARY_CHANNEL, true) }
+	override fun onTakChat(sender: String, text: String, messageId: String?) {
+		app.uiHandler.post { ingestChat(sender, text, PRIMARY_CHANNEL, true, messageId = messageId) }
 	}
 
 	fun noteChannel(index: Int, name: String?) {
@@ -920,30 +952,214 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		)
 	}
 
-	fun ingestChat(sender: String, text: String, channel: Int, speak: Boolean, timeMs: Long = System.currentTimeMillis()) {
-		if (Looper.myLooper() != Looper.getMainLooper()) {
-			app.uiHandler.post { ingestChat(sender, text, channel, speak, timeMs) }
+	private fun rememberSend(channel: Int, text: String, timeMs: Long, packetId: Int?, messageId: String?) {
+		val known = pendingSends.any {
+			it.timeMs == timeMs && it.channel == channel && it.text == text && it.packetId == packetId
+		}
+		if (known) {
 			return
 		}
-		if (text == echoText && System.currentTimeMillis() - echoAt < ECHO_MS) {
-			return
+		pendingSends.add(LoraChatDedupe.Slot(channel, text, timeMs, packetId, messageId, false))
+		while (pendingSends.size > 200) {
+			pendingSends.removeAt(0)
 		}
-		val key = "$channel|$sender|$text"
-		if (!heardChat.add(key)) {
-			return
+	}
+
+	private fun attachOutboundId(stamp: Long, messageId: String) {
+		seenMessageIds.add(messageId)
+		val slot = pendingSends.find { it.timeMs == stamp && it.messageId == null }
+		if (slot != null) {
+			slot.messageId = messageId
 		}
-		Log.i(TAG, "stored ch=$channel speak=$speak from=$sender ${text.take(48)}")
-		while (heardChat.size > 400) {
-			heardChat.remove(heardChat.first())
+		val index = chat.indexOfLast { it.timeMs == stamp && it.outgoing && it.messageId == null }
+		if (index >= 0) {
+			chat[index] = chat[index].copy(messageId = messageId)
+			saveChat()
 		}
-		chat.add(LoraChatLine(timeMs, sender, text, false, channel))
+	}
+
+	private fun detachOutboundId(messageId: String) {
+		seenMessageIds.remove(messageId)
+		pendingSends.find { it.messageId == messageId }?.messageId = null
+		val index = chat.indexOfLast { it.messageId == messageId && it.outgoing }
+		if (index >= 0) {
+			chat[index] = chat[index].copy(messageId = null)
+			saveChat()
+		}
+	}
+
+	/**
+	 * True when this line repeats a send already in the chat. A packet id or TAK message id
+	 * is the same message whatever the sender is called. Without an id, the line has to be
+	 * from us (or from a name that is not some other known node) and its timestamp has to
+	 * sit within 30 seconds of that send. Each send keeps the copy closest to it.
+	 */
+	private fun collapseEcho(
+		sender: String,
+		text: String,
+		channel: Int,
+		timeMs: Long,
+		packetId: Int?,
+		messageId: String?,
+		fromSelf: Boolean,
+		allowUnclaimed: Boolean = false,
+	): Boolean {
+		if (packetId != null && packetId != 0 && !seenPacketIds.add(packetId)) {
+			pendingSends.find { it.packetId == packetId }?.consumed = true
+			return true
+		}
+		if (!messageId.isNullOrBlank() && !seenMessageIds.add(messageId)) {
+			pendingSends.find { it.messageId == messageId }?.consumed = true
+			return true
+		}
+		val self = fromSelf || isSelfSender(sender) || (allowUnclaimed && !isProvenOther(sender))
+		val slot = LoraChatDedupe.match(
+			pendingSends,
+			sender,
+			text,
+			channel,
+			timeMs,
+			System.currentTimeMillis(),
+			packetId,
+			messageId,
+			self,
+		) ?: return false
+		slot.consumed = true
+		if (self) {
+			noteSelfName(sender)
+		}
+		return true
+	}
+
+	private fun appendIncoming(line: LoraChatLine, speak: Boolean) {
+		chat.add(line)
 		chat.sortBy { it.timeMs }
 		trimChat()
 		saveChat()
 		if (speak && SPEAK_CHAT.get()) {
-			speaker.speak(sender, text)
+			speaker.speak(line.fromName, line.text)
 		}
 		notifyUi()
+	}
+
+	private fun isProvenOther(sender: String): Boolean {
+		if (isSelfSender(sender)) {
+			return false
+		}
+		val node = nodeMatching(sender) ?: return false
+		return !isOwnNode(node, nodeNearPhone())
+	}
+
+	private fun isSelfSender(sender: String): Boolean {
+		val name = sender.trim()
+		if (name.isEmpty() || name.equals("mesh", ignoreCase = true)) {
+			return false
+		}
+		if (name.equals(app.getString(R.string.lora_osmand_me), ignoreCase = true)) {
+			return true
+		}
+		if (name.equals("OsmAnd", ignoreCase = true)) {
+			return true
+		}
+		if (selfNames.any { name.equals(it, ignoreCase = true) }) {
+			return true
+		}
+		val device = DEVICE_NAME.get().trim()
+		if (device.isNotEmpty() && name.equals(device, ignoreCase = true)) {
+			return true
+		}
+		val near = nodeNearPhone()
+		return nodes.any { node -> isOwnNode(node, near) && senderFits(name, node) }
+	}
+
+	private fun isOwnNode(node: NodeInfo, near: NodeInfo?): Boolean {
+		val own = ownNodeNum()
+		if (own != null && node.num == own) {
+			return true
+		}
+		if (selfNames.any { senderFits(it, node) }) {
+			return true
+		}
+		val device = DEVICE_NAME.get().trim()
+		if (device.isNotEmpty() && senderFits(device, node)) {
+			return true
+		}
+		return near != null && near.num == node.num
+	}
+
+	private fun senderFits(name: String, node: NodeInfo): Boolean {
+		if (LoraMarkerHit.namesMatch(name, node.shortLabel(), node.longLabel())) {
+			return true
+		}
+		return name.equals("${node.shortLabel()} - ${node.longLabel()}", ignoreCase = true)
+	}
+
+	private fun nodeNearPhone(): NodeInfo? {
+		val phone = phoneLocation() ?: return null
+		if (System.currentTimeMillis() - phone.time > FIX_MAX_AGE_MS) {
+			return null
+		}
+		var found: NodeInfo? = null
+		for (node in nodes) {
+			val where = node.meshLatLon() ?: continue
+			val meters = metersBetween(where.latitude, where.longitude, phone.latitude, phone.longitude)
+			if (meters > SELF_METERS) {
+				continue
+			}
+			if (found != null) {
+				return null
+			}
+			found = node
+		}
+		return found
+	}
+
+	fun noteSelfName(raw: String) {
+		val name = raw.trim()
+		if (name.isBlank() || name.equals("mesh", ignoreCase = true) || name.startsWith("!")) {
+			return
+		}
+		if (Looper.myLooper() != Looper.getMainLooper()) {
+			app.uiHandler.post { noteSelfName(name) }
+			return
+		}
+		selfNames.add(name)
+	}
+
+	fun ingestChat(
+		sender: String,
+		text: String,
+		channel: Int,
+		speak: Boolean,
+		timeMs: Long = System.currentTimeMillis(),
+		packetId: Int? = null,
+		messageId: String? = null,
+		fromSelf: Boolean = false,
+	) {
+		if (Looper.myLooper() != Looper.getMainLooper()) {
+			app.uiHandler.post { ingestChat(sender, text, channel, speak, timeMs, packetId, messageId, fromSelf) }
+			return
+		}
+		val body = text.trim()
+		if (body.isEmpty()) {
+			return
+		}
+		if (fromSelf) {
+			noteSelfName(sender)
+		}
+		if (collapseEcho(sender, body, channel, timeMs, packetId, messageId, fromSelf, true)) {
+			Log.i(TAG, "echo collapsed ch=$channel from=$sender ${body.take(48)}")
+			return
+		}
+		val key = "$channel|$sender|$body"
+		if (!heardChat.add(key)) {
+			return
+		}
+		Log.i(TAG, "stored ch=$channel speak=$speak from=$sender ${body.take(48)}")
+		while (heardChat.size > 400) {
+			heardChat.remove(heardChat.first())
+		}
+		appendIncoming(LoraChatLine(timeMs, sender, body, false, channel, packetId = packetId, messageId = messageId), speak)
 	}
 
 	private fun loadChat() {
@@ -963,14 +1179,24 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 					outgoing = item.optBoolean("out"),
 					channel = item.optInt("ch"),
 					delivery = runCatching { LoraDelivery.valueOf(item.optString("st")) }.getOrDefault(LoraDelivery.INCOMING),
+					packetId = if (item.has("pid")) item.optInt("pid") else null,
+					messageId = if (item.has("mid")) item.optString("mid").takeIf { it.isNotBlank() } else null,
 				)
 				if (line.text.isBlank()) {
 					continue
 				}
 				heardChat.add("${line.channel}|${line.fromName}|${line.text}")
+				line.packetId?.takeIf { it != 0 }?.let { seenPacketIds.add(it) }
+				line.messageId?.let { seenMessageIds.add(it) }
 				chat.add(line)
 			}
 			chat.sortBy { it.timeMs }
+			for (line in chat) {
+				if (!line.outgoing) {
+					continue
+				}
+				rememberSend(line.channel, line.text, line.timeMs, line.packetId, line.messageId)
+			}
 		} catch (_: Exception) {
 		}
 		readIncoming = readIncomingPref.get().coerceAtMost(chat.count { !it.outgoing })
@@ -986,6 +1212,8 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 				put("out", line.outgoing)
 				put("ch", line.channel)
 				put("st", line.delivery.name)
+				line.packetId?.let { put("pid", it) }
+				line.messageId?.let { put("mid", it) }
 			})
 		}
 		try {
@@ -1180,8 +1408,8 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		private const val WAKE_REQUEST = 8768
 		private const val TAG = "LoraOsmAnd"
 		private const val PRIMARY_CHANNEL = 0
-		private const val ECHO_MS = 8_000L
 		private const val MIN_SEND_GAP_MS = 15_000L
+		private const val SELF_METERS = 30.0
 		private const val FIX_MAX_AGE_MS = 30_000L
 
 		val INTERVAL_CHOICES = intArrayOf(0, 30, 60, 120, 300, 900, 1800)

@@ -31,7 +31,7 @@ internal class LoraTakClient(
 	interface Events {
 		fun onTakStatus(up: Boolean, detail: String)
 		fun onTakNode(node: TakNodeUpdate)
-		fun onTakChat(sender: String, text: String)
+		fun onTakChat(sender: String, text: String, messageId: String?)
 	}
 
 	private val running = AtomicBoolean(false)
@@ -53,11 +53,10 @@ internal class LoraTakClient(
 		worker = null
 	}
 
-	fun sendGeoChat(text: String): Boolean {
+	fun sendGeoChat(text: String, id: String = newChatId(text)): Boolean {
 		val stream = output ?: return false
 		val stamp = stamp()
 		val stale = stamp(System.currentTimeMillis() + 120_000L)
-		val id = Integer.toHexString(text.hashCode() xor System.nanoTime().toInt())
 		val body = xml(text)
 		val event = """
 			<event version="2.0" uid="GeoChat.$CLIENT_UID.All Chat Rooms.$id" type="b-t-f" how="h-g-i-g-o" time="$stamp" start="$stamp" stale="$stale">
@@ -154,7 +153,7 @@ internal class LoraTakClient(
 			event.type == "b-t-f" -> {
 				val text = event.remarks?.trim().orEmpty()
 				if (text.isNotEmpty() && event.sender != "OsmAnd") {
-					events.onTakChat(event.sender ?: "mesh", text)
+					events.onTakChat(event.sender ?: "mesh", text, event.messageId)
 				}
 			}
 			event.type.startsWith("a-") && event.latitude != null && event.longitude != null -> {
@@ -189,6 +188,7 @@ internal class LoraTakClient(
 			var altitude: Int? = null
 			var callsign: String? = null
 			var sender: String? = null
+			var messageId: String? = null
 			var remarks: String? = null
 			while (parser.eventType != XmlPullParser.END_DOCUMENT) {
 				if (parser.eventType == XmlPullParser.START_TAG) {
@@ -205,13 +205,16 @@ internal class LoraTakClient(
 								?.toInt()
 						}
 						"contact" -> callsign = parser.getAttributeValue(null, "callsign")
-						"__chat" -> sender = parser.getAttributeValue(null, "senderCallsign")
+						"__chat" -> {
+							sender = parser.getAttributeValue(null, "senderCallsign")
+							messageId = parser.getAttributeValue(null, "messageId")
+						}
 						"remarks" -> remarks = readText(parser)
 					}
 				}
 				parser.next()
 			}
-			CotEvent(type, uid, lat, lon, altitude, callsign, sender, remarks)
+			CotEvent(type, uid, lat, lon, altitude, callsign, sender, messageId, remarks)
 		} catch (e: Exception) {
 			Log.i(TAG, "cot parse: ${e.message}")
 			null
@@ -301,6 +304,7 @@ internal class LoraTakClient(
 		val altitudeMeters: Int?,
 		val callsign: String?,
 		val sender: String?,
+		val messageId: String?,
 		val remarks: String?,
 	)
 
@@ -314,6 +318,10 @@ internal class LoraTakClient(
 		private const val CLIENT_UID = "OSMAND-LORA"
 		private const val UID_PREFIX = "MESHTASTIC-"
 		private const val EVENT_END = "</event>"
+
+		fun newChatId(text: String): String {
+			return Integer.toHexString(text.hashCode() xor System.nanoTime().toInt())
+		}
 	}
 }
 
