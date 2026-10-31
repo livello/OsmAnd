@@ -7,6 +7,9 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
+import android.view.ViewGroup
+import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import net.osmand.core.jni.MapMarker
 import net.osmand.core.jni.MapMarkerBuilder
@@ -67,13 +70,26 @@ internal class LoraMapLayer(
 	override fun collectObjectsFromPoint(result: MapSelectionResult, rules: MapSelectionRules) {
 		val point = result.point
 		val tileBox = result.tileBox
-		val radius = 18f * tileBox.density * plugin.MARKER_SIZE.get() / 100f + plugin.MARKER_FONT.get()
+		val renderer = mapRenderer
+		val radius = touchRadius(tileBox.density)
 		for (node in plugin.positionedNodes()) {
 			val latLng = node.meshLatLon() ?: continue
-			if (tileBox.isLatLonNearPixel(latLng.latitude, latLng.longitude, point.x, point.y, radius)) {
+			val pixel = NativeUtilities.getPixelFromLatLon(renderer, tileBox, latLng.latitude, latLng.longitude)
+			val dx = pixel.x - point.x
+			val dy = pixel.y - point.y
+			if (dx * dx + dy * dy <= radius * radius) {
 				result.collect(node, this)
 			}
 		}
+	}
+
+	override fun collectMapSymbolByExtraId(extraId: Int, result: MapSelectionResult): Boolean {
+		val node = plugin.positionedNodes().firstOrNull { it.num == extraId } ?: return false
+		val already = result.allObjects.any { (it.`object` as? NodeInfo)?.num == node.num }
+		if (!already) {
+			result.collect(node, this)
+		}
+		return true
 	}
 
 	override fun getObjectLocation(o: Any?): LatLon? {
@@ -93,9 +109,37 @@ internal class LoraMapLayer(
 		val online = if (node.isMeshOnline()) "🟢" else "⚫"
 		val metrics = formatNodeMetrics(activity, plugin, node)
 		val body = if (metrics.isEmpty()) online else "$online\n$metrics"
+		val density = activity.resources.displayMetrics.density
+		val pad = (12 * density).toInt()
+		val column = LinearLayout(activity).apply {
+			orientation = LinearLayout.VERTICAL
+			setPadding(pad, pad, pad, 0)
+		}
+		column.addView(TextView(activity).apply {
+			text = body
+			textSize = 15f
+		})
+		val record = TextView(activity).apply {
+			textSize = 16f
+			setPadding(0, pad, 0, pad / 2)
+			layoutParams = LinearLayout.LayoutParams(
+				ViewGroup.LayoutParams.MATCH_PARENT,
+				ViewGroup.LayoutParams.WRAP_CONTENT,
+			)
+		}
+		fun paintRecord() {
+			val on = plugin.isTrackRecording(node.num)
+			record.text = (if (on) "🔴 " else "⚪ ") + activity.getString(R.string.lora_osmand_track_record)
+		}
+		paintRecord()
+		record.setOnClickListener {
+			plugin.setTrackRecording(node.num, !plugin.isTrackRecording(node.num))
+			paintRecord()
+		}
+		column.addView(record)
 		AlertDialog.Builder(activity)
 			.setTitle(node.longLabel())
-			.setMessage(body)
+			.setView(column)
 			.setPositiveButton(R.string.lora_osmand_open_node) { _, _ ->
 				plugin.openNodeInMeshtastic(node.num)
 			}
@@ -163,7 +207,7 @@ internal class LoraMapLayer(
 		for (node in nodes) {
 			val latLng = node.meshLatLon() ?: continue
 			val bitmap = badgeBitmap(node, night)
-			MapMarkerBuilder()
+			val marker = MapMarkerBuilder()
 				.setIsAccuracyCircleSupported(false)
 				.setBaseOrder(getPointsOrder())
 				.setPinIcon(NativeUtilities.createSkImageFromBitmap(bitmap))
@@ -171,6 +215,7 @@ internal class LoraMapLayer(
 				.setPinIconHorisontalAlignment(MapMarker.PinIconHorisontalAlignment.CenterHorizontal)
 				.setPosition(PointI(MapUtils.get31TileNumberX(latLng.longitude), MapUtils.get31TileNumberY(latLng.latitude)))
 				.buildAndAddToCollection(mapMarkersCollection)
+			marker.setExtraId(node.num)
 		}
 		renderer.addSymbolsProvider(mapMarkersCollection)
 	}
@@ -297,6 +342,15 @@ internal class LoraMapLayer(
 		text.color = if (night) Color.WHITE else Color.BLACK
 		text.textAlign = Paint.Align.LEFT
 		canvas.drawText(label, nameX, nameY, text)
+	}
+
+	private fun touchRadius(density: Float): Float {
+		val scale = plugin.MARKER_SIZE.get() / 100f
+		val font = plugin.MARKER_FONT.get() * density
+		return when (plugin.markerStyle()) {
+			LoraMarkerStyle.PLATE, LoraMarkerStyle.DOT -> font * 6f + 28f * density
+			else -> 26f * density * scale + font
+		}
 	}
 
 	private fun nameFor(node: NodeInfo): String {

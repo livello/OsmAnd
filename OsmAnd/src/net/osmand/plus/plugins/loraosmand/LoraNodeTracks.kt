@@ -10,6 +10,9 @@ import net.osmand.shared.io.KFile
 import net.osmand.shared.gpx.primitives.WptPt
 import org.meshtastic.proto.NodeInfo
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.concurrent.Executors
 
 /**
@@ -24,6 +27,10 @@ internal class LoraNodeTracks(
 		Thread(runnable, "lora-tracks").apply { isDaemon = true }
 	}
 	private val last = HashMap<Int, Sample>()
+
+	fun startSession(node: NodeInfo) {
+		rememberTrackFile(node, System.currentTimeMillis())
+	}
 
 	fun consider(node: NodeInfo) {
 		if (!plugin.isTrackRecording(node.num)) {
@@ -69,11 +76,14 @@ internal class LoraNodeTracks(
 		val colors = nodes.associate { it.num to LoraMapLayer.iconColor(style, it, own) }
 		val names = nodes.associate { it.num to it.longLabel() }
 		val shown = nodes.map { it.num }.filter { plugin.isTrackShown(it) }.toSet()
+		val files = plugin.trackFiles()
 		queue.execute {
 			val folder = dir()
-			val files = folder.listFiles()?.toList().orEmpty()
-			for (file in files) {
-				val num = numOf(file.name) ?: continue
+			for ((num, name) in files) {
+				val file = File(folder, name)
+				if (!file.isFile) {
+					continue
+				}
 				val color = colors[num] ?: continue
 				paint(file, color, names[num])
 				if (num in shown) {
@@ -201,29 +211,40 @@ internal class LoraNodeTracks(
 	}
 
 	private fun fileFor(node: NodeInfo): File {
-		findFile(node.num)?.let { return it }
-		val safe = node.shortLabel().replace(Regex("[^\\p{L}\\p{N}]+"), "_").trim('_').take(16).ifBlank { "node" }
-		return File(dir(), "${safe}_${hex(node.num)}.gpx")
+		val stored = plugin.trackFileName(node.num)
+		if (!stored.isNullOrBlank()) {
+			return File(dir(), stored)
+		}
+		return File(dir(), rememberTrackFile(node, System.currentTimeMillis()))
+	}
+
+	private fun rememberTrackFile(node: NodeInfo, startMs: Long): String {
+		val folder = dir()
+		val stamp = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.US).format(Date(startMs))
+		val safe = node.longLabel()
+			.replace(Regex("[^\\p{L}\\p{N}._-]+"), "_")
+			.trim('_', '.')
+			.take(40)
+			.ifBlank { "node" }
+		var name = "${safe}_$stamp.gpx"
+		val ownedByOther = plugin.trackFiles().any { it.key != node.num && it.value == name }
+		if (ownedByOther || (File(folder, name).exists() && plugin.trackFileName(node.num) != name)) {
+			val hex = node.num.toUInt().toString(16).takeLast(4)
+			name = "${safe}_${stamp}_$hex.gpx"
+		}
+		plugin.rememberTrackFile(node.num, name)
+		return name
 	}
 
 	private fun findFile(num: Int): File? {
-		val suffix = "_${hex(num)}.gpx"
-		return dir().listFiles()?.firstOrNull { it.isFile && it.name.endsWith(suffix) }
+		val name = plugin.trackFileName(num) ?: return null
+		val file = File(dir(), name)
+		return file.takeIf { it.isFile }
 	}
 
 	private fun dir(): File {
 		val rec = app.getAppPath(IndexConstants.GPX_RECORDED_INDEX_DIR)
 		return File(rec, DIR).also { it.mkdirs() }
-	}
-
-	private fun hex(num: Int): String = num.toUInt().toString(16).padStart(8, '0')
-
-	private fun numOf(name: String): Int? {
-		val hex = name.substringBeforeLast(".gpx").substringAfterLast("_")
-		if (hex.length != 8) {
-			return null
-		}
-		return hex.toUIntOrNull(16)?.toInt()
 	}
 
 	private data class Sample(val lat: Double, val lon: Double, val timeMs: Long)

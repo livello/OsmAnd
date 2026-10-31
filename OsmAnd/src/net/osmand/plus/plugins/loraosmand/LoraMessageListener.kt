@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Bundle
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.RemoteInput
 import net.osmand.plus.plugins.PluginsHelper
@@ -21,19 +22,30 @@ import net.osmand.plus.plugins.PluginsHelper
 class LoraMessageListener : NotificationListenerService() {
 	override fun onListenerConnected() {
 		connected = this
-		pullFromService(this)
-		PluginsHelper.getPlugin(LoraOsmAndPlugin::class.java)?.ensureBackground()
+		Log.i(TAG, "listener connected")
+		try {
+			pullFromService(this)
+		} catch (error: Throwable) {
+			Log.w(TAG, "pull failed", error)
+		}
+		PluginsHelper.getPlugin(LoraOsmAndPlugin::class.java)?.onListenerReady()
 	}
 
 	override fun onListenerDisconnected() {
 		if (connected === this) {
 			connected = null
 		}
+		Log.i(TAG, "listener disconnected")
+		PluginsHelper.getPlugin(LoraOsmAndPlugin::class.java)?.scheduleRebind()
 	}
 
 	override fun onNotificationPosted(sbn: StatusBarNotification) {
-		ingest(sbn)
-		PluginsHelper.getPlugin(LoraOsmAndPlugin::class.java)?.ensureBackground()
+		try {
+			ingest(sbn)
+		} catch (error: Throwable) {
+			Log.w(TAG, "ingest failed", error)
+		}
+		PluginsHelper.getPlugin(LoraOsmAndPlugin::class.java)?.onListenerReady()
 	}
 
 	private fun ingest(sbn: StatusBarNotification) {
@@ -90,12 +102,12 @@ class LoraMessageListener : NotificationListenerService() {
 	}
 
 	private fun lines(notification: Notification, key: String): List<MeshLine> {
-		val raw = notification.extras?.getParcelableArray(key) ?: return emptyList()
+		val raw = messageBundles(notification, key) ?: return emptyList()
 		if (Build.VERSION.SDK_INT >= 30) {
-			val parsed = Notification.MessagingStyle.Message.getMessagesFromBundleArray(raw)
-			if (parsed.isNotEmpty()) {
-				return parsed.mapNotNull { message ->
-					val text = message.text?.toString()?.trim().orEmpty()
+			try {
+				val parsed = Notification.MessagingStyle.Message.getMessagesFromBundleArray(raw)
+				val mapped = parsed.mapNotNull { message ->
+					val text = message?.text?.toString()?.trim().orEmpty()
 					if (text.isEmpty()) {
 						return@mapNotNull null
 					}
@@ -109,6 +121,11 @@ class LoraMessageListener : NotificationListenerService() {
 					}
 					MeshLine(sender, text, message.timestamp)
 				}
+				if (mapped.isNotEmpty()) {
+					return mapped
+				}
+			} catch (error: Throwable) {
+				Log.w(TAG, "message parse failed", error)
 			}
 		}
 		val lines = ArrayList<MeshLine>()
@@ -124,6 +141,21 @@ class LoraMessageListener : NotificationListenerService() {
 			lines.add(MeshLine(sender, text, bundle.getLong("time")))
 		}
 		return lines
+	}
+
+	private fun messageBundles(notification: Notification, key: String): Array<out android.os.Parcelable>? {
+		val extras = notification.extras ?: return null
+		if (Build.VERSION.SDK_INT >= 33) {
+			try {
+				val typed = extras.getParcelableArray(key, Bundle::class.java)
+				if (typed != null && typed.isNotEmpty()) {
+					return typed
+				}
+			} catch (_: Throwable) {
+			}
+		}
+		@Suppress("DEPRECATION")
+		return extras.getParcelableArray(key)
 	}
 
 	private fun personName(bundle: Bundle): String {
@@ -204,11 +236,15 @@ class LoraMessageListener : NotificationListenerService() {
 		val remote = action.remoteInputs?.firstOrNull() ?: return
 		val pending = action.actionIntent ?: return
 		LoraMeshInbox.remember(channel, pending, remote.resultKey)
+		Log.i(TAG, "reply cached ch=$channel")
 	}
 
 	companion object {
 		const val MESH_PACKAGE = "com.geeksville.mesh"
+		private const val TAG = "LoraOsmAnd"
 		private const val FRESH_MS = 20_000L
+
+		fun isConnected(): Boolean = connected != null
 
 		@Volatile
 		private var connected: LoraMessageListener? = null
@@ -219,6 +255,9 @@ class LoraMessageListener : NotificationListenerService() {
 		}
 
 		private fun pullFromService(service: LoraMessageListener) {
+			val active = service.activeNotifications?.size ?: 0
+			val snoozed = if (Build.VERSION.SDK_INT >= 26) service.snoozedNotifications?.size ?: 0 else 0
+			Log.i(TAG, "pull active=$active snoozed=$snoozed")
 			service.activeNotifications?.forEach { service.ingest(it) }
 			if (Build.VERSION.SDK_INT >= 26) {
 				service.snoozedNotifications?.forEach { service.ingest(it) }

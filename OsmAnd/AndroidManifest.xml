@@ -24,6 +24,7 @@
 		android:usesPermissionFlags="neverForLocation"
 		tools:targetApi="tiramisu" />
 	<uses-permission android:name="android.permission.WAKE_LOCK" />
+	<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 	<uses-permission android:name="android.permission.CAMERA" />
 	<uses-permission android:name="android.permission.VIBRATE" />
 	<uses-permission android:name="android.permission.RECORD_AUDIO" />
@@ -1184,6 +1185,17 @@
 			android:exported="false"
 			android:foregroundServiceType="dataSync"
 			android:stopWithTask="false" />
+
+		<receiver
+			android:name="net.osmand.plus.plugins.loraosmand.LoraBridgeReceiver"
+			android:exported="false">
+			<intent-filter>
+				<action android:name="android.intent.action.BOOT_COMPLETED" />
+				<action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+				<action android:name="net.osmand.plus.plugins.loraosmand.MESH_WAKE" />
+				<action android:name="net.osmand.plus.plugins.loraosmand.SEND_CHAT" />
+			</intent-filter>
+		</receiver>
 
 		<service android:name="net.osmand.aidl.OsmandAidlService" android:exported="true" >
 			<intent-filter>

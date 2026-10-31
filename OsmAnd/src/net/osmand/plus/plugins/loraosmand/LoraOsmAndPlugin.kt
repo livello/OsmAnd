@@ -1,13 +1,20 @@
 package net.osmand.plus.plugins.loraosmand
 
 import android.app.Activity
+import android.app.AlarmManager
+import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
 import android.os.Looper
 import android.provider.Settings
 import android.service.notification.NotificationListenerService
+import android.util.Log
+import androidx.core.content.ContextCompat
 import androidx.core.text.HtmlCompat
 import androidx.fragment.app.FragmentActivity
 import kotlinx.coroutines.CoroutineScope
@@ -30,7 +37,6 @@ import net.osmand.plus.views.mapwidgets.WidgetType
 import net.osmand.plus.views.mapwidgets.WidgetsPanel
 import net.osmand.plus.views.mapwidgets.widgets.MapWidget
 import android.content.ActivityNotFoundException
-import android.content.Intent
 import android.net.Uri
 import org.meshtastic.proto.Channel
 import org.meshtastic.proto.ChannelSettings
@@ -85,6 +91,8 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		registerIntPreference(PREF_TRACK_OFFSET, 50).makeGlobal().makeShared()
 	private val readIncomingPref: CommonPreference<Int> =
 		registerIntPreference(PREF_READ_INCOMING, 0).makeGlobal()
+	private val trackFilesPref: CommonPreference<String> =
+		registerStringPreference(PREF_TRACK_FILES, "").makeGlobal()
 
 	private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 	private val session = LoraSession(app, this)
@@ -112,8 +120,13 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 	private var anchorLat: Double? = null
 	private var anchorLon: Double? = null
 	private var pendingSend: Boolean = false
-	private var listenerRebound: Boolean = false
+	private var presentRegistered: Boolean = false
 	private var appliedSchedule: String? = null
+	private val presentReceiver = object : BroadcastReceiver() {
+		override fun onReceive(context: Context?, intent: Intent?) {
+			wakeMeshLink()
+		}
+	}
 	private val positionTick = Runnable { tickPosition() }
 
 	init {
@@ -146,9 +159,8 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		app.locationProvider.addLocationListener(this)
 		schedulePositionTick()
 		if (usesMeshApp()) {
-			rebindListenerOnce()
-			ensureBackground()
-			app.uiHandler.post { LoraMessageListener.pullActive() }
+			registerUnlock()
+			wakeMeshLink()
 		}
 		return true
 	}
@@ -157,6 +169,8 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		super.disable(app)
 		app.locationProvider.removeLocationListener(this)
 		app.uiHandler.removeCallbacks(positionTick)
+		unregisterUnlock()
+		cancelWake()
 		LoraBridgeService.stop(app)
 		tak.stop()
 		speaker.shutdown()
@@ -193,7 +207,7 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 			if (session.isConnected()) {
 				session.disconnect()
 			}
-			ensureBackground()
+			wakeMeshLink()
 		} else if (AUTO_CONNECT.get() && DEVICE_ADDRESS.get().isNotBlank() && !session.isConnected()) {
 			session.connect(DEVICE_ADDRESS.get())
 		}
@@ -308,7 +322,9 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		if (usesMeshApp()) {
 			scope.launch(Dispatchers.IO) {
 				val viaReply = LoraMeshInbox.reply(channelIndex, body)
-				val sent = viaReply || (channelIndex == PRIMARY_CHANNEL && tak.sendGeoChat(body))
+				val viaTak = !viaReply && channelIndex == PRIMARY_CHANNEL && tak.sendGeoChat(body)
+				val sent = viaReply || viaTak
+				Log.i(TAG, "send ch=$channelIndex reply=$viaReply tak=$viaTak text=${body.take(48)}")
 				app.uiHandler.post {
 					markDelivery(stamp, if (sent) LoraDelivery.SENT else LoraDelivery.FAILED)
 					if (!sent) {
@@ -384,10 +400,14 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 
 	fun setTrackRecording(num: Int, record: Boolean) {
 		val nums = nodeSet(recordedNodesPref)
+		val was = num in nums
 		if (record) nums.add(num) else nums.remove(num)
 		recordedNodesPref.set(nums.joinToString(","))
-		if (record) {
-			nodes.firstOrNull { it.num == num }?.let { tracks.consider(it) }
+		if (record && !was) {
+			nodes.firstOrNull { it.num == num }?.let {
+				tracks.startSession(it)
+				tracks.consider(it)
+			}
 		}
 		notifyUi()
 	}
@@ -424,10 +444,39 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		return pref.get().split(',').mapNotNull { it.toIntOrNull() }.toMutableSet()
 	}
 
+	fun trackFileName(num: Int): String? = trackFiles()[num]
+
+	fun trackFiles(): Map<Int, String> {
+		val raw = trackFilesPref.get()
+		if (raw.isBlank()) {
+			return emptyMap()
+		}
+		val map = LinkedHashMap<Int, String>()
+		for (part in raw.split('|')) {
+			val split = part.indexOf('=')
+			if (split <= 0) {
+				continue
+			}
+			val num = part.substring(0, split).toIntOrNull() ?: continue
+			val name = part.substring(split + 1)
+			if (name.isNotBlank()) {
+				map[num] = name
+			}
+		}
+		return map
+	}
+
+	fun rememberTrackFile(num: Int, name: String) {
+		val map = trackFiles().toMutableMap()
+		map[num] = name
+		trackFilesPref.set(map.entries.joinToString("|") { "${it.key}=${it.value}" })
+	}
+
 	private fun findTrackFile(num: Int): java.io.File? {
-		val hex = num.toUInt().toString(16).padStart(8, '0')
+		val name = trackFileName(num) ?: return null
 		val folder = java.io.File(app.getAppPath(net.osmand.IndexConstants.GPX_RECORDED_INDEX_DIR), LoraNodeTracks.DIR)
-		return folder.listFiles()?.firstOrNull { it.name.endsWith("_$hex.gpx") }
+		val file = java.io.File(folder, name)
+		return file.takeIf { it.isFile }
 	}
 
 	fun rssiOf(num: Int): Int? = nodeRssi[num]
@@ -668,16 +717,136 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		lastMeshNoticeMs = System.currentTimeMillis()
 	}
 
-	fun ensureBackground() {
+	fun wakeMeshLink() {
 		if (!isActive || !usesMeshApp()) {
 			return
 		}
+		rebindListener()
+		scheduleWake()
+		LoraBridgeService.start(app)
+		pullMeshMessages()
+	}
+
+	fun onBridgeStarted() {
+		if (!isActive || !usesMeshApp()) {
+			return
+		}
+		scheduleWake()
+		ensureMeshLink()
+		pullMeshMessages()
+	}
+
+	fun scheduleRebind() {
+		app.uiHandler.postDelayed({
+			if (!LoraMessageListener.isConnected()) {
+				requestRebind()
+			}
+		}, 3_000L)
+	}
+
+	fun onListenerReady() {
+		if (!isActive || !usesMeshApp()) {
+			return
+		}
+		scheduleWake()
 		ensureMeshLink()
 		LoraBridgeService.start(app)
 	}
 
 	fun ensureMeshLink() {
 		startMeshBridge()
+	}
+
+	private fun rebindListener() {
+		if (!notificationAccess() || LoraMessageListener.isConnected()) {
+			return
+		}
+		val component = ComponentName(app, LoraMessageListener::class.java)
+		try {
+			app.packageManager.setComponentEnabledSetting(
+				component,
+				PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+				PackageManager.DONT_KILL_APP,
+			)
+		} catch (error: Exception) {
+			Log.w(TAG, "listener toggle failed", error)
+		} finally {
+			try {
+				app.packageManager.setComponentEnabledSetting(
+					component,
+					PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+					PackageManager.DONT_KILL_APP,
+				)
+			} catch (error: Exception) {
+				Log.w(TAG, "listener enable failed", error)
+			}
+		}
+		requestRebind()
+	}
+
+	private fun requestRebind() {
+		if (!notificationAccess()) {
+			return
+		}
+		try {
+			NotificationListenerService.requestRebind(ComponentName(app, LoraMessageListener::class.java))
+			Log.i(TAG, "requestRebind")
+		} catch (error: Exception) {
+			Log.w(TAG, "requestRebind failed", error)
+		}
+	}
+
+	private fun registerUnlock() {
+		if (presentRegistered) {
+			return
+		}
+		try {
+			ContextCompat.registerReceiver(
+				app,
+				presentReceiver,
+				IntentFilter(Intent.ACTION_USER_PRESENT),
+				ContextCompat.RECEIVER_NOT_EXPORTED,
+			)
+			presentRegistered = true
+		} catch (error: Exception) {
+			Log.w(TAG, "unlock receiver failed", error)
+		}
+	}
+
+	private fun unregisterUnlock() {
+		if (!presentRegistered) {
+			return
+		}
+		presentRegistered = false
+		try {
+			app.unregisterReceiver(presentReceiver)
+		} catch (_: Exception) {
+		}
+	}
+
+	private fun scheduleWake() {
+		val alarm = app.getSystemService(AlarmManager::class.java) ?: return
+		val trigger = System.currentTimeMillis() + WAKE_MS
+		try {
+			alarm.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, trigger, wakePending())
+		} catch (error: Exception) {
+			Log.w(TAG, "wake alarm failed", error)
+		}
+	}
+
+	private fun cancelWake() {
+		val alarm = app.getSystemService(AlarmManager::class.java) ?: return
+		alarm.cancel(wakePending())
+	}
+
+	private fun wakePending(): PendingIntent {
+		val intent = Intent(app, LoraBridgeReceiver::class.java).setAction(LoraBridgeReceiver.ACTION_WAKE)
+		return PendingIntent.getBroadcast(
+			app,
+			WAKE_REQUEST,
+			intent,
+			PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+		)
 	}
 
 	fun ingestChat(sender: String, text: String, channel: Int, speak: Boolean, timeMs: Long = System.currentTimeMillis()) {
@@ -692,6 +861,7 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		if (!heardChat.add(key)) {
 			return
 		}
+		Log.i(TAG, "stored ch=$channel speak=$speak from=$sender ${text.take(48)}")
 		while (heardChat.size > 400) {
 			heardChat.remove(heardChat.first())
 		}
@@ -758,17 +928,6 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 	private fun trimChat() {
 		while (chat.size > 200) {
 			chat.removeAt(0)
-		}
-	}
-
-	private fun rebindListenerOnce() {
-		if (listenerRebound || !notificationAccess()) {
-			return
-		}
-		listenerRebound = true
-		try {
-			NotificationListenerService.requestRebind(ComponentName(app, LoraMessageListener::class.java))
-		} catch (_: Exception) {
 		}
 	}
 
@@ -937,7 +1096,11 @@ class LoraOsmAndPlugin(app: OsmandApplication) : OsmandPlugin(app),
 		private const val PREF_TRACK_INTERVAL = "lora_osmand_track_interval_sec"
 		private const val PREF_TRACK_OFFSET = "lora_osmand_track_offset_m"
 		private const val PREF_READ_INCOMING = "lora_osmand_chat_read"
+		private const val PREF_TRACK_FILES = "lora_osmand_track_files"
 		private const val DEFAULT_GROUPS = "lora_cat_link,lora_cat_map,lora_cat_me,lora_cat_tracks"
+		private const val WAKE_MS = 15L * 60L * 1000L
+		private const val WAKE_REQUEST = 8768
+		private const val TAG = "LoraOsmAnd"
 		private const val PRIMARY_CHANNEL = 0
 		private const val ECHO_MS = 8_000L
 		private const val MIN_SEND_GAP_MS = 15_000L

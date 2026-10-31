@@ -43,7 +43,7 @@ class LoraBridgeService : Service() {
 			stopSelf()
 			return START_NOT_STICKY
 		}
-		plugin.ensureMeshLink()
+		plugin.onBridgeStarted()
 		return START_STICKY
 	}
 
