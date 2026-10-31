@@ -18,7 +18,6 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
-import android.graphics.Color
 import android.graphics.Typeface
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
@@ -28,9 +27,9 @@ import androidx.core.graphics.Insets
 import androidx.core.text.HtmlCompat
 import net.osmand.plus.utils.ColorUtilities
 import java.text.DateFormat
-import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import net.osmand.plus.plugins.voicegps.VoiceGpsOfflineSpeechHelper
 import androidx.fragment.app.FragmentManager
 import net.osmand.plus.BuildConfig
 import net.osmand.plus.R
@@ -72,6 +71,7 @@ class LoraSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	private var parkMessages = false
 	private var composeDialog: AlertDialog? = null
 	private var composeField: EditText? = null
+	private var speechDialog: AlertDialog? = null
 	private val refresh = Runnable { if (view != null) bindLive() }
 
 	private val audioPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -170,6 +170,8 @@ class LoraSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		composeDialog?.dismiss()
 		composeDialog = null
 		composeField = null
+		speechDialog?.dismiss()
+		speechDialog = null
 		super.onDestroyView()
 	}
 
@@ -364,14 +366,12 @@ class LoraSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 	}
 
 	private fun messageRow(entry: LoraChatLine): View {
-		val view = when (plugin.messageStyle()) {
-			LoraMessageStyle.TELEGRAM -> telegramRow(entry)
-			LoraMessageStyle.FACEBOOK -> facebookRow(entry)
-			LoraMessageStyle.ICQ -> icqRow(entry)
-			LoraMessageStyle.TWITTER -> twitterRow(entry)
-			LoraMessageStyle.ZSH -> zshRow(entry)
-			LoraMessageStyle.LORA -> loraRow(entry)
-		}
+		val view = LoraMessageRows.build(
+			requireContext(),
+			nightMode,
+			plugin.messageStyle(),
+			entry,
+		) { plugin.nodeMatching(it)?.shortLabel() }
 		armMessage(view, entry)
 		return view
 	}
@@ -384,214 +384,6 @@ class LoraSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 		view.setOnLongClickListener {
 			showSenderOnMap(entry)
 			true
-		}
-	}
-
-	private fun loraRow(entry: LoraChatLine): View {
-		val ctx = requireContext()
-		val body = framedColumn()
-		val head = LinearLayout(ctx).apply {
-			orientation = LinearLayout.HORIZONTAL
-			gravity = Gravity.CENTER_VERTICAL
-		}
-		head.addView(TextView(ctx).apply {
-			text = "${clock(entry)}  ${messageAge(entry.timeMs)}"
-			textSize = 12f
-			setTextColor(ColorUtilities.getSecondaryTextColor(ctx, nightMode))
-			layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-		})
-		head.addView(TextView(ctx).apply {
-			text = listOf(entry.fromName, deliveryMark(entry)).filter { it.isNotEmpty() }.joinToString("  ")
-			textSize = 13f
-			setTypeface(typeface, Typeface.BOLD)
-			gravity = Gravity.END
-			setTextColor(ColorUtilities.getPrimaryTextColor(ctx, nightMode))
-		})
-		body.addView(head)
-		body.addView(messageText(entry.text, 15f))
-		body.layoutParams = LinearLayout.LayoutParams(
-			ViewGroup.LayoutParams.MATCH_PARENT,
-			ViewGroup.LayoutParams.WRAP_CONTENT,
-		).apply {
-			topMargin = dp(4)
-			bottomMargin = dp(4)
-		}
-		return body
-	}
-
-	private fun telegramRow(entry: LoraChatLine): View {
-		val ctx = requireContext()
-		val column = LinearLayout(ctx).apply {
-			orientation = LinearLayout.VERTICAL
-			layoutParams = LinearLayout.LayoutParams(
-				ViewGroup.LayoutParams.MATCH_PARENT,
-				ViewGroup.LayoutParams.WRAP_CONTENT,
-			)
-			gravity = if (entry.outgoing) Gravity.END else Gravity.START
-			setPadding(0, dp(4), 0, dp(4))
-		}
-		if (!entry.outgoing) {
-			column.addView(TextView(ctx).apply {
-				text = entry.fromName
-				textSize = 12f
-				setTypeface(typeface, Typeface.BOLD)
-				setTextColor(ColorUtilities.getSecondaryTextColor(ctx, nightMode))
-				setPadding(dp(6), 0, dp(6), dp(2))
-			})
-		}
-		val bubble = LinearLayout(ctx).apply {
-			orientation = LinearLayout.VERTICAL
-			setPadding(dp(10), dp(8), dp(10), dp(8))
-			background = GradientDrawable().apply {
-				cornerRadius = dp(16).toFloat()
-				setColor(if (entry.outgoing) 0x3327AE60 else if (nightMode) 0xFF2C2C2C.toInt() else 0xFFE7F3FF.toInt())
-			}
-		}
-		val body = messageText(entry.text, 15f)
-		body.maxWidth = (resources.displayMetrics.widthPixels * 0.72f).toInt()
-		bubble.addView(body)
-		column.addView(bubble)
-		column.addView(TextView(ctx).apply {
-			val mark = deliveryMark(entry)
-			text = "${clock(entry)}  ${messageAge(entry.timeMs)}" + if (mark.isEmpty()) "" else "  $mark"
-			textSize = 11f
-			setTextColor(ColorUtilities.getSecondaryTextColor(ctx, nightMode))
-			setPadding(dp(6), dp(2), dp(6), 0)
-		})
-		return column
-	}
-
-	private fun facebookRow(entry: LoraChatLine): View {
-		val ctx = requireContext()
-		val row = LinearLayout(ctx).apply {
-			orientation = LinearLayout.HORIZONTAL
-			setPadding(0, dp(6), 0, dp(6))
-		}
-		val letter = entry.fromName.firstOrNull()?.uppercaseChar()?.toString() ?: "•"
-		row.addView(TextView(ctx).apply {
-			text = letter
-			gravity = Gravity.CENTER
-			textSize = 16f
-			setTextColor(Color.WHITE)
-			val size = dp(36)
-			layoutParams = LinearLayout.LayoutParams(size, size).apply { marginEnd = dp(8) }
-			background = GradientDrawable().apply {
-				shape = GradientDrawable.OVAL
-				setColor(0xFF5C6BC0.toInt())
-			}
-		})
-		val column = LinearLayout(ctx).apply {
-			orientation = LinearLayout.VERTICAL
-			layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-		}
-		column.addView(TextView(ctx).apply {
-			text = entry.fromName
-			textSize = 14f
-			setTypeface(typeface, Typeface.BOLD)
-			setTextColor(ColorUtilities.getPrimaryTextColor(ctx, nightMode))
-		})
-		column.addView(messageText(entry.text, 15f))
-		column.addView(TextView(ctx).apply {
-			val mark = deliveryMark(entry)
-			text = "${clock(entry)} · ${messageAge(entry.timeMs)}" + if (mark.isEmpty()) "" else "  $mark"
-			textSize = 12f
-			setTextColor(ColorUtilities.getSecondaryTextColor(ctx, nightMode))
-		})
-		row.addView(column)
-		return row
-	}
-
-	private fun icqRow(entry: LoraChatLine): View {
-		val ctx = requireContext()
-		return TextView(ctx).apply {
-			typeface = Typeface.MONOSPACE
-			textSize = 14f
-			setTextColor(0xFF39FF14.toInt())
-			val mark = deliveryMark(entry)
-			text = "[${clock(entry)}] ${entry.fromName}> ${entry.text}" + if (mark.isEmpty()) "" else " $mark"
-			setPadding(dp(8), dp(6), dp(8), dp(6))
-			background = GradientDrawable().apply {
-				cornerRadius = dp(4).toFloat()
-				setColor(if (nightMode) 0xFF031006.toInt() else 0xFF0B0B0B.toInt())
-			}
-		}
-	}
-
-	private fun twitterRow(entry: LoraChatLine): View {
-		val ctx = requireContext()
-		val column = LinearLayout(ctx).apply {
-			orientation = LinearLayout.VERTICAL
-			setPadding(0, dp(6), 0, dp(8))
-		}
-		val short = plugin.nodeMatching(entry.fromName)?.shortLabel() ?: entry.fromName
-		column.addView(TextView(ctx).apply {
-			text = "${entry.fromName}  @$short"
-			textSize = 14f
-			setTypeface(typeface, Typeface.BOLD)
-			setTextColor(ColorUtilities.getPrimaryTextColor(ctx, nightMode))
-		})
-		column.addView(messageText(entry.text, 15f))
-		column.addView(TextView(ctx).apply {
-			val mark = deliveryMark(entry)
-			text = "${clock(entry)} · ${messageAge(entry.timeMs)}" + if (mark.isEmpty()) "" else "  $mark"
-			textSize = 12f
-			setTextColor(ColorUtilities.getSecondaryTextColor(ctx, nightMode))
-		})
-		return column
-	}
-
-	private fun zshRow(entry: LoraChatLine): View {
-		val ctx = requireContext()
-		return TextView(ctx).apply {
-			typeface = Typeface.MONOSPACE
-			textSize = 14f
-			setTextColor(ColorUtilities.getPrimaryTextColor(ctx, nightMode))
-			val mark = deliveryMark(entry)
-			text = "${clock(entry)} ${entry.fromName}% ${entry.text}" + if (mark.isEmpty()) "" else " $mark"
-			setPadding(0, dp(3), 0, dp(3))
-		}
-	}
-
-	private fun framedColumn(): LinearLayout {
-		val ctx = requireContext()
-		return LinearLayout(ctx).apply {
-			orientation = LinearLayout.VERTICAL
-			setPadding(dp(8), dp(6), dp(8), dp(6))
-			background = GradientDrawable().apply {
-				setColor(ColorUtilities.getActivityBgColor(ctx, nightMode))
-				setStroke(dp(1).coerceAtLeast(1), ColorUtilities.getSecondaryTextColor(ctx, nightMode))
-				cornerRadius = dp(8).toFloat()
-			}
-		}
-	}
-
-	private fun messageText(text: String, size: Float): TextView {
-		return TextView(requireContext()).apply {
-			this.text = text
-			textSize = size
-			setTextColor(ColorUtilities.getPrimaryTextColor(context, nightMode))
-		}
-	}
-
-	private fun clock(entry: LoraChatLine): String {
-		return SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(entry.timeMs))
-	}
-
-	private fun deliveryMark(entry: LoraChatLine): String {
-		return when (entry.delivery) {
-			LoraDelivery.SENDING -> "⏳"
-			LoraDelivery.SENT -> "✅"
-			LoraDelivery.FAILED -> "⚠️"
-			LoraDelivery.INCOMING -> ""
-		}
-	}
-
-	private fun messageAge(timeMs: Long): String {
-		val minutes = ((System.currentTimeMillis() - timeMs).coerceAtLeast(0L) / 60_000L).toInt()
-		return when {
-			minutes < 60 -> getString(R.string.lora_osmand_age_min, minutes)
-			minutes < 60 * 24 -> getString(R.string.lora_osmand_age_hour, minutes / 60)
-			else -> getString(R.string.lora_osmand_age_day, minutes / (60 * 24))
 		}
 	}
 
@@ -642,12 +434,42 @@ class LoraSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 
 	private fun startDictation() {
 		val ctx = context ?: return
-		val onDevice = Build.VERSION.SDK_INT >= 31 && SpeechRecognizer.isOnDeviceRecognitionAvailable(ctx)
-		if (!onDevice && !SpeechRecognizer.isRecognitionAvailable(ctx)) {
-			app.showToastMessage(R.string.lora_osmand_offline_speech_missing)
+		if (offlineRussianMissing(ctx)) {
+			offerOfflineRussianSpeech()
 			return
 		}
 		beginRecognizer()
+	}
+
+	private fun offlineRussianMissing(ctx: android.content.Context): Boolean {
+		val onDevice = Build.VERSION.SDK_INT >= 31 && SpeechRecognizer.isOnDeviceRecognitionAvailable(ctx)
+		if (!onDevice || !SpeechRecognizer.isRecognitionAvailable(ctx)) {
+			return true
+		}
+		return VoiceGpsOfflineSpeechHelper.missingOfflineLocales(ctx)
+			.any { it.tag.startsWith("ru", ignoreCase = true) }
+	}
+
+	private fun offerOfflineRussianSpeech() {
+		val ctx = context ?: return
+		if (!isAdded || speechDialog?.isShowing == true) {
+			return
+		}
+		stopRecognizer()
+		val missing = VoiceGpsOfflineSpeechHelper.missingOfflineLocales(ctx)
+			.filter { it.tag.startsWith("ru", ignoreCase = true) }
+		val shown = missing.ifEmpty {
+			listOf(VoiceGpsOfflineSpeechHelper.MissingLocale("ru-RU", Locale("ru", "RU").displayName))
+		}
+		speechDialog = AlertDialog.Builder(ctx)
+			.setTitle(R.string.voice_gps_offline_stt_missing_title)
+			.setMessage(VoiceGpsOfflineSpeechHelper.missingLocalesMessage(ctx, shown))
+			.setPositiveButton(R.string.voice_gps_offline_stt_download) { _, _ ->
+				VoiceGpsOfflineSpeechHelper.openOfflineSpeechDownloadSettings(ctx)
+			}
+			.setNegativeButton(R.string.shared_string_cancel, null)
+			.setOnDismissListener { speechDialog = null }
+			.show()
 	}
 
 	private fun beginRecognizer() {
@@ -673,7 +495,7 @@ class LoraSettingsBottomSheet : MenuBottomSheetDialogFragment() {
 					error == SpeechRecognizer.ERROR_NETWORK ||
 					error == SpeechRecognizer.ERROR_NETWORK_TIMEOUT
 				) {
-					app.showToastMessage(R.string.lora_osmand_offline_speech_missing)
+					app.uiHandler.post { offerOfflineRussianSpeech() }
 				}
 			}
 

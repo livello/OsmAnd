@@ -18,6 +18,9 @@
     <string name="lora_osmand_style_twitter">twitter-like</string>
     <string name="lora_osmand_style_zsh">zsh-like</string>
     <string name="lora_osmand_style_lora">lora-like</string>
+    <string name="lora_osmand_style_sample_short">Привет</string>
+    <string name="lora_osmand_style_sample_long">Нода на хребте, заряд ещё нормальный.</string>
+    <string name="lora_osmand_style_sample_out">ping</string>
     <string name="lora_osmand_speak_name">Озвучивать имя ноды</string>
     <string name="lora_osmand_speak_short">Озвучивать короткое имя ноды</string>
     <string name="lora_osmand_speak_plain">Не произносить _ - / *</string>

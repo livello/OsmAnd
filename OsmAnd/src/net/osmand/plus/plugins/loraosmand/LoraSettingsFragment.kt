@@ -3,10 +3,15 @@ package net.osmand.plus.plugins.loraosmand
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
+import android.graphics.Typeface
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.preference.Preference
 import androidx.preference.PreferenceViewHolder
@@ -341,15 +346,85 @@ class LoraSettingsFragment : BaseSettingsFragment() {
 
 	private fun pickMessageStyle() {
 		val styles = LoraMessageStyle.entries
-		AlertDialog.Builder(requireContext())
+		val ctx = requireContext()
+		var selected = styles.indexOf(plugin.messageStyle()).coerceAtLeast(0)
+		val root = LinearLayout(ctx).apply {
+			orientation = LinearLayout.VERTICAL
+		}
+		val names = LinearLayout(ctx).apply {
+			orientation = LinearLayout.VERTICAL
+			setPadding(dp(16), dp(8), dp(16), dp(4))
+		}
+		val preview = LinearLayout(ctx).apply {
+			orientation = LinearLayout.VERTICAL
+			setPadding(dp(12), dp(8), dp(12), dp(8))
+		}
+		val nameViews = ArrayList<TextView>()
+		fun render() {
+			nameViews.forEachIndexed { index, label ->
+				val active = index == selected
+				label.setTypeface(null, if (active) Typeface.BOLD else Typeface.NORMAL)
+				label.alpha = if (active) 1f else 0.45f
+			}
+			preview.removeAllViews()
+			val now = System.currentTimeMillis()
+			val samples = listOf(
+				LoraChatLine(now - 15 * 60_000L, "Jef7", getString(R.string.lora_osmand_style_sample_short), false, 0),
+				LoraChatLine(now - 2 * 60_000L, "Jef7", getString(R.string.lora_osmand_style_sample_long), false, 0),
+				LoraChatLine(
+					now,
+					getString(R.string.lora_osmand_me),
+					getString(R.string.lora_osmand_style_sample_out),
+					true,
+					0,
+					LoraDelivery.SENT,
+				),
+			)
+			for (line in samples) {
+				preview.addView(
+					LoraMessageRows.build(ctx, isNightMode, styles[selected], line) { "Jef" },
+				)
+			}
+		}
+		styles.forEachIndexed { index, style ->
+			val label = TextView(ctx).apply {
+				text = getString(style.titleRes)
+				textSize = 16f
+				setPadding(0, dp(8), 0, dp(8))
+				setOnClickListener {
+					selected = index
+					render()
+				}
+			}
+			nameViews.add(label)
+			names.addView(label)
+		}
+		root.addView(names)
+		root.addView(View(ctx).apply {
+			layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
+			setBackgroundColor(0x33888888)
+		})
+		root.addView(ScrollView(ctx).apply {
+			isFillViewport = false
+			addView(preview)
+			layoutParams = LinearLayout.LayoutParams(
+				ViewGroup.LayoutParams.MATCH_PARENT,
+				dp(220),
+			)
+		})
+		render()
+		AlertDialog.Builder(ctx)
 			.setTitle(R.string.lora_osmand_message_style)
-			.setItems(styles.map { getString(it.titleRes) }.toTypedArray()) { _, which ->
-				plugin.MESSAGE_STYLE.set(styles[which].id)
+			.setView(root)
+			.setPositiveButton(R.string.shared_string_ok) { _, _ ->
+				plugin.MESSAGE_STYLE.set(styles[selected].id)
 				bindDynamic()
 			}
 			.setNegativeButton(R.string.shared_string_cancel, null)
 			.show()
 	}
+
+	private fun dp(value: Int): Int = AndroidUtils.dpToPx(requireContext(), value.toFloat())
 
 	private fun pickStyle() {
 		val styles = LoraMarkerStyle.entries
