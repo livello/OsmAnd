@@ -3,6 +3,9 @@ package net.osmand.plus.plugins.loraosmand
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.Build
+import android.os.Process
+import android.util.Log
 import net.osmand.plus.OsmandApplication
 import net.osmand.plus.plugins.PluginsHelper
 
@@ -19,10 +22,16 @@ class LoraBridgeReceiver : BroadcastReceiver() {
 			return
 		}
 		if (intent?.action == ACTION_SEND) {
+			val from = if (Build.VERSION.SDK_INT >= 34) sentFromUid else Process.myUid()
+			if (from != Process.SHELL_UID && from != Process.myUid()) {
+				Log.w(TAG, "send ignored from uid=$from")
+				return
+			}
 			val text = intent.getStringExtra(EXTRA_TEXT)?.trim().orEmpty()
 			if (text.isEmpty()) {
 				return
 			}
+			Log.i(TAG, "send requested ch=${intent.getIntExtra(EXTRA_CHANNEL, 0)}")
 			plugin.wakeMeshLink()
 			plugin.sendChat(text, intent.getIntExtra(EXTRA_CHANNEL, 0))
 			return
@@ -31,6 +40,7 @@ class LoraBridgeReceiver : BroadcastReceiver() {
 	}
 
 	companion object {
+		private const val TAG = "LoraOsmAnd"
 		const val ACTION_WAKE = "net.osmand.plus.plugins.loraosmand.MESH_WAKE"
 		const val ACTION_SEND = "net.osmand.plus.plugins.loraosmand.SEND_CHAT"
 		const val EXTRA_TEXT = "text"

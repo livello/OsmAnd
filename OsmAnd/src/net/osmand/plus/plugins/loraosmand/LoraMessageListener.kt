@@ -87,6 +87,8 @@ class LoraMessageListener : NotificationListenerService() {
 			val fresh = now - line.timeMs < FRESH_MS
 			plugin.ingestChat(line.sender.ifBlank { "mesh" }, line.text, channel, fresh, line.timeMs)
 		}
+		val newest = (live.lastOrNull() ?: backlog.lastOrNull())?.text?.take(40)
+		Log.i(TAG, "mesh ch=$channel live=${live.size} backlog=${backlog.size} newest=$newest")
 	}
 
 	private fun isChannelText(notification: Notification): Boolean {
