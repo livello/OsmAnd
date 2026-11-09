@@ -289,4 +289,9 @@ public class MainSettingsFragment extends BaseSettingsFragment implements OnSele
 			ProfileAppearanceFragment.showInstance(activity, profileKey, imported);
 		}
 	}
+
+	@Override
+	public String getAnalyticsScreen() {
+		return "main_settings";
+	}
 }

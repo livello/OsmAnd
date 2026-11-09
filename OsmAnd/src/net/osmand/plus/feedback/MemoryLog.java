@@ -15,6 +15,7 @@ import androidx.annotation.RequiresApi;
 import net.osmand.IndexConstants;
 import net.osmand.PlatformUtil;
 import net.osmand.core.android.MapRendererView;
+import net.osmand.plus.GeocodingLookupService;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.Version;
 import net.osmand.plus.exploreplaces.ExplorePlacesOnlineProvider;
@@ -23,6 +24,7 @@ import net.osmand.plus.resources.ResourceManager;
 import net.osmand.plus.routing.RouteCalculationResult;
 import net.osmand.plus.routing.RoutingHelper;
 import net.osmand.plus.track.helpers.SelectedGpxFile;
+import net.osmand.search.SearchUICore;
 
 import org.apache.commons.logging.Log;
 
@@ -43,6 +45,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -170,9 +173,16 @@ public class MemoryLog {
 	// count share one value so that a sample cannot read one of them from a later trim than the
 	// other: the high half holds the level raised by one, the low half the number of calls.
 	private final AtomicLong trims = new AtomicLong();
+	// route calculations, searches and address lookups since the previous sample: all of them
+	// load map data in bursts
+	private final AtomicInteger routeCalculations = new AtomicInteger();
+	private int previousSearches;
+	private int previousAddressRequests;
+	private int previousAddressLookups;
+	private long previousAddressLookupsTimeMs;
 
 	// called from a background thread, at most once per SAMPLE_INTERVAL
-	public synchronized void sample(@NonNull OsmandApplication app, @NonNull StackSampler stackSampler) {
+	public synchronized void sample(@NonNull OsmandApplication app) {
 		long time = SystemClock.elapsedRealtime();
 		Runtime runtime = Runtime.getRuntime();
 		long used = runtime.totalMemory() - runtime.freeMemory();
@@ -197,7 +207,7 @@ public class MemoryLog {
 				sb.append("--- start ").append(Version.getAppVersion(app));
 				sb.append(" sdk=").append(Build.VERSION.SDK_INT).append('\n');
 			}
-			String sample = buildSample(app, stackSampler, time, used, max);
+			String sample = buildSample(app, time, used, max);
 			peakUsed = 0;
 			sb.append(sample).append('\n');
 			append(getFile(app), sb.toString());
@@ -219,6 +229,11 @@ public class MemoryLog {
 			long highest = Math.max(current >>> 32, raised + 1);
 			return (highest << 32) | ((current & 0xffffffffL) + 1);
 		});
+	}
+
+	// called from the routing thread when a calculation ends, cancelled or not
+	public void onRouteCalculated() {
+		routeCalculations.incrementAndGet();
 	}
 
 	// MB/count of what the map renderer keeps in GPU memory by type, e.g. "tex:120/340,slot:0/1200,vbo:10/180,ibo:2/180,mesh:0/180"
@@ -243,7 +258,7 @@ public class MemoryLog {
 	}
 
 	@NonNull
-	private String buildSample(@NonNull OsmandApplication app, @NonNull StackSampler stackSampler, long time, long used, long max) {
+	private String buildSample(@NonNull OsmandApplication app, long time, long used, long max) {
 		StringBuilder sb = new StringBuilder();
 		sb.append("t=").append(time / 1000);
 		sb.append(" heap=").append(mb(used)).append('/').append(mb(max));
@@ -281,9 +296,30 @@ public class MemoryLog {
 		if (busy != null) {
 			sb.append(" busy=").append(busy);
 		}
-		String hot = stackSampler.drain();
-		if (hot != null) {
-			sb.append(hot);
+		int calculations = routeCalculations.getAndSet(0);
+		if (calculations > 0) {
+			sb.append(" rcalc=").append(calculations);
+		}
+		int searches = SearchUICore.getSearchesRun();
+		if (searches > previousSearches) {
+			sb.append(" srch=").append(searches - previousSearches);
+		}
+		previousSearches = searches;
+		GeocodingLookupService geocoding = app.getGeocodingLookupService();
+		if (geocoding != null) {
+			int requests = geocoding.getRequests();
+			if (requests > previousAddressRequests) {
+				sb.append(" georeq=").append(requests - previousAddressRequests);
+			}
+			previousAddressRequests = requests;
+			int lookups = geocoding.getLookups();
+			long lookupsTimeMs = geocoding.getLookupsTimeMs();
+			if (lookups > previousAddressLookups) {
+				sb.append(" geo=").append(lookups - previousAddressLookups);
+				sb.append(" geoms=").append(lookupsTimeMs - previousAddressLookupsTimeMs);
+				previousAddressLookups = lookups;
+				previousAddressLookupsTimeMs = lookupsTimeMs;
+			}
 		}
 		String histogram = maybeCollectHistogram(app, time, used);
 		if (histogram != null) {

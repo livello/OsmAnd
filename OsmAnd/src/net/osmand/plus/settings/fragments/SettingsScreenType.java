@@ -21,6 +21,7 @@ import net.osmand.plus.settings.datastorage.DataStorageFragment;
 import net.osmand.plus.settings.mediastorage.MediaStorageFragment;
 import net.osmand.plus.settings.fragments.profileappearance.ProfileAppearanceFragment;
 import net.osmand.plus.settings.fragments.voice.VoiceAnnouncesFragment;
+import net.osmand.plus.wikipedia.WikipediaSettingsFragment;
 
 public enum SettingsScreenType {
 
@@ -57,6 +58,7 @@ public enum SettingsScreenType {
 	LORA_OSMAND_SETTINGS(LoraSettingsFragment.class.getName(), false, null, R.xml.lora_osmand_settings, R.layout.global_preference_toolbar),
 	TORRENT_MAPS_SETTINGS(TorrentMapsSettingsFragment.class.getName(), false, null, R.xml.torrent_maps_settings, R.layout.global_preference_toolbar),
 	VOICE_GPS_SETTINGS(VoiceGpsSettingsFragment.class.getName(), false, null, R.xml.voice_gps_settings, R.layout.global_preference_toolbar),
+	WIKIPEDIA_SETTINGS(WikipediaSettingsFragment.class.getName(), true, ApplyQueryType.NONE, R.xml.wikipedia_settings, R.layout.profile_preference_toolbar),
 	WEATHER_SETTINGS(WeatherSettingsFragment.class.getName(), true, ApplyQueryType.SNACK_BAR, R.xml.weather_settings, R.layout.profile_preference_toolbar),
 	EXTERNAL_SETTINGS_WRITE_TO_TRACK_SETTINGS(ExternalSettingsWriteToTrackSettingsFragment.class.getName(), true, ApplyQueryType.BOTTOM_SHEET, R.xml.external_sensors_write_to_track_settings, R.layout.profile_preference_toolbar),
 	DANGEROUS_GOODS(DangerousGoodsFragment.class.getName(), true, ApplyQueryType.NONE, R.xml.dangerous_goods_parameters, R.layout.global_preference_toolbar),

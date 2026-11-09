@@ -571,6 +571,7 @@ public class POIMapLayer extends OsmandMapLayer implements IContextMenuProvider,
 
 			MapMarkerBuilder mapMarkerBuilder = new MapMarkerBuilder();
 			mapMarkerBuilder.setIsAccuracyCircleSupported(false)
+					.setUpdateAfterCreated(true)
 					.setMarkerId(markerId++)
 					.setBaseOrder(getPointsOrder())
 					.setPinIcon(NativeUtilities.createSkImageFromBitmap(bitmap))

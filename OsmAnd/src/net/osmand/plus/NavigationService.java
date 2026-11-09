@@ -176,6 +176,16 @@ public class NavigationService extends Service {
 
 		if (isUsed()) {
 			LOG.info(">>>> NavigationService is used by = " + usedBy.get());
+			// A running service of a "Restricted" app is taken out of the foreground in the background.
+			// Before addUsageIntent(), so its refresh reposts what buildTopNotification() cancels.
+			Notification notification = notificationHelper.buildTopNotification(this, getNotificationType());
+			try {
+				startForeground(notification != null ? notification : notificationHelper.buildFallbackNotification());
+			} catch (Exception e) {
+				// The promotion above already holds the location service. Stopping here
+				// is what freezes the track for the rest of a screen-off ride.
+				LOG.error("Failed to refresh NavigationService notification (usedBy=" + usedBy.get() + ")", e);
+			}
 			addUsageIntent(usageIntent);
 			ensureLocationUpdates();
 			return START_REDELIVER_INTENT;
@@ -189,9 +199,7 @@ public class NavigationService extends Service {
 		locationServiceHelper = app.createLocationServiceHelper();
 		app.setNavigationService(this);
 
-		boolean trackOrEv = isUsedBy(USED_BY_GPX) || isUsedBy(USED_BY_EV);
-		NotificationType type = isUsedBy(USED_BY_NAVIGATION) ? NAVIGATION : trackOrEv ? GPX : AIS;
-		Notification notification = notificationHelper.buildTopNotification(this, type);
+		Notification notification = notificationHelper.buildTopNotification(this, getNotificationType());
 		if (notification != null) {
 			try {
 				startForeground(notification);
@@ -280,6 +288,12 @@ public class NavigationService extends Service {
 		if (usedBy.get() == 0) {
 			stopSelf();
 		}
+	}
+
+	@NonNull
+	private NotificationType getNotificationType() {
+		boolean trackOrEv = isUsedBy(USED_BY_GPX) || isUsedBy(USED_BY_EV);
+		return isUsedBy(USED_BY_NAVIGATION) ? NAVIGATION : trackOrEv ? GPX : AIS;
 	}
 
 	private void startForeground(@NonNull Notification notification) {

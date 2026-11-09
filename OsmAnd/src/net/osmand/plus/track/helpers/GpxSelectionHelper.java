@@ -33,7 +33,6 @@ import net.osmand.plus.plugins.monitoring.SavingTrackHelper;
 import net.osmand.plus.settings.enums.HistorySource;
 import net.osmand.plus.shared.SharedUtil;
 import net.osmand.plus.track.GpxSelectionParams;
-import net.osmand.plus.track.data.GPXInfo;
 import net.osmand.plus.track.helpers.SelectGpxTask.SelectGpxTaskListener;
 import net.osmand.shared.gpx.GpxDataItem;
 import net.osmand.shared.gpx.GpxDbUtils;
@@ -663,14 +662,6 @@ public class GpxSelectionHelper {
 		}
 	}
 
-	private void saveGpxToHistory(@NonNull GpxFile gpx) {
-		String relativePath = GpxUiHelper.getGpxFileRelativePath(app, gpx.getPath());
-		GPXInfo gpxInfo = GpxUiHelper.getGpxInfoByFileName(app, relativePath);
-		if (gpxInfo != null) {
-			app.getSearchHistoryHelper().addNewItemToHistory(gpxInfo, HistorySource.SEARCH);
-		}
-	}
-
 	private void saveCurrentSelections() {
 		JSONArray array = new JSONArray();
 		Set<String> savedPaths = new HashSet<>();
@@ -800,9 +791,6 @@ public class GpxSelectionHelper {
 		}
 		if (params.isSyncGroup()) {
 			syncGpxWithMarkers(gpx);
-		}
-		if (params.isAddToHistory()) {
-			saveGpxToHistory(gpx);
 		}
 		if (params.isSaveSelection()) {
 			saveCurrentSelections();
