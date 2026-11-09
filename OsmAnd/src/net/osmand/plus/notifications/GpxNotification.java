@@ -96,11 +96,7 @@ public class GpxNotification extends OsmandNotification {
 	public boolean isUsedByService(@Nullable Service service) {
 		NavigationService navService = service instanceof NavigationService
 				? (NavigationService) service : app.getNavigationService();
-		if (navService == null) {
-			return false;
-		}
-		int used = navService.getUsedBy();
-		return (used & USED_BY_GPX) != 0 || (used & NavigationService.USED_BY_EV) != 0;
+		return navService != null && (navService.getUsedBy() & USED_BY_GPX) != 0;
 	}
 
 	@Override
@@ -126,10 +122,6 @@ public class GpxNotification extends OsmandNotification {
 		icon = R.drawable.ic_notification_track;
 		boolean isGpxRecording = app.getSavingTrackHelper().getIsRecording();
 		float recordedDistance = app.getSavingTrackHelper().getDistance();
-		NavigationService navService = service instanceof NavigationService
-				? (NavigationService) service : app.getNavigationService();
-		boolean evBackground = navService != null
-				&& (navService.getUsedBy() & NavigationService.USED_BY_EV) != 0;
 		ongoing = true;
 		lastBuiltNoData = false;
 		if (isGpxRecording) {
@@ -139,10 +131,6 @@ public class GpxNotification extends OsmandNotification {
 					+ OsmAndFormatter.getFormattedDistance(recordedDistance, app);
 			notificationText = app.getString(R.string.shared_string_recorded)
 					+ ": " + OsmAndFormatter.getFormattedDistance(recordedDistance, app);
-		} else if (evBackground) {
-			color = app.getColor(R.color.osmand_orange);
-			notificationTitle = app.getString(R.string.ev_bms_recording);
-			notificationText = app.getString(R.string.ev_bms_record_telemetry);
 		} else {
 			if (app.getSavingTrackHelper().getTrkPoints() > 0) {
 				notificationTitle = app.getString(R.string.shared_string_paused) + " • "

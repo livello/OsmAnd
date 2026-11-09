@@ -582,9 +582,6 @@ public class OsmAndLocationProvider implements SensorEventListener {
 	}
 
 	public void pauseAllUpdates() {
-		// The map listener is suspended when the screen turns off. Leaving it
-		// registered keeps the GPS session in that suspended state, so the
-		// foreground service never receives fixes. The service re-registers.
 		stopLocationRequests();
 		registerOrUnregisterCompassListener(false);
 	}
@@ -739,11 +736,11 @@ public class OsmAndLocationProvider implements SensorEventListener {
 
 		net.osmand.Location updatedLocation = setLocationForRouting(location, routingHelper);
 		app.getWaypointHelper().locationChanged(location);
-		this.location = updatedLocation;
-		updateLocation(this.location);
 		NavigationSession carNavigationSession = app.getCarNavigationSession();
 		if (carNavigationSession != null && carNavigationSession.hasStarted()) {
 			carNavigationSession.updateLocation(location);
+			this.location = updatedLocation;
+			updateLocation(this.location);
 		}
 	}
 

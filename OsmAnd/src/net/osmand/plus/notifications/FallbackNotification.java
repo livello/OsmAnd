@@ -47,7 +47,7 @@ public class FallbackNotification extends OsmandNotification {
 
 	@Override
 	public NotificationCompat.Builder buildNotification(@Nullable Service service, boolean wearable) {
-		return createBuilder(wearable).setContentTitle(Version.getAppName(app)).setOngoing(true);
+		return createBuilder(wearable).setContentTitle(Version.getAppName(app)).setOngoing(false);
 	}
 
 	@Override

@@ -15,7 +15,6 @@ import android.content.res.Resources;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Handler;
-import android.os.Looper;
 import android.os.Message;
 import android.util.DisplayMetrics;
 import android.view.View;
@@ -85,9 +84,7 @@ import net.osmand.plus.plugins.OsmandPlugin;
 import net.osmand.plus.plugins.PluginsHelper;
 import net.osmand.plus.plugins.accessibility.AccessibilityMode;
 import net.osmand.plus.plugins.accessibility.AccessibilityPlugin;
-import net.osmand.plus.plugins.evbms.EvBmsPlugin;
 import net.osmand.plus.plugins.monitoring.SavingTrackHelper;
-import net.osmand.plus.plugins.monitoring.ScreenOffTrackRecording;
 import net.osmand.plus.plugins.monitoring.live.LiveMonitoringHelper;
 import net.osmand.plus.plugins.osmedit.oauth.OsmOAuthHelper;
 import net.osmand.plus.plugins.rastermaps.DownloadTilesHelper;
@@ -1183,108 +1180,34 @@ public class OsmandApplication extends MultiDexApplication {
 
 	public void startNavigationService(@NonNull Context context, int usageIntent) {
 		LOG.info(">>>> APP startNavigationService = " + usageIntent);
-		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-			if (Looper.myLooper() == Looper.getMainLooper()) {
-				// Posting here loses the foreground window: onPause starts the service,
-				// onStop marks the app background, and the posted start is then refused.
-				startNavigationServiceOnUiThread(context, usageIntent);
-			} else {
-				runInUIThread(() -> startNavigationServiceOnUiThread(context, usageIntent));
-			}
-		} else {
-			Intent intent = navigationServiceIntent(context, usageIntent);
-			if (!attachUsageToRunningNavigationService(usageIntent)) {
-				context.startService(intent);
-			}
-		}
-	}
-
-	/**
-	 * Called while the map is still pausing, before the process is background.
-	 * A location foreground service has to be up by then, or GPS stops with the screen.
-	 */
-	public void ensureRecordingLocationService() {
-		boolean navigation = getRoutingHelper() != null && getRoutingHelper().isFollowingMode();
-		boolean recording = savingTrackHelper != null && savingTrackHelper.getIsRecording();
-		EvBmsPlugin ev = PluginsHelper.getEnabledPlugin(EvBmsPlugin.class);
-		boolean evBackground = ev != null && (ev.isTelemetryRecording() || ev.isCharging());
-		if (!navigation && !recording && !evBackground) {
-			return;
-		}
-		int usage = 0;
-		if (navigation) {
-			usage |= NavigationService.USED_BY_NAVIGATION;
-		}
-		if (recording) {
-			usage |= NavigationService.USED_BY_GPX;
-		}
-		if (evBackground) {
-			usage |= NavigationService.USED_BY_EV;
-		}
-		NavigationService running = getNavigationService();
-		if (running != null && running.isUsed()) {
-			running.addUsageIntent(usage);
-			running.ensureLocationUpdates();
-			return;
-		}
-		startNavigationService(usage);
-	}
-
-	@NonNull
-	private Intent navigationServiceIntent(@NonNull Context context, int usageIntent) {
 		Intent intent = new Intent(context, NavigationService.class);
 		intent.putExtra(NavigationService.USAGE_INTENT, usageIntent);
-		return intent;
-	}
-
-	private void startNavigationServiceOnUiThread(@NonNull Context context, int usageIntent) {
-		if (attachUsageToRunningNavigationService(usageIntent)) {
-			NavigationService running = getNavigationService();
-			if (running != null) {
-				running.ensureLocationUpdates();
-			}
-			return;
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+			runInUIThread(() -> {
+				if (!OsmAndLocationProvider.isLocationPermissionAvailable(this)) {
+					LOG.info(">>>> Failed APP startForegroundService = " + usageIntent + " {no location permission}");
+					return;
+				}
+				if (!isAppInForeground()) {
+					// A foreground service started from the background is denied the while-in-use
+					// location capability, so startForeground(.., TYPE_LOCATION) throws and the
+					// platform may kill the process for missing its startForegroundService()
+					// deadline. See #25861.
+					LOG.info(">>>> Failed APP startForegroundService = " + usageIntent + " {app in background}");
+					return;
+				}
+				try {
+					LOG.info(">>>> APP startForegroundService = " + usageIntent);
+					context.startForegroundService(intent);
+				} catch (Exception e) {
+					// e.g. ForegroundServiceStartNotAllowedException (Android 12+) when the service
+					// cannot be started from the background; do not fail silently in the log only.
+					LOG.error("Failed to start foreground service (usageIntent=" + usageIntent + "): " + e.getMessage(), e);
+				}
+			});
+		} else {
+			context.startService(intent);
 		}
-		if (!OsmAndLocationProvider.isLocationPermissionAvailable(this)) {
-			LOG.info(">>>> Failed APP startForegroundService = " + usageIntent + " {no location permission}");
-			return;
-		}
-		if (!ScreenOffTrackRecording.mayStartNewForegroundService(isAppInForeground(), getSettings().MAP_ACTIVITY_ENABLED)) {
-			// A foreground service started from the background is denied the while-in-use
-			// location capability, so startForeground(.., TYPE_LOCATION) throws and the
-			// platform may kill the process for missing its startForegroundService()
-			// deadline. See #25861.
-			LOG.info(">>>> Failed APP startForegroundService = " + usageIntent + " {app in background}");
-			return;
-		}
-		try {
-			LOG.info(">>>> APP startForegroundService = " + usageIntent);
-			context.startForegroundService(navigationServiceIntent(context, usageIntent));
-		} catch (Exception e) {
-			// e.g. ForegroundServiceStartNotAllowedException (Android 12+) when the service
-			// cannot be started from the background; do not fail silently in the log only.
-			LOG.error("Failed to start foreground service (usageIntent=" + usageIntent + "): " + e.getMessage(), e);
-		}
-	}
-
-	/**
-	 * A service that is already in the foreground must not be started again with
-	 * {@code startForegroundService()}. Each such call arms a new deadline, and
-	 * {@code NavigationService.onStartCommand()} used to return immediately when
-	 * {@code usedBy != 0} without calling {@code startForeground()}, which kills the
-	 * process with {@code ForegroundServiceDidNotStartInTimeException} during navigation
-	 * and trip recording.
-	 *
-	 * @return true when the usage was attached and no new service start is required
-	 */
-	private boolean attachUsageToRunningNavigationService(int usageIntent) {
-		NavigationService running = getNavigationService();
-		if (running != null && running.isUsed()) {
-			running.addUsageIntent(usageIntent);
-			LOG.info(">>>> APP navigation service already running, usage=" + usageIntent);
-			return true;
-		}
-		return false;
 	}
 
 	public void setupDrivingRegion(@NonNull WorldRegion worldRegion) {
