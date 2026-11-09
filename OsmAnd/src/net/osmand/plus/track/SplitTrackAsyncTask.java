@@ -11,6 +11,7 @@ import androidx.annotation.Nullable;
 
 import net.osmand.IProgress;
 import net.osmand.plus.OsmandApplication;
+import net.osmand.plus.R;
 import net.osmand.plus.plugins.PluginsHelper;
 import net.osmand.plus.settings.backend.backup.AbstractProgress;
 import net.osmand.plus.track.helpers.GpxDisplayGroup;
