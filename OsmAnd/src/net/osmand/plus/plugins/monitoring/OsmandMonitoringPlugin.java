@@ -417,6 +417,9 @@ public class OsmandMonitoringPlugin extends OsmandPlugin {
 		if (app.getNavigationService() != null) {
 			app.getNavigationService().stopIfNeeded(app, NavigationService.USED_BY_GPX);
 		}
+		if (!app.getSettings().MAP_ACTIVITY_ENABLED) {
+			app.getLocationProvider().pauseAllUpdates();
+		}
 	}
 
 	public boolean isSaving() {

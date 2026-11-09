@@ -1243,7 +1243,13 @@ public class MapActivity extends OsmandActionBarActivity implements DownloadEven
 		if (mapViewWithLayers != null) {
 			mapViewWithLayers.onPause();
 		}
+		// ScreenOffTrackRecording.screenOffHandoff(): service first, then the map
+		// lets go, then the continuous GPS listener is registered again.
+		app.ensureRecordingLocationService();
+		settings.MAP_ACTIVITY_ENABLED = false;
+		LOG.info(">>>> MAP_ACTIVITY_ENABLED = false");
 		app.getLocationProvider().pauseAllUpdates();
+		app.ensureRecordingLocationService();
 		app.getDaynightHelper().stopSensorIfNeeded();
 		settings.APPLICATION_MODE.removeListener(applicationModeListener);
 
@@ -1263,8 +1269,6 @@ public class MapActivity extends OsmandActionBarActivity implements DownloadEven
 		settings.setLastKnownMapZoomFloatPart(mapView.getZoomFloatPart());
 		settings.setLastKnownMapRotation(mapView.getRotate());
 		settings.setLastKnownMapElevation(mapView.getElevationAngle());
-		settings.MAP_ACTIVITY_ENABLED = false;
-		LOG.info(">>>> MAP_ACTIVITY_ENABLED = false");
 
 		getMapView().getAnimatedDraggingThread().toggleAnimations();
 		app.getResourceManager().interruptRendering();

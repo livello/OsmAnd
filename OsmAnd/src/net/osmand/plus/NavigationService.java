@@ -9,15 +9,20 @@ import static net.osmand.plus.notifications.OsmandNotification.NotificationType.
 import static net.osmand.plus.notifications.OsmandNotification.NotificationType.NAVIGATION;
 import static net.osmand.plus.notifications.OsmandNotification.TOP_NOTIFICATION_SERVICE_ID;
 
+import android.annotation.SuppressLint;
 import android.app.Notification;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.location.LocationManager;
 import android.os.Binder;
 import android.os.Build;
 import android.os.IBinder;
+import android.os.Looper;
+import android.os.PowerManager;
 
 import androidx.annotation.NonNull;
+import androidx.core.location.LocationListenerCompat;
 
 import net.osmand.Location;
 import net.osmand.PlatformUtil;
@@ -27,6 +32,7 @@ import net.osmand.plus.auto.NavigationSession;
 import net.osmand.plus.helpers.LocationCallback;
 import net.osmand.plus.helpers.LocationServiceHelper;
 import net.osmand.plus.notifications.NotificationHelper;
+import net.osmand.plus.plugins.monitoring.ScreenOffTrackRecording;
 import net.osmand.plus.notifications.OsmandNotification.NotificationType;
 import net.osmand.plus.routing.RoutingHelper;
 import net.osmand.plus.settings.backend.OsmandSettings;
@@ -50,6 +56,8 @@ public class NavigationService extends Service {
 	public static int USED_BY_NAVIGATION = 1;
 	public static int USED_BY_GPX = 2;
 	public static int USED_BY_AIS = 4;
+	/** Telemetry recording or an open charge. Keeps the process up when the track is not recording. */
+	public static int USED_BY_EV = 8;
 	public static final String USAGE_INTENT = "SERVICE_USED_BY";
 
 	private final NavigationServiceBinder binder = new NavigationServiceBinder();
@@ -62,6 +70,25 @@ public class NavigationService extends Service {
 	private LocationServiceHelper locationServiceHelper;
 	private StateChangedListener<LocationSource> locationSourceListener;
 	private long lastTimeGPSLocationFixed;
+	private PowerManager.WakeLock gpsWakeLock;
+
+	private final LocationListenerCompat gpsListener = location -> {
+		if (location == null || settings == null
+				|| !ScreenOffTrackRecording.serviceAcceptsFix(settings.MAP_ACTIVITY_ENABLED)) {
+			return;
+		}
+		if (getApp().getNavigationCarAppService() != null) {
+			return;
+		}
+		if (locationProvider == null) {
+			locationProvider = getApp().getLocationProvider();
+		}
+		net.osmand.Location converted = OsmAndLocationProvider.convertLocation(location, getApp());
+		if (converted != null) {
+			lastTimeGPSLocationFixed = System.currentTimeMillis();
+			locationProvider.setLocationFromService(converted);
+		}
+	};
 
 	@Override
 	public IBinder onBind(Intent intent) {
@@ -135,6 +162,13 @@ public class NavigationService extends Service {
 		// an already running service arms a new deadline; returning without startForeground()
 		// kills the process with ForegroundServiceDidNotStartInTimeException.
 		if (!promoteToForeground(notificationHelper.buildFallbackNotification())) {
+			// A second start can be rejected once the screen is off. Stopping here
+			// drops the location foreground service, so the track freezes while the
+			// process (and telemetry polling) is still alive.
+			if (isUsed()) {
+				ensureLocationUpdates();
+				return START_STICKY;
+			}
 			resetServiceState(app);
 			stopSelf();
 			return START_NOT_STICKY;
@@ -143,6 +177,7 @@ public class NavigationService extends Service {
 		if (isUsed()) {
 			LOG.info(">>>> NavigationService is used by = " + usedBy.get());
 			addUsageIntent(usageIntent);
+			ensureLocationUpdates();
 			return START_REDELIVER_INTENT;
 		}
 
@@ -154,7 +189,8 @@ public class NavigationService extends Service {
 		locationServiceHelper = app.createLocationServiceHelper();
 		app.setNavigationService(this);
 
-		NotificationType type = isUsedBy(USED_BY_NAVIGATION) ? NAVIGATION : isUsedBy(USED_BY_GPX) ? GPX : AIS;
+		boolean trackOrEv = isUsedBy(USED_BY_GPX) || isUsedBy(USED_BY_EV);
+		NotificationType type = isUsedBy(USED_BY_NAVIGATION) ? NAVIGATION : trackOrEv ? GPX : AIS;
 		Notification notification = notificationHelper.buildTopNotification(this, type);
 		if (notification != null) {
 			try {
@@ -169,14 +205,33 @@ public class NavigationService extends Service {
 				LOG.error(e.getMessage(), e);
 			}
 		} else {
-			LOG.error("NavigationService could not be started because the notification is null. usedBy=" + usedBy.get());
-			resetServiceState(app);
-			stopForeground(STOP_FOREGROUND_REMOVE);
-			stopSelf();
-			return START_NOT_STICKY;
+			// The fallback notification above already holds the location foreground
+			// service. Stopping here is what drops GPS for the rest of a ride.
+			LOG.error("NavigationService notification is null. usedBy=" + usedBy.get() + ". Keeping fallback.");
+		}
+		ensureLocationUpdates();
+		return START_REDELIVER_INTENT;
+	}
+
+	/**
+	 * Re-register GPS and hold a wake lock so a screen-off ride keeps getting fixes.
+	 */
+	public void ensureLocationUpdates() {
+		OsmandApplication app = getApp();
+		if (settings == null) {
+			settings = app.getSettings();
+		}
+		if (routingHelper == null) {
+			routingHelper = app.getRoutingHelper();
+		}
+		if (locationProvider == null) {
+			locationProvider = app.getLocationProvider();
+		}
+		if (locationServiceHelper == null) {
+			locationServiceHelper = app.createLocationServiceHelper();
 		}
 		requestLocationUpdates();
-		return START_REDELIVER_INTENT;
+		acquireGpsWakeLock();
 	}
 
 	/**
@@ -188,8 +243,15 @@ public class NavigationService extends Service {
 			return true;
 		} catch (Exception e) {
 			LOG.error("Failed to start NavigationService (usedBy=" + usedBy.get() + ")", e);
-			// stopSelf() does not cancel the deadline. Location type is denied for a service
-			// started from the background; shortService is allowed, and is stopped immediately.
+			if (isUsed()) {
+				// Already a location foreground service. Do not demote it: GPS stops
+				// with the screen as soon as this service is no longer in the foreground.
+				LOG.error("Keeping the running location service after a rejected promotion");
+				return true;
+			}
+			// The process is killed if startForegroundService() is not acknowledged.
+			// shortService is allowed from the background and is dropped immediately.
+			// It must not remain the running type: its timeout stops the track.
 			acknowledgeForegroundStart(notification);
 			return false;
 		}
@@ -211,8 +273,13 @@ public class NavigationService extends Service {
 	@Override
 	public void onTimeout(int startId) {
 		super.onTimeout(startId);
-		LOG.info(">>>> NavigationService onTimeout " + startId);
-		stopSelf();
+		LOG.info(">>>> NavigationService onTimeout " + startId + " usedBy=" + usedBy.get());
+		// The successful path is a location service, so this timeout should not fire.
+		// shortService is only the failed-start acknowledgement, which already stopped
+		// itself. Stopping a service that is recording the track ends the ride.
+		if (usedBy.get() == 0) {
+			stopSelf();
+		}
 	}
 
 	private void startForeground(@NonNull Notification notification) {
@@ -242,6 +309,7 @@ public class NavigationService extends Service {
 		OsmandApplication app = getApp();
 		resetServiceState(app);
 		removeLocationUpdates();
+		releaseGpsWakeLock();
 		removeLocationSourceListener();
 
 		LOG.info(">>>> NavigationService onDestroy");
@@ -277,6 +345,7 @@ public class NavigationService extends Service {
 	private void requestLocationUpdates() {
 		try {
 			LOG.info(">>>> requestLocationUpdates from NavigationService");
+			registerGpsProvider();
 
 			locationServiceHelper.requestLocationUpdates(new LocationCallback() {
 				@Override
@@ -285,7 +354,8 @@ public class NavigationService extends Service {
 						Location location = locations.get(locations.size() - 1);
 						NavigationCarAppService navigationCarAppService = getApp().getNavigationCarAppService();
 						lastTimeGPSLocationFixed = System.currentTimeMillis();
-						if (!settings.MAP_ACTIVITY_ENABLED && navigationCarAppService == null) {
+						if (ScreenOffTrackRecording.serviceAcceptsFix(settings.MAP_ACTIVITY_ENABLED)
+								&& navigationCarAppService == null) {
 							locationProvider.setLocationFromService(location);
 						}
 					}
@@ -297,7 +367,8 @@ public class NavigationService extends Service {
 					@Override
 					public void onLocationResult(@NonNull List<net.osmand.Location> locations) {
 						NavigationCarAppService navigationCarAppService = getApp().getNavigationCarAppService();
-						if (!settings.MAP_ACTIVITY_ENABLED && navigationCarAppService == null && !locations.isEmpty() && !useOnlyGPS()) {
+						if (ScreenOffTrackRecording.serviceAcceptsFix(settings.MAP_ACTIVITY_ENABLED)
+								&& navigationCarAppService == null && !locations.isEmpty() && !useOnlyGPS()) {
 							locationProvider.setLocationFromService(locations.get(locations.size() - 1));
 						}
 					}
@@ -312,6 +383,7 @@ public class NavigationService extends Service {
 
 	private void removeLocationUpdates() {
 		LOG.info(">>>> removeLocationUpdates from NavigationService");
+		unregisterGpsProvider();
 		if (locationServiceHelper != null) {
 			try {
 				locationServiceHelper.removeLocationUpdates();
@@ -320,6 +392,56 @@ public class NavigationService extends Service {
 			} finally {
 				lastTimeGPSLocationFixed = 0;
 			}
+		}
+	}
+
+	@SuppressLint("MissingPermission")
+	private void registerGpsProvider() {
+		LocationManager locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
+		if (locationManager == null) {
+			return;
+		}
+		try {
+			locationManager.removeUpdates(gpsListener);
+			locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,
+					ScreenOffTrackRecording.GPS_MIN_TIME_MS, ScreenOffTrackRecording.GPS_MIN_DISTANCE_M,
+					gpsListener, Looper.getMainLooper());
+		} catch (SecurityException e) {
+			LOG.error("GPS provider permission not granted", e);
+		} catch (IllegalArgumentException e) {
+			LOG.error("GPS provider not available", e);
+		}
+	}
+
+	private void unregisterGpsProvider() {
+		LocationManager locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
+		if (locationManager == null) {
+			return;
+		}
+		try {
+			locationManager.removeUpdates(gpsListener);
+		} catch (SecurityException e) {
+			// Location service permission not granted
+		}
+	}
+
+	private void acquireGpsWakeLock() {
+		if (gpsWakeLock == null) {
+			PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
+			if (powerManager == null) {
+				return;
+			}
+			gpsWakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "OsmAnd:NavigationService");
+			gpsWakeLock.setReferenceCounted(false);
+		}
+		if (!gpsWakeLock.isHeld()) {
+			gpsWakeLock.acquire();
+		}
+	}
+
+	private void releaseGpsWakeLock() {
+		if (gpsWakeLock != null && gpsWakeLock.isHeld()) {
+			gpsWakeLock.release();
 		}
 	}
 
