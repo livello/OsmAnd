@@ -152,9 +152,9 @@ class VoiceGpsNotesFragment : Fragment() {
 
 		fun bind(entry: EvVoiceGpxStore.VoiceNoteEntry) {
 			val fav = entry.favorite
-			title.text = fav.name ?: fav.getName()
+			title.text = fav?.name ?: fav?.getName() ?: entry.title
 			val timeFmt = SimpleDateFormat("HH:mm", Locale.getDefault())
-			val desc = fav.description?.takeIf { it.isNotBlank() } ?: ""
+			val desc = fav?.description?.takeIf { it.isNotBlank() } ?: ""
 			subtitle.text = if (desc.isEmpty()) {
 				timeFmt.format(Date(entry.timeMs))
 			} else {

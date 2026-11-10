@@ -47,6 +47,17 @@ object VoiceGpsKeywordMatcher {
 		return NOTE_CMD.any { tokenMatch(n, it) || n.contains(it) }
 	}
 
+	fun stripNoteCommand(text: String): String {
+		var n = normalize(text)
+		for (cmd in NOTE_CMD.sortedByDescending { it.length }) {
+			val idx = n.indexOf(cmd)
+			if (idx >= 0) {
+				n = (n.substring(0, idx) + n.substring(idx + cmd.length)).trim()
+			}
+		}
+		return n.trim()
+	}
+
 	fun stripEndKeyword(text: String): String {
 		var n = normalize(text)
 		for (end in END_CMD) {
